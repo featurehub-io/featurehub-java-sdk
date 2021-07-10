@@ -3,12 +3,12 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.featurehub.sdk</groupId>
-  <artifactId>java-client-jersey</artifactId>
-  <version>2.3-SNAPSHOT</version>
-  <name>java-client-jersey</name>
+  <artifactId>java-client-jersey3</artifactId>
+  <version>1.1-SNAPSHOT</version>
+  <name>java-client-jersey3</name>
 
   <description>
-    Jersey client for featurehub
+    Jersey 3 client for featurehub (jakarta annotations)
   </description>
 
   <url>https://featurehub.io</url>
@@ -44,7 +44,7 @@
   </scm>
 
   <properties>
-    <jersey.version>2.28</jersey.version>
+    <jersey.version>3.0.2</jersey.version>
     <jackson.version>2.12.4</jackson.version>
   </properties>
 
@@ -52,8 +52,8 @@
     <!-- required for the test api -->
     <dependency>
       <groupId>cd.connect.openapi.gensupport</groupId>
-      <artifactId>openapi-generator-support</artifactId>
-      <version>1.4</version>
+      <artifactId>openapi-jersey3-support</artifactId>
+      <version>2.1</version>
     </dependency>
 
     <!-- required in general for the jersey client -->
@@ -169,8 +169,8 @@
         <dependencies>
           <dependency>
             <groupId>cd.connect.openapi</groupId>
-            <artifactId>connect-openapi-jersey2</artifactId>
-            <version>6.6-SNAPSHOT</version>
+            <artifactId>connect-openapi-jersey3</artifactId>
+            <version>7.1-SNAPSHOT</version>
           </dependency>
         </dependencies>
         <executions>
@@ -185,7 +185,7 @@
               <apiPackage>io.featurehub.sse.api</apiPackage>
               <modelPackage>io.featurehub.sse.model</modelPackage>
               <inputSpec>${project.basedir}/final.yaml</inputSpec>
-              <generatorName>jersey2-api</generatorName>
+              <generatorName>jersey3-api</generatorName>
               <generateApis>true</generateApis>
               <generateModels>false</generateModels>
 
