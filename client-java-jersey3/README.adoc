@@ -11,4 +11,4 @@ This library provides a EventSource implementation for Java using Jersey 2.x. It
 as a transitive dependency, so simply including this library will make everything in Core available. 
 
 Core uses Java's ServiceLoader capability to automatically discover the JerseyClient implementation. Please
-simply follow the instructions in the https://github.com/featurehub-io/featurehub/tree/master/sdks/java/client-java-core[Java Core library].
+simply follow the instructions in the https://github.com/featurehub-io/featurehub-java-sdk/tree/main/client-java-core[Java Core library].
