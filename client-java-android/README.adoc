@@ -30,7 +30,7 @@ You will need to store your repository in a central location, using a static or 
 might look something like this:
 
 Core uses Java's ServiceLoader capability to automatically discover the JerseyClient implementation. Please
-simply follow the instructions in the https://github.com/featurehub-io/featurehub/tree/master/sdks/java/client-java-core[Java Core library].
+simply follow the instructions in the https://github.com/featurehub-io/featurehub-java-sdk/tree/main/client-java-core[Java Core library].
 
 As per that documentation you can manually configure the Edge provider to be the `AndroidFeatureHubClientFactory` if 
 you wish.
