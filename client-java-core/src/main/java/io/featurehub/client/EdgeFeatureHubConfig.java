@@ -1,6 +1,8 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +19,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private FeatureRepositoryContext repository;
   private Supplier<EdgeService> edgeService;
 
-  public EdgeFeatureHubConfig(String edgeUrl, String apiKey) {
+  public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
 
     if (apiKey == null || edgeUrl == null) {
       throw new RuntimeException("Both edge url and sdk key must be set.");
@@ -40,16 +42,19 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
+  @NotNull
   public String getRealtimeUrl() {
     return realtimeUrl;
   }
 
   @Override
+  @NotNull
   public String apiKey() {
     return apiKey;
   }
 
   @Override
+  @NotNull
   public String baseUrl() {
     return edgeUrl;
   }
@@ -69,12 +74,15 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
+  @NotNull
   public ClientContext newContext() {
     return newContext(null, null);
   }
 
   @Override
-  public ClientContext newContext(FeatureRepositoryContext repository, Supplier<EdgeService> edgeService) {
+  @NotNull
+  public ClientContext newContext(@Nullable FeatureRepositoryContext repository,
+                                  @Nullable Supplier<EdgeService> edgeService) {
     if (repository == null) {
       if (this.repository == null) {
         this.repository = new ClientFeatureRepository();
@@ -101,7 +109,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   /**
    * dynamically load an edge service implementation
    */
-  protected Supplier<EdgeService> loadEdgeService(FeatureRepositoryContext repository) {
+  @NotNull
+  protected Supplier<EdgeService> loadEdgeService(@NotNull  FeatureRepositoryContext repository) {
     ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 
     for(FeatureHubClientFactory f : loader) {
@@ -115,11 +124,12 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void setRepository(FeatureRepositoryContext repository) {
+  public void setRepository(@NotNull FeatureRepositoryContext repository) {
     this.repository = repository;
   }
 
   @Override
+  @NotNull
   public FeatureRepositoryContext getRepository() {
     if (repository == null) {
       repository = new ClientFeatureRepository();
@@ -129,11 +139,12 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void setEdgeService(Supplier<EdgeService> edgeService) {
+  public void setEdgeService(@NotNull Supplier<EdgeService> edgeService) {
     this.edgeService = edgeService;
   }
 
   @Override
+  @NotNull
   public Supplier<EdgeService> getEdgeService() {
     if (edgeService == null) {
       edgeService = loadEdgeService(getRepository());
@@ -143,27 +154,27 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void addReadynessListener(ReadynessListener readynessListener) {
+  public void addReadynessListener(@NotNull ReadynessListener readynessListener) {
     getRepository().addReadynessListener(readynessListener);
   }
 
   @Override
-  public void addAnalyticCollector(AnalyticsCollector collector) {
+  public void addAnalyticCollector(@NotNull AnalyticsCollector collector) {
     getRepository().addAnalyticCollector(collector);
   }
 
   @Override
-  public void registerValueInterceptor(boolean allowLockOverride, FeatureValueInterceptor interceptor) {
+  public void registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor) {
     getRepository().registerValueInterceptor(allowLockOverride, interceptor);
   }
 
   @Override
+  @NotNull
   public Readyness getReadyness() {
     return getRepository().getReadyness();
   }
 
   @Override
-  public void setJsonConfigObjectMapper(ObjectMapper jsonConfigObjectMapper) {
-
+  public void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
   }
 }

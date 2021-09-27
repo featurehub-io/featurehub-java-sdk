@@ -7,7 +7,6 @@ import io.featurehub.client.Readyness;
 import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
-import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.sse.model.SSEResultState;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -157,7 +156,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private final List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
 
   @Override
-  public Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
     if (config.isServerEvaluation() &&
@@ -217,7 +216,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
-  public FeatureHubConfig getConfig() {
+  public @NotNull FeatureHubConfig getConfig() {
     return config;
   }
 

@@ -96,6 +96,18 @@ class JerseyClientSpec extends Specification {
         client.featurehubContextHeader == null
   }
 
+  def "a server side evaluation header does not trigger the context header to be set if it is null"() {
+    given: "i have a client with a server eval url"
+        def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
+          false, new ClientFeatureRepository(1), null)
+        client.neverConnect = true  // groovy is groovy
+    when: "i set attributes"
+        client.contextChange(null)
+    then:
+        client.featurehubContextHeader == null
+
+  }
+
   def "a server side evaluation header does trigger the context header to be set"() {
     given: "i have a client with a client eval url"
         def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),

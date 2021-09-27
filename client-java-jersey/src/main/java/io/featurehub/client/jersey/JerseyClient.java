@@ -13,6 +13,7 @@ import org.glassfish.jersey.jackson.JacksonFeature;
 import org.glassfish.jersey.media.sse.EventInput;
 import org.glassfish.jersey.media.sse.InboundEvent;
 import org.glassfish.jersey.media.sse.SseFeature;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,9 @@ public class JerseyClient implements EdgeService {
   private String xFeaturehubHeader;
   protected final FeatureHubConfig fhConfig;
   private List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
+
+  // only for testing
+  private boolean neverConnect = false;
 
   public JerseyClient(FeatureHubConfig config, FeatureStore repository) {
     this(config, !config.isServerEvaluation(), repository, null);
@@ -121,6 +125,8 @@ public class JerseyClient implements EdgeService {
     public boolean active = true;
 
     public void listenUntilDead() {
+      if (neverConnect) return;
+
       long start = System.currentTimeMillis();
       try {
         Invocation.Builder request = target.request();
@@ -264,10 +270,10 @@ public class JerseyClient implements EdgeService {
   }
 
   @Override
-  public Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
-    if (fhConfig.isServerEvaluation() && (!newHeader.equals(xFeaturehubHeader) || !initialized)) {
+    if (fhConfig.isServerEvaluation() && ((newHeader != null && !newHeader.equals(xFeaturehubHeader)) || !initialized)) {
       xFeaturehubHeader = newHeader;
 
       waitingClients.add(change);
@@ -302,7 +308,7 @@ public class JerseyClient implements EdgeService {
   }
 
   @Override
-  public FeatureHubConfig getConfig() {
+  public @NotNull FeatureHubConfig getConfig() {
     return fhConfig;
   }
 
