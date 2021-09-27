@@ -1,15 +1,19 @@
 package io.featurehub.client;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.concurrent.Future;
 
 public interface EdgeService {
   /**
    * called only when the new attribute header has changed
    *
-   * @param newHeader
-   * @return
+   * @param newHeader - the header to pass to the server if server evaluated
+   * @return a completable future when it has actually changed
    */
-  Future<Readyness> contextChange(String newHeader);
+  @NotNull
+  Future<Readyness> contextChange(@Nullable String newHeader);
 
   /**
    * are we doing client side evaluation?
@@ -22,6 +26,7 @@ public interface EdgeService {
    */
   void close();
 
+  @NotNull
   FeatureHubConfig getConfig();
 
   boolean isRequiresReplacementOnHeaderChange();

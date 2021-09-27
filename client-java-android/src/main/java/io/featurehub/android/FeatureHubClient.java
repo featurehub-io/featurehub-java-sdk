@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -154,7 +155,7 @@ public class FeatureHubClient implements EdgeService {
   }
 
   @Override
-  public Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
     if (!newHeader.equals(xFeaturehubHeader)) {
@@ -190,7 +191,7 @@ public class FeatureHubClient implements EdgeService {
   }
 
   @Override
-  public FeatureHubConfig getConfig() {
+  public @NotNull FeatureHubConfig getConfig() {
     return config;
   }
 
