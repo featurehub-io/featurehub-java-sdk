@@ -4,8 +4,19 @@ This is the set of libraries currently supporting the Java programming language 
 of two libraries:
 
 - link:client-java-core/README.adoc[Core] - this reflects the core repository and all listeners that notify about feature changes.
+
+You primarily use this SDK by choosing a transport mechanism which includes the core library above. The transport
+mechanism will automatically configure itself using Java Services, so when you create a new client, you do not have
+to worry about the details of each implementation.
+
+- link:client-java-android/README.adoc[Android/GET Client] - This is a GET implementation of the client. It does not have inbuilt polling, it is intended for use by clients who do not want or need near realtime updates, or if you
+were using server side evaluation. It uses OKHttp. To
+refresh the client you simply use the "poll" function of your provider as detailed in the Core SDK.
+- link:client-java-android/README.adoc[SSE Client] - This allows you to use near realtime events using the
+SSE implementation in OKHttp. It is what you would use if you were not using Jersey. 
 - link:client-java-jersey/README.adoc[Jersey Client] - this reflects the Jersey Eventsource client for Java. It also includes
-the Jersey implementation of the Google Analytics provider.
+the Jersey implementation of the Google Analytics provider. 
+- link:client-java-jersey3/README.adoc[Jersey Client] - this reflects the Jersey 3 Eventsource client for Java (along with the new Jakarta APIs). It also includes the Jersey implementation of the Google Analytics provider.
 
 Other libraries for Spring and other platforms will arrive once they have been built.
 
