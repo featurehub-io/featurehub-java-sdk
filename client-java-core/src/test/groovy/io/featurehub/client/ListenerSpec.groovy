@@ -1,10 +1,10 @@
 package io.featurehub.client
 
-import io.featurehub.sse.model.FeatureValueType
-import io.featurehub.sse.model.RolloutStrategy
-import io.featurehub.sse.model.RolloutStrategyAttribute
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional
-import io.featurehub.sse.model.RolloutStrategyFieldType
+import io.featurehub.mr.model.FeatureValueType
+import io.featurehub.mr.model.RolloutStrategyAttributeConditional
+import io.featurehub.mr.model.RolloutStrategyFieldType
+import io.featurehub.sse.model.FeatureRolloutStrategy
+import io.featurehub.sse.model.FeatureRolloutStrategyAttribute
 import spock.lang.Specification
 
 class ListenerSpec extends Specification {
@@ -24,8 +24,8 @@ class ListenerSpec extends Specification {
         })
         ctxFeat.addListener({ fs -> n2 = fs.number })
     when: "i set the feature state"
-        feat.setFeatureState(new io.featurehub.sse.model.FeatureState().id(UUID.randomUUID()).key(key).l(false).value(16).type(FeatureValueType.NUMBER).addStrategiesItem(new RolloutStrategy().value(12).addAttributesItem(
-          new RolloutStrategyAttribute().conditional(RolloutStrategyAttributeConditional.EQUALS).type(RolloutStrategyFieldType.STRING).fieldName("userkey").addValuesItem("fred")
+        feat.setFeatureState(new io.featurehub.sse.model.FeatureState().id(UUID.randomUUID()).key(key).l(false).value(16).type(FeatureValueType.NUMBER).addStrategiesItem(new FeatureRolloutStrategy().value(12).addAttributesItem(
+          new FeatureRolloutStrategyAttribute().conditional(RolloutStrategyAttributeConditional.EQUALS).type(RolloutStrategyFieldType.STRING).fieldName("userkey").addValuesItem("fred")
         )))
     then:
         n1 == 16

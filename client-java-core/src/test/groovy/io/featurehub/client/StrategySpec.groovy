@@ -1,17 +1,16 @@
 package io.featurehub.client
 
-import io.featurehub.sse.model.FeatureState
-import io.featurehub.sse.model.FeatureValueType
-import io.featurehub.sse.model.RolloutStrategy
-import io.featurehub.sse.model.RolloutStrategyAttribute
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional
-import io.featurehub.sse.model.RolloutStrategyFieldType
+import io.featurehub.mr.model.FeatureValueType
+import io.featurehub.mr.model.RolloutStrategyAttributeConditional
+import io.featurehub.mr.model.RolloutStrategyFieldType
 import io.featurehub.sse.model.StrategyAttributeCountryName
 import io.featurehub.sse.model.StrategyAttributePlatformName
-import io.featurehub.sse.model.StrategyAttributeWellKnownNames
+import io.featurehub.mr.model.StrategyAttributeWellKnownNames
+import io.featurehub.sse.model.FeatureRolloutStrategy
+import io.featurehub.sse.model.FeatureRolloutStrategyAttribute
+import io.featurehub.sse.model.FeatureState
 import spock.lang.Specification
 
-import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
 class StrategySpec extends Specification {
@@ -34,8 +33,8 @@ class StrategySpec extends Specification {
           .id(UUID.randomUUID())
           .version(1)
           .type(FeatureValueType.BOOLEAN)
-          .strategies([new RolloutStrategy().value(false).attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
+          .strategies([new FeatureRolloutStrategy().value(false).attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EQUALS)
                .fieldName(StrategyAttributeWellKnownNames.COUNTRY.getValue())
                .values([StrategyAttributeCountryName.TURKEY.getValue()])
@@ -64,15 +63,15 @@ class StrategySpec extends Specification {
           .value(16)
           .version(1)
           .type(FeatureValueType.NUMBER)
-          .strategies([new RolloutStrategy().value(6).attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
+          .strategies([new FeatureRolloutStrategy().value(6).attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
                .conditional(RolloutStrategyAttributeConditional.GREATER_EQUALS)
                .fieldName("age")
                .values([40])
             ]
           )
-                       , new RolloutStrategy().value(10).attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
+                       , new FeatureRolloutStrategy().value(10).attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
                .conditional(RolloutStrategyAttributeConditional.GREATER_EQUALS)
                .fieldName("age")
                .values([20])
@@ -100,15 +99,15 @@ class StrategySpec extends Specification {
           .id(UUID.randomUUID())
           .version(1)
           .type(FeatureValueType.STRING)
-          .strategies([new RolloutStrategy().value("not-mobile").attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
+          .strategies([new FeatureRolloutStrategy().value("not-mobile").attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EXCLUDES)
                .fieldName(StrategyAttributeWellKnownNames.PLATFORM.getValue())
                .values([StrategyAttributePlatformName.ANDROID.value, StrategyAttributePlatformName.IOS.value])
             ]
           )
-                       , new RolloutStrategy().value("older-than-twenty").attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
+                       , new FeatureRolloutStrategy().value("older-than-twenty").attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
                .conditional(RolloutStrategyAttributeConditional.GREATER_EQUALS)
                .fieldName("age")
                .values([20])
@@ -140,14 +139,14 @@ class StrategySpec extends Specification {
           .value("feature")
           .version(1)
           .type(FeatureValueType.JSON)
-          .strategies([new RolloutStrategy().value("not-mobile").attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
+          .strategies([new FeatureRolloutStrategy().value("not-mobile").attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EXCLUDES)
                .fieldName(StrategyAttributeWellKnownNames.PLATFORM.getValue())
                .values([StrategyAttributePlatformName.ANDROID.value, StrategyAttributePlatformName.IOS.value])
             ]
-          ), new RolloutStrategy().value("older-than-twenty").attributes(
-            [new RolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
+          ), new FeatureRolloutStrategy().value("older-than-twenty").attributes(
+            [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
                .conditional(RolloutStrategyAttributeConditional.GREATER_EQUALS)
                .fieldName("age")
                .values([20])

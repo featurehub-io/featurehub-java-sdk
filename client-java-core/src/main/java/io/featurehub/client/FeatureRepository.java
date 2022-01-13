@@ -2,7 +2,6 @@ package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.math.BigDecimal;
 import java.util.Map;
 
 public interface FeatureRepository {

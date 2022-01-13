@@ -7,7 +7,6 @@ import io.featurehub.client.FeatureRepository;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
 
-import java.io.IOException;
 import java.util.function.Supplier;
 
 // isn't a test, won't run outside of IDE but will run with test dependencies

@@ -1,0 +1,4 @@
+The API included here is updated as required from the main repository. It is generated from the same file,
+but modifications are made for package names for the `StrategyAttributeCountryName`, `StrategyAttributeDeviceName`,
+and `StrategyAttributePlatformName` (`mr` -> `sse`) - to maintain historical consistency.
+

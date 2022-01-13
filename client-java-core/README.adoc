@@ -523,3 +523,8 @@ system property `featurehub.features.allow-override=true`
 
 We have removed support for OpenTracing.
 
+=== Maintenance
+
+Please note the `io.featurehub.strategies` package is mirrored from the main repository and is not maintained here. PRs
+for it should go to the main FeatureHub repository.
+

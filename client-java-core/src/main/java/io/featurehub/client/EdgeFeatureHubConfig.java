@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ServiceLoader;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {

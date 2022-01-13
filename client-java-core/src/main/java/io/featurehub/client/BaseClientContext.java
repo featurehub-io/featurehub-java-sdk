@@ -10,10 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Supplier;
 
 public abstract class BaseClientContext implements ClientContext {
   private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);

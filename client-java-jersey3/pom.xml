@@ -102,17 +102,10 @@
       <scope>provided</scope>
     </dependency>
 
-    <!-- these are required for jackson and sse -->
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>[${jackson.version}]</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-      <version>[${jackson.version}]</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jackson</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>provided</scope>
     </dependency>
 
@@ -124,16 +117,9 @@
     </dependency>
 
     <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-test</artifactId>
-      <version>1.1</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-logging</artifactId>
-      <version>1.2</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-test</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -154,9 +140,9 @@
             <configuration>
               <artifactItems>
                 <artifactItem>
-                  <groupId>io.featurehub.edge</groupId>
-                  <artifactId>sse-edge-api</artifactId>
-                  <version>1.4-SNAPSHOT</version>
+                  <groupId>io.featurehub.sdk</groupId>
+                  <artifactId>java-client-api</artifactId>
+                  <version>2.1-SNAPSHOT</version>
                   <classifier>api</classifier>
                   <type>yaml</type>
                   <outputDirectory>${project.basedir}/target</outputDirectory>
@@ -177,7 +163,7 @@
           <dependency>
             <groupId>cd.connect.openapi</groupId>
             <artifactId>connect-openapi-jersey3</artifactId>
-            <version>7.6</version>
+            <version>7.11-SNAPSHOT</version>
           </dependency>
         </dependencies>
         <executions>
@@ -231,8 +217,8 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.tiles:tile-java8:[1.1,2)</tile>
-            <tile>io.featurehub.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

@@ -6,7 +6,7 @@ import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureStore;
 import io.featurehub.client.Readyness;
-import io.featurehub.sse.model.Environment;
+import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import okhttp3.Call;
@@ -72,7 +72,7 @@ public class FeatureHubClient implements EdgeService {
     this(host, sdkUrls, repository, (Call.Factory) new OkHttpClient(), config);
   }
 
-  private final static TypeReference<List<Environment>> ref = new TypeReference<List<Environment>>(){};
+  private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
   private boolean busy = false;
   private List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
 
@@ -119,7 +119,7 @@ public class FeatureHubClient implements EdgeService {
 
     try (ResponseBody body = response.body()) {
       if (response.isSuccessful() && body != null) {
-        List<Environment> environments = mapper.readValue(body.bytes(), ref);
+        List<FeatureEnvironmentCollection> environments = mapper.readValue(body.bytes(), ref);
         log.debug("updating feature repository: {}", environments);
 
         List<FeatureState> states = new ArrayList<>();

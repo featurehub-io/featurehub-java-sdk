@@ -39,5 +39,7 @@
     <module>client-java-sse</module>
     <module>client-java-jersey</module>
     <module>client-java-jersey3</module>
+    <module>client-java-api</module>
+    <module>support</module>
   </modules>
 </project>

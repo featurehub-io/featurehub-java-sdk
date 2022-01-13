@@ -22,3 +22,30 @@ Other libraries for Spring and other platforms will arrive once they have been b
 
 This build working depends on featurehub being checked out as a pair directory for the time
 being as the API for the Edge is documented there.
+
+== Working with the repository
+
+First thing you need to do is run the setup.sh - so it will load the `tiles` into your local repository.
+Tiles are a Maven extension that lets you side-load and componentize plugin configuration.
+
+We use Tiles and Composites (collections of dependencies) to avoid repeating build configuration, each
+artifact should include only the things that make it different.
+
+=== Modules
+
+Java 8 is used in the entire repository, consists of various artifacts:
+
+- `core-java-api` - this is a local build of the SSE API from the main FeatureHub repository and will generally
+track that. It can be behind, but it will never be a breaking change.
+- `client-java-core` - holds the basic local cache that is filled in different ways by different clients. It
+holds the definition of all of the core functionality, including the feature repository, its features, listeners,
+analytics capability and so forth. It does not connect to the outside world in any way, that is specific to
+the HTTP library you have chosen to use. 
+- `client-java-android` - this is a Java 8 client suitable for Android SDK 24 (Android 7.0) and onwards. It
+includes OKHttp 4 and provides a GET only API. It does not poll as that doesn't really make sense in a Mobile
+application. It can handle server side or client side evaluation keys equally well.
+- `client-java-jersey` - this is a Java 8 Jersey 2.x client for Java, use this if you use Jersey. It has an
+SSE client and is capable of both server side and client side evaluation keys. However, it is not recommended you
+us server evaluation keys for SSE and they perform badly for SSE in Jersey.
+- `client-java-jersey3` - As above, but for Jersey 3.x clients - using Jakarta Java EE 8+
+- `client-java-sse` - This uses OKHttp4 to provide a SSE only client for Java.

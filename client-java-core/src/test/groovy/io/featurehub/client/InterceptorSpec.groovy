@@ -1,8 +1,8 @@
 package io.featurehub.client
 
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor
+import io.featurehub.mr.model.FeatureValueType
 import io.featurehub.sse.model.FeatureState
-import io.featurehub.sse.model.FeatureValueType
 import spock.lang.Specification
 
 class InterceptorSpec extends Specification {

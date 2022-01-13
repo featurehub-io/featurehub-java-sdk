@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.featurehub.sse.model.RolloutStrategy;
+import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.SSEResultState;
 import io.featurehub.strategies.matchers.MatcherRegistry;
 import io.featurehub.strategies.percentage.PercentageMumurCalculator;
@@ -166,7 +166,7 @@ public class ClientFeatureRepository extends AbstractFeatureRepository
 
   @Override
   public Applied applyFeature(
-      List<RolloutStrategy> strategies, String key, String featureValueId, ClientContext cac) {
+    List<FeatureRolloutStrategy> strategies, String key, String featureValueId, ClientContext cac) {
     return applyFeature.applyFeature(strategies, key, featureValueId, cac);
   }
 

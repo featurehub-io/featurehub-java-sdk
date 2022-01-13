@@ -43,10 +43,6 @@
     <tag>HEAD</tag>
   </scm>
 
-  <properties>
-    <jackson.version>2.11.1</jackson.version>
-  </properties>
-
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
@@ -57,38 +53,26 @@
     <dependency>
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>okhttp</artifactId>
-      <version>4.9.1</version>
+      <version>4.9.3</version>
     </dependency>
 
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>${jackson.version}</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jackson</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-annotations</artifactId>
-      <version>${jackson.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-      <version>${jackson.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-test</artifactId>
-      <version>1.2</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-test</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>test</scope>
     </dependency>
-
     <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-logging</artifactId>
-      <version>1.2</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-logging</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>test</scope>
     </dependency>
 
@@ -104,8 +88,8 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.tiles:tile-java8:[1.1,2)</tile>
-            <tile>io.featurehub.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

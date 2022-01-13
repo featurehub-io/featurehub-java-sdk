@@ -3,7 +3,7 @@ package io.featurehub.client.jersey;
 import cd.connect.openapi.support.ApiClient;
 import cd.connect.openapi.support.Pair;
 import io.featurehub.sse.api.FeatureService;
-import io.featurehub.sse.model.Environment;
+import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureStateUpdate;
 
 import jakarta.validation.constraints.NotNull;
@@ -22,13 +22,13 @@ public class FeatureServiceImpl implements FeatureService {
   }
 
   @Override
-  public List<Environment> getFeatureStates(@NotNull List<String> sdkUrl) {
+  public List<FeatureEnvironmentCollection> getFeatureStates(@NotNull List<String> sdkUrl) {
     return null;
   }
 
   @Override
-  public Object setFeatureState(String apiKey, String featureKey,
-                                            FeatureStateUpdate featureStateUpdate) {
+  public void setFeatureState(String apiKey, @org.jetbrains.annotations.NotNull String featureKey,
+                                            @org.jetbrains.annotations.NotNull FeatureStateUpdate featureStateUpdate) {
     // verify the required parameter 'apiKey' is set
     if (apiKey == null) {
       throw new BadRequestException("Missing the required parameter 'apiKey' when calling setFeatureState");
@@ -64,7 +64,7 @@ public class FeatureServiceImpl implements FeatureService {
 
     GenericType<Object> localVarReturnType = new GenericType<Object>() {};
 
-    return apiClient.invokeAPI(localVarPath, "PUT", localVarQueryParams, featureStateUpdate, localVarHeaderParams,
+    apiClient.invokeAPI(localVarPath, "PUT", localVarQueryParams, featureStateUpdate, localVarHeaderParams,
       localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localVarReturnType).getData();
   }
 }

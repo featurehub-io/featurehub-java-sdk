@@ -1,8 +1,8 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureState;
-import io.featurehub.sse.model.RolloutStrategy;
 import io.featurehub.sse.model.SSEResultState;
 
 import java.util.List;
@@ -38,7 +38,7 @@ public interface FeatureStore {
 
   List<FeatureValueInterceptorHolder> getFeatureValueInterceptors();
 
-  Applied applyFeature(List<RolloutStrategy> strategies, String key, String featureValueId,
+  Applied applyFeature(List<FeatureRolloutStrategy> strategies, String key, String featureValueId,
                        ClientContext cac);
 
   void execute(Runnable command);

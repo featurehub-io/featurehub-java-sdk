@@ -1,9 +1,9 @@
 package io.featurehub.client;
 
-import io.featurehub.sse.model.RolloutStrategy;
-import io.featurehub.sse.model.RolloutStrategyAttribute;
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
-import io.featurehub.sse.model.RolloutStrategyFieldType;
+import io.featurehub.mr.model.RolloutStrategyAttributeConditional;
+import io.featurehub.mr.model.RolloutStrategyFieldType;
+import io.featurehub.sse.model.FeatureRolloutStrategy;
+import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
 import io.featurehub.strategies.matchers.MatcherRepository;
 import io.featurehub.strategies.percentage.PercentageCalculator;
 import org.slf4j.Logger;
@@ -26,7 +26,7 @@ public class ApplyFeature {
     this.matcherRepository = matcherRepository;
   }
 
-  public Applied applyFeature(List<RolloutStrategy> strategies, String key, String featureValueId,
+  public Applied applyFeature(List<FeatureRolloutStrategy> strategies, String key, String featureValueId,
                               ClientContext cac) {
     if (cac != null & strategies != null && !strategies.isEmpty()) {
       Integer percentage = null;
@@ -34,7 +34,7 @@ public class ApplyFeature {
       Map<String, Integer> basePercentage = new HashMap<>();
       String defaultPercentageKey = cac.defaultPercentageKey();
 
-      for(RolloutStrategy rsi : strategies ) {
+      for(FeatureRolloutStrategy rsi : strategies ) {
         if (rsi.getPercentage() != null && (defaultPercentageKey != null || !rsi.getPercentageAttributes().isEmpty())) {
           // determine what the percentage key is
           String newPercentageKey = determinePercentageKey(cac, rsi.getPercentageAttributes());
@@ -83,8 +83,8 @@ public class ApplyFeature {
   }
 
   // This applies the rules as an AND. If at any point it fails it jumps out.
-  private boolean matchAttributes(ClientContext cac, RolloutStrategy rsi) {
-    for(RolloutStrategyAttribute attr : rsi.getAttributes()) {
+  private boolean matchAttributes(ClientContext cac, FeatureRolloutStrategy rsi) {
+    for(FeatureRolloutStrategyAttribute attr : rsi.getAttributes()) {
       String suppliedValue = cac.get(attr.getFieldName(), null);
 
       // "now" for dates and date-times are not passed by the client, so we create them in-situ

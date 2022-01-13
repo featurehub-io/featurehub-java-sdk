@@ -45,27 +45,10 @@
 
 
   <dependencies>
-    <!-- because we are using kotlin now, lets use their annotations -->
     <dependency>
-      <groupId>org.jetbrains</groupId>
-      <artifactId>annotations</artifactId>
-      <version>22.0.0</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.strategies</groupId>
-      <artifactId>strategy-matcher</artifactId>
-      <version>1.1</version>
-      <exclusions>
-        <exclusion>
-          <groupId>io.featurehub.edge</groupId>
-          <artifactId>sse-edge-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>io.featurehub.edge</groupId>
-          <artifactId>edge-api</artifactId>
-        </exclusion>
-      </exclusions>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-api</artifactId>
+      <version>2.1-SNAPSHOT</version>
     </dependency>
 
     <dependency>
@@ -75,121 +58,28 @@
     </dependency>
 
     <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-jackson</artifactId>
-      <version>1.2</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jackson</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>provided</scope>
     </dependency>
 
     <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-logging-api</artifactId>
-      <version>1.1</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-logging-api</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
     </dependency>
 
     <dependency>
-      <groupId>jakarta.annotation</groupId>
-      <artifactId>jakarta.annotation-api</artifactId>
-      <version>2.0.0</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-test</artifactId>
-      <version>1.2</version>
-      <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-logging</artifactId>
-      <version>1.2</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-test</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
-      <!-- pull the defined API and unzip it -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-dependency-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>extract-sse-edge-components</id>
-            <phase>initialize</phase>
-            <goals>
-              <goal>copy</goal>
-            </goals>
-            <configuration>
-              <artifactItems>
-                <artifactItem>
-                  <groupId>io.featurehub.edge</groupId>
-                  <artifactId>edge-api</artifactId>
-                  <version>1.4-SNAPSHOT</version>
-                  <classifier>api</classifier>
-                  <type>yaml</type>
-                  <outputDirectory>${project.basedir}/target</outputDirectory>
-                  <destFileName>sse.yaml</destFileName>
-                </artifactItem>
-              </artifactItems>
-              <overWriteReleases>true</overWriteReleases>
-              <overWriteSnapshots>true</overWriteSnapshots>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.openapitools</groupId>
-        <artifactId>openapi-generator-maven-plugin</artifactId>
-        <version>5.2.1</version>
-        <dependencies>
-          <dependency>
-            <groupId>cd.connect.openapi</groupId>
-            <artifactId>connect-openapi-jersey3</artifactId>
-            <version>7.6</version>
-          </dependency>
-        </dependencies>
-        <executions>
-          <execution>
-            <id>featurehub-api</id>
-            <goals>
-              <goal>generate</goal>
-            </goals>
-            <phase>generate-sources</phase>
-            <configuration>
-              <output>${project.basedir}/target/generated-sources/api</output>
-              <apiPackage>io.featurehub.sse.api</apiPackage>
-              <modelPackage>io.featurehub.sse.model</modelPackage>
-              <inputSpec>${project.basedir}/target/sse.yaml</inputSpec>
-              <generatorName>jersey3-api</generatorName>
-              <generateApis>false</generateApis>
-              <additionalProperties>
-                <additionalProperty>useBeanValidation=false</additionalProperty>
-                <additionalProperty>openApiNullable=false</additionalProperty>
-              </additionalProperties>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>add-generated-source</id>
-            <phase>initialize</phase>
-            <goals>
-              <goal>add-source</goal>
-            </goals>
-            <configuration>
-              <sources>
-                <source>${project.build.directory}/generated-sources/api/src/gen</source>
-              </sources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
       <plugin>
         <groupId>io.repaint.maven</groupId>
         <artifactId>tiles-maven-plugin</artifactId>
@@ -198,8 +88,8 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.tiles:tile-java8:[1.1,2)</tile>
-            <tile>io.featurehub.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>
