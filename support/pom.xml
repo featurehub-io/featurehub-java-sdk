@@ -35,6 +35,8 @@
 
   <modules>
     <module>composite-jackson</module>
+    <module>composite-jersey2</module>
+    <module>composite-jersey3</module>
     <module>composite-logging</module>
     <module>composite-logging-api</module>
     <module>composite-test</module>

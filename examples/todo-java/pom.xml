@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>cd.connect</groupId>
+  <artifactId>todo-backend-java</artifactId>
+  <name>todo-backend-java</name>
+  <version>1.1-SNAPSHOT</version>
+  <description>
+    This is an example of the server side of Jersey 3 using an SSE or GET client (depending on environment variables).
+
+    It expects environment variables or system property config as follows:
+
+    - feature-service.host = the host where features are stored, e.g. http://localhost:8085
+    - feature-service.api-key = the API key issued by the server.
+
+    There are examples in https://github.com/featurehub-io/featurehub/tree/main/adks/e2e-sdk on how to populate your
+    server automatically via tests to create the features required for this scenario.
+  </description>
+
+  <properties>
+    <docker.appname>${project.artifactId}</docker.appname>
+    <docker.appversion>${project.version}</docker.appversion>
+    <docker.project>connect_todo</docker.project>
+    <grizzly.version>3.0.0</grizzly.version>
+    <grizzly.npn.version>2.0.0</grizzly.npn.version>
+    <jersey.version>3.0.3</jersey.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-jersey3</artifactId>
+      <version>[1.1, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-sse</artifactId>
+      <version>[1.2-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-android</artifactId>
+      <version>[1.4-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jersey3</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-core</artifactId>
+      <version>[2, 3)</version>
+    </dependency>
+
+    <!-- necessary to run as an app -->
+    <dependency>
+      <groupId>cd.connect.common</groupId>
+      <artifactId>connect-app-declare-config</artifactId>
+      <version>1.3</version>
+      <exclusions>
+        <exclusion>
+          <groupId>net.stickycode.composite</groupId>
+          <artifactId>sticky-composite-logging-api</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <!-- this is the loader, it starts the application and looks for services to kick off before the app starts -->
+    <dependency>
+      <groupId>com.bluetrainsoftware.bathe</groupId>
+      <artifactId>bathe-booter</artifactId>
+      <version>[3.1, 4)</version>
+    </dependency>
+
+    <!-- reads system properties from -Pfilenane and the main jump class from -R -->
+    <dependency>
+      <groupId>com.bluetrainsoftware.bathe.initializers</groupId>
+      <artifactId>system-property-loader</artifactId>
+      <version>3.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-logging</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jersey3</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.jersey.containers</groupId>
+      <artifactId>jersey-container-grizzly2-http</artifactId>
+      <version>${jersey.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.glassfish.grizzly</groupId>
+          <artifactId>grizzly-http-server</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-http-server</artifactId>
+      <version>${grizzly.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-http2</artifactId>
+      <version>${grizzly.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-npn-bootstrap</artifactId>
+      <version>${grizzly.npn.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-npn-api</artifactId>
+      <version>${grizzly.npn.version}</version>
+    </dependency>
+
+    <!-- ensures JUL goes to SLF4J -->
+    <dependency>
+      <groupId>com.bluetrainsoftware.bathe.initializers</groupId>
+      <artifactId>jul-bridge</artifactId>
+      <version>2.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <!-- allows us to load yaml config -->
+    <dependency>
+      <groupId>org.yaml</groupId>
+      <artifactId>snakeyaml</artifactId>
+      <version>1.26</version>
+    </dependency>
+
+    <!-- gives us a lifecycle -->
+    <dependency>
+      <groupId>cd.connect.common</groupId>
+      <artifactId>connect-app-lifecycle</artifactId>
+      <version>1.1</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.composites</groupId>
+      <artifactId>composite-test</artifactId>
+      <version>1.1</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
+    </license>
+  </licenses>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.repaint.maven</groupId>
+        <artifactId>tiles-maven-plugin</artifactId>
+        <version>2.23</version>
+        <extensions>true</extensions>
+        <configuration>
+          <filtering>false</filtering>
+          <tiles>
+            <tile>io.featurehub.tiles:tile-java:[1.1,2)</tile>
+          </tiles>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>5.2.1</version>
+        <dependencies>
+          <dependency>
+            <groupId>cd.connect.openapi</groupId>
+            <artifactId>connect-openapi-jersey3</artifactId>
+            <version>7.9</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>featurehub-api</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <output>${project.basedir}/target/generated-sources/api</output>
+              <apiPackage>todo.api</apiPackage>
+              <modelPackage>todo.model</modelPackage>
+              <inputSpec>${project.basedir}/todo-api.yaml</inputSpec>
+              <generatorName>jersey3-api</generatorName>
+              <library>jersey3-api</library>
+
+              <additionalProperties>
+                <additionalProperty>server</additionalProperty>
+              </additionalProperties>
+
+              <configOptions>
+                <configOption>
+                  <name>useBeanValidation</name>
+                  <value>true</value>
+                </configOption>
+              </configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-generated-source</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/api/src/gen</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

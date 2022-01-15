@@ -9,19 +9,28 @@ You primarily use this SDK by choosing a transport mechanism which includes the 
 mechanism will automatically configure itself using Java Services, so when you create a new client, you do not have
 to worry about the details of each implementation.
 
-- link:client-java-android/README.adoc[Android/GET Client] - This is a GET implementation of the client. It does not have inbuilt polling, it is intended for use by clients who do not want or need near realtime updates, or if you
+- link:client-java-android/README.adoc[Android/GET Client] - This is a GET implementation of the client. It does not have inbuilt polling, it is intended for use by clients who do not want or need near realtime updates (which is typical of Mobile
+devices - as realtime updates keep the radio on), or if you
 were using server side evaluation. It uses OKHttp. To
-refresh the client you simply use the "poll" function of your provider as detailed in the Core SDK.
-- link:client-java-android/README.adoc[SSE Client] - This allows you to use near realtime events using the
+refresh the client you simply use the "poll" function of your provider as detailed in the Core SDK. It is specific to Java 8+
+and thus supports Android 7+.
+- link:client-java-sse/README.adoc[SSE Client] - This allows you to use near realtime events using the
 SSE implementation in OKHttp. It is what you would use if you were not using Jersey. 
 - link:client-java-jersey/README.adoc[Jersey Client] - this reflects the Jersey Eventsource client for Java. It also includes
-the Jersey implementation of the Google Analytics provider. 
-- link:client-java-jersey3/README.adoc[Jersey Client] - this reflects the Jersey 3 Eventsource client for Java (along with the new Jakarta APIs). It also includes the Jersey implementation of the Google Analytics provider.
+the Jersey implementation of the Google Analytics provider. It is designed for Jersey 2 and the `javax` annotations.  
+- link:client-java-jersey3/README.adoc[Jersey Client] - this reflects the Jersey 3 Eventsource client for Java (along with the new Jakarta APIs). It also includes the Jersey implementation of the Google Analytics provider. It is designed for Jersey 3 and the `jakarta` annotations.
 
-Other libraries for Spring and other platforms will arrive once they have been built.
+If you are using Spring or Quarkus on your server, we recommend you use the `client-java-sse` library as it is the lowest
+footprint and doesn't bring in another REST framework (i.e. Jersey). 
 
 This build working depends on featurehub being checked out as a pair directory for the time
 being as the API for the Edge is documented there.
+
+== Examples
+
+The examples are shifting from the `featurehub-examples` folder into this Java repository. They currently consist of:
+
+- link:examples/todo-java/README.adoc[`todo-java`] - this is a Jersey 3 server that will use any of the Android, Jersey 3 or OKHttp SSE clients depending on configuration.
 
 == Working with the repository
 
@@ -49,3 +58,22 @@ SSE client and is capable of both server side and client side evaluation keys. H
 us server evaluation keys for SSE and they perform badly for SSE in Jersey.
 - `client-java-jersey3` - As above, but for Jersey 3.x clients - using Jakarta Java EE 8+
 - `client-java-sse` - This uses OKHttp4 to provide a SSE only client for Java.
+
+==== The support libraries
+
+In the support folder are the build tiles (common plugins used for building) and the composites (which are groupings
+of dependencies that are common and go together).
+
+All of these libraries are used in the _provided_ scope in our SDKs, which means you need to include our composites
+or provide your own (which is more typical). This means you need to use slf4j but not which version, you need to use
+jackson, but not the version we use, etc. You are free to evolve your library version choice separate to ours.
+
+These are:
+
+- `composite-jackson` - Jackson shared libraries, shared amongst all of the SDKs
+- `composite-jersey2` - Client specific jersey libraries for Jersey 2
+- `composite-jersey3` - Client specific jersey libraries for Jersey 3
+- `composite-logging` - Logging implementation (using log4j2) for the SDKs - they use it in test mode only
+- `composite-logging-api` - Logging API (slf4j)
+- `composite-test` - Test libraries that we use (Spock, Groovy)
+

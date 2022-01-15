@@ -1,0 +1,125 @@
+openapi: 3.0.0
+info:
+  version: "1.0.0"
+  title: Todo
+  description: "Sample todo-api"
+paths:
+  "/todo/{user}/{id}/resolve":
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: user
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: resolveTodo
+      summary: resolveTodo
+      tags:
+        - TodoService
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+  "/todo/{user}/{id}":
+    parameters:
+      - name: user
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: removeTodo
+      tags:
+        - TodoService
+      summary: removeTodo
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+  /todo/{user}:
+    parameters:
+      - name: user
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: addTodo
+      tags:
+        - TodoService
+      summary: addTodo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Todo"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+    delete:
+      operationId: removeAllTodos
+      tags:
+        - TodoService
+      summary: removeAll
+      responses:
+        "204":
+          description: ""
+    get:
+      operationId: listTodos
+      tags:
+        - TodoService
+      summary: listTodos
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+servers:
+  - url: http://localhost:3000
+components:
+  schemas:
+    Todo:
+      title: Todo
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        resolved:
+          type: boolean
+        when:
+          type: string
+          format: date-time

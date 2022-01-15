@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.featurehub</groupId>
-  <artifactId>featurehub-java-sdk-reactor</artifactId>
+  <artifactId>featurehub-sdk-example-reactor</artifactId>
   <version>1.1.1</version>
   <packaging>pom</packaging>
 
@@ -34,13 +34,6 @@
   </licenses>
 
   <modules>
-    <module>client-java-core</module>
-    <module>client-java-android</module>
-    <module>client-java-sse</module>
-    <module>client-java-jersey</module>
-    <module>client-java-jersey3</module>
-    <module>client-java-api</module>
-    <module>support</module>
-    <module>examples</module>
+    <module>todo-java</module>
   </modules>
 </project>

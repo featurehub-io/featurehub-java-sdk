@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ServiceLoader;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {
@@ -61,7 +62,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   public void init() {
     try {
-      newContext().build().get();
+      final Future<ClientContext> futureContext = newContext().build();
+      futureContext.get();
     } catch (Exception e) {
       log.error("Failed to initialize FeatureHub client", e);
     }

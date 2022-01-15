@@ -55,73 +55,16 @@
       <version>1.4</version>
     </dependency>
 
-    <!-- required in general for the jersey client -->
-    <dependency>
-      <groupId>org.glassfish.jersey.core</groupId>
-      <artifactId>jersey-client</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- required by the FeatureRequired annotation listener -->
-    <dependency>
-      <groupId>org.glassfish.jersey.core</groupId>
-      <artifactId>jersey-server</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- used by the Google client -->
-    <dependency>
-      <groupId>org.glassfish.jersey.ext</groupId>
-      <artifactId>jersey-proxy-client</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- required for SSE support -->
-    <dependency>
-      <groupId>org.glassfish.jersey.media</groupId>
-      <artifactId>jersey-media-sse</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- required for Jackson support -->
-    <dependency>
-      <groupId>org.glassfish.jersey.media</groupId>
-      <artifactId>jersey-media-json-jackson</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.glassfish.jersey.media</groupId>
-      <artifactId>jersey-media-multipart</artifactId>
-      <version>${jersey.version}</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>org.jetbrains</groupId>
-      <artifactId>annotations</artifactId>
-      <version>22.0.0</version>
-    </dependency>
-
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-core</artifactId>
-      <version>[2, 3)</version>
-      <exclusions>
-        <exclusion>
-          <groupId>io.featurehub.sdk</groupId>
-          <artifactId>java-client-api</artifactId>
-        </exclusion>
-      </exclusions>
+      <version>[2.5, 3)</version>
     </dependency>
 
+    <!-- required in general for the jersey client -->
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>sdk-composite-jackson</artifactId>
+      <artifactId>sdk-composite-jersey2</artifactId>
       <version>[1.1-SNAPSHOT, 2)</version>
     </dependency>
 

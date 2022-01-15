@@ -158,7 +158,7 @@ public class FeatureHubClient implements EdgeService {
   public @NotNull Future<Readyness> contextChange(String newHeader) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
-    if (!newHeader.equals(xFeaturehubHeader)) {
+    if (newHeader != null && !newHeader.equals(xFeaturehubHeader)) {
       xFeaturehubHeader = newHeader;
       if (checkForUpdates() || busy) {
         waitingClients.add(change);
