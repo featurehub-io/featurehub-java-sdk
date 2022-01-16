@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.featurehub.sdk.composites</groupId>
   <artifactId>sdk-composite-logging</artifactId>
-  <version>1.1-SNAPSHOT</version>
+  <version>1.1</version>
   <name>sdk-composite-logging</name>
 
   <description>
@@ -40,7 +39,7 @@
     <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
     <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
-    <tag>HEAD</tag>
+    <tag>sdk-composite-logging-1.1</tag>
   </scm>
 
   <properties>
