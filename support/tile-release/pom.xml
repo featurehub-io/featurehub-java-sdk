@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk.tiles</groupId>
   <artifactId>tile-release</artifactId>
-  <version>1.1</version>
+  <version>1.1-SNAPSHOT</version>
   <packaging>tile</packaging>
   <name>tile-release</name>
 
@@ -35,6 +35,26 @@
       <url>https://github.com/featurehub-io/featurehub/blob/master/LICENSE.txt</url>
     </license>
   </licenses>
+
+  <scm>
+    <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
+    <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
+    <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>sonatype-staging</id>
+      <name>oss.sonatype.org Staging Repository</name>
+      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+    </repository>
+    <snapshotRepository>
+      <id>sonatype-snapshots</id>
+      <name>oss.sonatype.org Snapshot Repository</name>
+      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+    </snapshotRepository>
+  </distributionManagement>
 
   <build>
     <plugins>
