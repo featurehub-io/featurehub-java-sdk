@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk.tiles</groupId>
   <artifactId>tile-java8</artifactId>
-  <version>1.1</version>
+  <version>1.1-SNAPSHOT</version>
   <packaging>tile</packaging>
   <name>tile-java8</name>
 
@@ -37,6 +37,13 @@
     </license>
   </licenses>
 
+  <scm>
+    <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
+    <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
+    <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
+    <tag>HEAD</tag>
+  </scm>
+
   <build>
     <plugins>
       <plugin>
@@ -46,6 +53,9 @@
         <extensions>true</extensions>
         <configuration>
           <filtering>false</filtering>
+          <tiles>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+          </tiles>
         </configuration>
       </plugin>
     </plugins>
