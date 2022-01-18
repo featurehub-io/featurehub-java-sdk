@@ -259,6 +259,11 @@ public class ClientFeatureRepository extends AbstractFeatureRepository
   }
 
   @Override
+  public List<FeatureState> getAllFeatures() {
+    return new ArrayList<>(features.values());
+  }
+
+  @Override
   public FeatureRepository logAnalyticsEvent(
       String action, Map<String, String> other, ClientContext ctx) {
     // take a snapshot of the current state of the features

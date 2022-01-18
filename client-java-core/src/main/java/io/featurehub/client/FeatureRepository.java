@@ -2,6 +2,7 @@ package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Map;
 
 public interface FeatureRepository {
@@ -23,6 +24,8 @@ public interface FeatureRepository {
    */
   FeatureState getFeatureState(String key);
   FeatureState getFeatureState(Feature feature);
+
+  List<FeatureState> getAllFeatures();
 
   // replaces getFlag and its myriad combinations with a pure boolean response, true if set and is true, otherwise false
 
