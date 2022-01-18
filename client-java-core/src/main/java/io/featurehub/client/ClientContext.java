@@ -34,6 +34,7 @@ public interface ClientContext {
 
   FeatureState feature(String name);
   FeatureState feature(Feature name);
+  List<FeatureState> allFeatures();
 
   FeatureRepository getRepository();
   EdgeService getEdgeService();

@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public abstract class BaseClientContext implements ClientContext {
   private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);
@@ -108,6 +109,14 @@ public abstract class BaseClientContext implements ClientContext {
     final FeatureState fs = getRepository().getFeatureState(name);
 
     return getRepository().isServerEvaluation() ? fs : fs.withContext(this);
+  }
+
+  @Override
+  public List<FeatureState> allFeatures() {
+    boolean isServerEvaluation = getRepository().isServerEvaluation();
+    return getRepository().getAllFeatures().stream()
+      .map(f -> isServerEvaluation ? f : f.withContext(this))
+      .collect(Collectors.toList());
   }
 
   @Override

@@ -79,6 +79,7 @@ class RepositorySpec extends Specification {
       repo.getFeatureState('peach_config').number == null
       repo.getFeatureState('peach_config').boolean == null
       repo.getFeatureState('peach_config').key == 'peach_config'
+      repo.getAllFeatures().size() == 4
   }
 
   def "i can make all features available directly"() {
