@@ -706,7 +706,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
 
       if (prev != null) {
         int compare = prev.compareTo(c);
-        System.out.println("   " + prev.toString() + ' '
+        System.out.println("   " + prev + ' '
           + ((compare == 0) ? "==" : ((compare < 0) ? "<" : ">")) + ' ' + version);
       }
 

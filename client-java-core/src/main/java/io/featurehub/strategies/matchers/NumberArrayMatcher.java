@@ -29,7 +29,7 @@ public class NumberArrayMatcher implements StrategyMatcher {
             return new BigDecimal((Integer)v);
           }
           if (v instanceof Double) {
-            return new BigDecimal((Double)v);
+            return BigDecimal.valueOf((Double) v);
           }
           if (v instanceof BigDecimal) {
             return (BigDecimal)v;

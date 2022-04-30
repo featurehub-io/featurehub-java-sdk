@@ -44,7 +44,7 @@ public class GoogleAnalyticsCollector implements AnalyticsCollector {
       return;
     }
 
-    String ev = null;
+    String ev;
     try {
       ev = (other != null && other.get(GoogleAnalyticsApiClient.GA_VALUE) != null)
         ? ("&ev=" + URLEncoder.encode(other.get(GoogleAnalyticsApiClient.GA_VALUE), StandardCharsets.UTF_8.name())) :

@@ -28,7 +28,7 @@ public class ApplyFeature {
 
   public Applied applyFeature(List<FeatureRolloutStrategy> strategies, String key, String featureValueId,
                               ClientContext cac) {
-    if (cac != null & strategies != null && !strategies.isEmpty()) {
+    if (cac != null && strategies != null && !strategies.isEmpty()) {
       Integer percentage = null;
       String percentageKey = null;
       Map<String, Integer> basePercentage = new HashMap<>();
