@@ -3,8 +3,6 @@ package io.featurehub.client;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -14,7 +12,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public abstract class BaseClientContext implements ClientContext {
-  private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);
+  public static final String USER_KEY = "userkey";
+  public static final String SESSION_KEY = "session";
+  public static final String COUNTRY_KEY = "country";
+  public static final String DEVICE_KEY = "device";
+  public static final String PLATFORM_KEY = "platform";
+  public static final String VERSION_KEY = "version";
+  public static final String C_ID = "cid";
   protected final Map<String, List<String>> clientContext = new ConcurrentHashMap<>();
   protected final FeatureRepositoryContext repository;
   protected final FeatureHubConfig config;
@@ -36,37 +40,37 @@ public abstract class BaseClientContext implements ClientContext {
 
   @Override
   public ClientContext userKey(String userKey) {
-    clientContext.put("userkey", Collections.singletonList(userKey));
+    clientContext.put(USER_KEY, Collections.singletonList(userKey));
     return this;
   }
 
   @Override
   public ClientContext sessionKey(String sessionKey) {
-    clientContext.put("session", Collections.singletonList(sessionKey));
+    clientContext.put(SESSION_KEY, Collections.singletonList(sessionKey));
     return this;
   }
 
   @Override
   public ClientContext country(StrategyAttributeCountryName countryName) {
-    clientContext.put("country", Collections.singletonList(countryName.toString()));
+    clientContext.put(COUNTRY_KEY, Collections.singletonList(countryName.toString()));
     return this;
   }
 
   @Override
   public ClientContext device(StrategyAttributeDeviceName deviceName) {
-    clientContext.put("device", Collections.singletonList(deviceName.toString()));
+    clientContext.put(DEVICE_KEY, Collections.singletonList(deviceName.toString()));
     return this;
   }
 
   @Override
   public ClientContext platform(StrategyAttributePlatformName platformName) {
-    clientContext.put("platform", Collections.singletonList(platformName.toString()));
+    clientContext.put(PLATFORM_KEY, Collections.singletonList(platformName.toString()));
     return this;
   }
 
   @Override
   public ClientContext version(String version) {
-    clientContext.put("version", Collections.singletonList(version));
+    clientContext.put(VERSION_KEY, Collections.singletonList(version));
     return this;
   }
 
@@ -95,10 +99,11 @@ public abstract class BaseClientContext implements ClientContext {
 
   @Override
   public String defaultPercentageKey() {
-    if (clientContext.containsKey("session")) {
-      return clientContext.get("session").get(0);
-    } else if (clientContext.containsKey("userkey")) {
-      return clientContext.get("userkey").get(0);
+    if (clientContext.containsKey(SESSION_KEY)) {
+      return clientContext.get(SESSION_KEY).get(0);
+    }
+    if (clientContext.containsKey(USER_KEY)) {
+      return clientContext.get(USER_KEY).get(0);
     }
 
     return null;
@@ -164,15 +169,15 @@ public abstract class BaseClientContext implements ClientContext {
 
   @Override
   public ClientContext logAnalyticsEvent(String action, Map<String, String> other) {
-    String user = get("userkey", null);
+    String user = get(USER_KEY, null);
 
     if (user != null) {
       if (other == null) {
         other = new HashMap<>();
       }
 
-      if (!other.containsKey("cid")) {
-        other.put("cid", user);
+      if (!other.containsKey(C_ID)) {
+        other.put(C_ID, user);
       }
     }
 

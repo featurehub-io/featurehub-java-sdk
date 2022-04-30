@@ -7,8 +7,12 @@ import org.slf4j.LoggerFactory;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+
+import static io.featurehub.client.BaseClientContext.C_ID;
 
 public class GoogleAnalyticsCollector implements AnalyticsCollector {
   private static final Logger log = LoggerFactory.getLogger(GoogleAnalyticsCollector.class);
@@ -37,7 +41,7 @@ public class GoogleAnalyticsCollector implements AnalyticsCollector {
   public void logEvent(String action, Map<String, String> other, List<FeatureState> featureStateAtCurrentTime) {
     StringBuilder batchData = new StringBuilder();
 
-    String finalCid = cid == null ? other.get("cid") : cid;
+    String finalCid = cid == null ? other.get(C_ID) : cid;
 
     if (finalCid == null) {
       log.error("There is no CID provided for GA, not logging any events.");
@@ -55,28 +59,27 @@ public class GoogleAnalyticsCollector implements AnalyticsCollector {
           StandardCharsets.UTF_8.name()) + ev + "&el=";
 
       featureStateAtCurrentTime.forEach((fsh) -> {
-        String line = null;
-        FeatureStateBase fs = (FeatureStateBase)fsh;
-
-        if (fs.isSet()) {
-          if (fs.type() == FeatureValueType.BOOLEAN) {
-            line = fsh.getBoolean().equals(Boolean.TRUE) ? "on" : "off";
-          } else if (fs.type() == FeatureValueType.STRING) {
-            line = fsh.getString();
-          } else if (fs.type() == FeatureValueType.NUMBER) {
-            line = fsh.getNumber().toPlainString();
-          }
+        FeatureStateBase fs = (FeatureStateBase) fsh;
+        if (!fs.isSet()) {
+          return;
         }
+        Map<FeatureValueType, Function<FeatureState, String>> types = new HashMap<>();
+        types.put(FeatureValueType.BOOLEAN, state -> state.getBoolean().equals(Boolean.TRUE) ? "on" : "off");
+        types.put(FeatureValueType.STRING, state -> state.getString());
+        types.put(FeatureValueType.NUMBER, state -> state.getNumber().toPlainString());
 
-        if (line != null) {
+        if(!types.containsKey(fs.type())) return;
+        String line = types.get(fs.type()).apply(fsh);
 
-          try {
-            line = URLEncoder.encode(fsh.getKey() + " : " + line, StandardCharsets.UTF_8.name());
-            batchData.append(baseForEachLine);
-            batchData.append(line);
-            batchData.append("\n");
-          } catch (UnsupportedEncodingException e) { // can't happen
-          }
+        if (line == null) {
+          return;
+        }
+        try {
+          line = URLEncoder.encode(fsh.getKey() + " : " + line, StandardCharsets.UTF_8.name());
+          batchData.append(baseForEachLine);
+          batchData.append(line);
+          batchData.append("\n");
+        } catch (UnsupportedEncodingException e) { // can't happen
         }
       });
     } catch (UnsupportedEncodingException e) { // can't happen
@@ -87,4 +90,5 @@ public class GoogleAnalyticsCollector implements AnalyticsCollector {
     }
 
   }
+
 }

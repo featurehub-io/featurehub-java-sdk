@@ -42,31 +42,29 @@ public class EdgeRetryer implements EdgeRetryService {
 
   public void edgeResult(EdgeConnectionState state, EdgeReconnector reconnector) {
     log.trace("[featurehub-sdk] retryer triggered {}", state);
-    if (!notFoundState && !executorService.isShutdown()) {
-      if (state == EdgeConnectionState.SUCCESS) {
-        currentBackoffMultiplier = backoffMultiplier;
-      } else if (state == EdgeConnectionState.API_KEY_NOT_FOUND) {
-        log.warn("[featurehub-sdk] terminal failure attempting to connect to Edge, API KEY does not exist.");
-        notFoundState = true;
-      } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
-        executorService.submit(() -> {
-          backoff(serverDisconnectRetryMs, true);
-
-          reconnector.reconnect();
-        });
-      } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
-        executorService.submit(() -> {
-          backoff(serverByeReconnectMs, false);
-
-          reconnector.reconnect();
-        });
-      } else if (state == EdgeConnectionState.SERVER_CONNECT_TIMEOUT) {
-        executorService.submit(() -> {
-          backoff(serverConnectTimeoutMs, true);
-
-          reconnector.reconnect();
-        });
-      }
+    if (notFoundState || executorService.isShutdown()) {
+      return;
+    }
+    if (state == EdgeConnectionState.SUCCESS) {
+      currentBackoffMultiplier = backoffMultiplier;
+    } else if (state == EdgeConnectionState.API_KEY_NOT_FOUND) {
+      log.warn("[featurehub-sdk] terminal failure attempting to connect to Edge, API KEY does not exist.");
+      notFoundState = true;
+    } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
+      executorService.submit(() -> {
+        backoff(serverDisconnectRetryMs, true);
+        reconnector.reconnect();
+      });
+    } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
+      executorService.submit(() -> {
+        backoff(serverByeReconnectMs, false);
+        reconnector.reconnect();
+      });
+    } else if (state == EdgeConnectionState.SERVER_CONNECT_TIMEOUT) {
+      executorService.submit(() -> {
+        backoff(serverConnectTimeoutMs, true);
+        reconnector.reconnect();
+      });
     }
   }
 
