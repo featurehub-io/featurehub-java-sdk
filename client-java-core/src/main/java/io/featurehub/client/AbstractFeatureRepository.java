@@ -2,7 +2,7 @@ package io.featurehub.client;
 
 import java.util.Map;
 
-abstract public class AbstractFeatureRepository implements FeatureRepository {
+public abstract class AbstractFeatureRepository implements FeatureRepository {
 
   @Override
   public FeatureState getFeatureState(Feature feature) {
