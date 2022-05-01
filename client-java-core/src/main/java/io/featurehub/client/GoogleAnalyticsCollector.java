@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -19,7 +19,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class GoogleAnalyticsCollector implements AnalyticsCollector {
   private static final Logger log = LoggerFactory.getLogger(GoogleAnalyticsCollector.class);
-  private static final Map<FeatureValueType, Function<FeatureState, String>> fsTypeToStringMapper = new HashMap<>();
+  private static final EnumMap<FeatureValueType, Function<FeatureState, String>> fsTypeToStringMapper = new EnumMap<>(FeatureValueType.class);
   private final String uaKey; // this must be provided
   private final GoogleAnalyticsApiClient client;
   private String cid; // if this is null, we will look for it in "other" and log an error if it isn't there
@@ -37,7 +37,7 @@ public class GoogleAnalyticsCollector implements AnalyticsCollector {
     this.client = client;
 
     fsTypeToStringMapper.put(BOOLEAN, state -> state.getBoolean().equals(TRUE) ? "on" : "off");
-    fsTypeToStringMapper.put(STRING, state -> state.getString());
+    fsTypeToStringMapper.put(STRING, FeatureState::getString);
     fsTypeToStringMapper.put(NUMBER, state -> state.getNumber().toPlainString());
   }
 
