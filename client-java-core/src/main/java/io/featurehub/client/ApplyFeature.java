@@ -28,58 +28,56 @@ public class ApplyFeature {
 
   public Applied applyFeature(List<FeatureRolloutStrategy> strategies, String key, String featureValueId,
                               ClientContext cac) {
-    if (cac != null && strategies != null && !strategies.isEmpty()) {
-      Integer percentage = null;
-      String percentageKey = null;
-      Map<String, Integer> basePercentage = new HashMap<>();
-      String defaultPercentageKey = cac.defaultPercentageKey();
+    if (cac == null || strategies == null || strategies.isEmpty()) {
+      return new Applied(false, null);
+    }
+    Integer percentage = null;
+    String percentageKey = null;
+    Map<String, Integer> basePercentage = new HashMap<>();
+    String defaultPercentageKey = cac.defaultPercentageKey();
 
-      for(FeatureRolloutStrategy rsi : strategies ) {
-        if (rsi.getPercentage() != null && (defaultPercentageKey != null || !rsi.getPercentageAttributes().isEmpty())) {
-          // determine what the percentage key is
-          String newPercentageKey = determinePercentageKey(cac, rsi.getPercentageAttributes());
+    for(FeatureRolloutStrategy rsi : strategies ) {
+      if (rsi.getPercentage() != null && (defaultPercentageKey != null || !rsi.getPercentageAttributes().isEmpty())) {
+        // determine what the percentage key is
+        String newPercentageKey = determinePercentageKey(cac, rsi.getPercentageAttributes());
 
-          int basePercentageVal = basePercentage.computeIfAbsent(newPercentageKey, (k) -> 0);
-          // if we have changed the key or we have never calculated it, calculate it and set the
-          // base percentage to null
-          if (percentage == null || !newPercentageKey.equals(percentageKey)) {
-            percentageKey = newPercentageKey;
+        int basePercentageVal = basePercentage.computeIfAbsent(newPercentageKey, (k) -> 0);
+        // if we have changed the key or we have never calculated it, calculate it and set the
+        // base percentage to null
+        if (percentage == null || !newPercentageKey.equals(percentageKey)) {
+          percentageKey = newPercentageKey;
+          percentage = percentageCalculator.determineClientPercentage(percentageKey, featureValueId);
+          log.info("percentage for {} on {} calculated at {}", defaultPercentageKey, key, percentage);
+        }
 
-            percentage = percentageCalculator.determineClientPercentage(percentageKey,
-              featureValueId);
-            log.info("percentage for {} on {} calculated at {}", defaultPercentageKey, key, percentage);
-          }
-
-          log.info("comparing actual {} vs required: {}", percentage, rsi.getPercentage());
-          int useBasePercentage = rsi.getAttributes() == null || rsi.getAttributes().isEmpty() ? basePercentageVal : 0;
-          // if the percentage is lower than the user's key +
-          // id of feature value then apply it
-          if (percentage <= (useBasePercentage + rsi.getPercentage())) {
-            if (rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
-              if (matchAttributes(cac, rsi)) {
-                return new Applied(true, rsi.getValue());
-              }
-            } else {
-              return new Applied(true, rsi.getValue());
-            }
-          }
-
-          // this was only a percentage and had no other attributes
-          if (rsi.getAttributes() == null || rsi.getAttributes().isEmpty()) {
-            basePercentage.put(percentageKey, basePercentage.get(percentageKey) + rsi.getPercentage());
+        log.info("comparing actual {} vs required: {}", percentage, rsi.getPercentage());
+        int useBasePercentage = hasAttributes(rsi) ? basePercentageVal : 0;
+        // if the percentage is lower than the user's key +
+        // id of feature value then apply it
+        if (percentage <= (useBasePercentage + rsi.getPercentage())) {
+          if (hasAttributes(rsi) || matchAttributes(cac, rsi)) {
+            return new Applied(true, rsi.getValue());
           }
         }
 
-        if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) &&
-          rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
-          if (matchAttributes(cac, rsi)) {
-            return new Applied(true, rsi.getValue());
-          }
+        // this was only a percentage and had no other attributes
+        if (hasAttributes(rsi)) {
+          basePercentage.put(percentageKey, basePercentage.get(percentageKey) + rsi.getPercentage());
+        }
+      }
+
+      if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) && !hasAttributes(rsi)) {
+        if (matchAttributes(cac, rsi)) {
+          return new Applied(true, rsi.getValue());
         }
       }
     }
 
     return new Applied(false, null);
+  }
+
+  private boolean hasAttributes(FeatureRolloutStrategy rsi) {
+    return rsi.getAttributes() == null || rsi.getAttributes().isEmpty();
   }
 
   // This applies the rules as an AND. If at any point it fails it jumps out.
@@ -128,6 +126,4 @@ public class ApplyFeature {
 
     return percentageAttributes.stream().map(pa -> cac.get(pa, "<none>")).collect(Collectors.joining("$"));
   }
-
-
 }
