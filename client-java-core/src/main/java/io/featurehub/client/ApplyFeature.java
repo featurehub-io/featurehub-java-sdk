@@ -51,22 +51,22 @@ public class ApplyFeature {
         }
 
         log.info("comparing actual {} vs required: {}", percentage, rsi.getPercentage());
-        int useBasePercentage = hasAttributes(rsi) ? basePercentageVal : 0;
+        int useBasePercentage = haveAttributes(rsi) ? 0 : basePercentageVal;
         // if the percentage is lower than the user's key +
         // id of feature value then apply it
         if (percentage <= (useBasePercentage + rsi.getPercentage())) {
-          if (hasAttributes(rsi) || matchAttributes(cac, rsi)) {
+          if (haveAttributes(rsi) && matchAttributes(cac, rsi)) {
             return new Applied(true, rsi.getValue());
           }
         }
 
         // this was only a percentage and had no other attributes
-        if (hasAttributes(rsi)) {
+        if (!haveAttributes(rsi)) {
           basePercentage.put(percentageKey, basePercentage.get(percentageKey) + rsi.getPercentage());
         }
       }
 
-      if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) && !hasAttributes(rsi)) {
+      if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) && haveAttributes(rsi)) {
         if (matchAttributes(cac, rsi)) {
           return new Applied(true, rsi.getValue());
         }
@@ -76,8 +76,8 @@ public class ApplyFeature {
     return new Applied(false, null);
   }
 
-  private boolean hasAttributes(FeatureRolloutStrategy rsi) {
-    return rsi.getAttributes() == null || rsi.getAttributes().isEmpty();
+  private boolean haveAttributes(FeatureRolloutStrategy rsi) {
+    return rsi.getAttributes() != null && !rsi.getAttributes().isEmpty();
   }
 
   // This applies the rules as an AND. If at any point it fails it jumps out.
