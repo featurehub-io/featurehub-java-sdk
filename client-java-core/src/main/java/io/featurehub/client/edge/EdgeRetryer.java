@@ -3,12 +3,8 @@ package io.featurehub.client.edge;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.EnumMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BiConsumer;
-
-import static io.featurehub.client.edge.EdgeConnectionState.*;
 
 public class EdgeRetryer implements EdgeRetryService {
   private static final Logger log = LoggerFactory.getLogger(EdgeRetryer.class);
@@ -18,8 +14,6 @@ public class EdgeRetryer implements EdgeRetryService {
   private final int serverByeReconnectMs;
   private final int backoffMultiplier;
   private final int maximumBackoffTimeMs;
-  private final EnumMap<EdgeConnectionState, BiConsumer<EdgeConnectionState, EdgeReconnector>> connectionStateActions = new EnumMap<>(EdgeConnectionState.class);
-
   // this will change over the lifetime of reconnect attempts
   private int currentBackoffMultiplier;
 
@@ -38,15 +32,6 @@ public class EdgeRetryer implements EdgeRetryService {
     currentBackoffMultiplier = backoffMultiplier;
 
     executorService = makeExecutorService();
-
-    connectionStateActions.put(EdgeConnectionState.SUCCESS, (state, reConnector) -> currentBackoffMultiplier = backoffMultiplier);
-    connectionStateActions.put(EdgeConnectionState.API_KEY_NOT_FOUND, (state, reConnector) -> {
-      log.warn("[featurehub-sdk] terminal failure attempting to connect to Edge, API KEY does not exist.");
-      notFoundState = true;
-    });
-    connectionStateActions.put(SERVER_WAS_DISCONNECTED, (state, reConnector) -> reconnect(serverDisconnectRetryMs, true, state, reConnector));
-    connectionStateActions.put(SERVER_SAID_BYE, (state, reConnector) -> reconnect(serverByeReconnectMs, false, state, reConnector));
-    connectionStateActions.put(SERVER_CONNECT_TIMEOUT, (state, reConnector) -> reconnect(serverConnectTimeoutMs, true, state, reConnector));
   }
 
   // broken out for testability, can override with a mock pool
@@ -56,21 +41,32 @@ public class EdgeRetryer implements EdgeRetryService {
 
   public void edgeResult(EdgeConnectionState state, EdgeReconnector reConnector) {
     log.trace("[featurehub-sdk] retryer triggered {}", state);
-    if (notFoundState || executorService.isShutdown()) {
-      return;
-    }
+    if (!notFoundState && !executorService.isShutdown()) {
+      if (state == EdgeConnectionState.SUCCESS) {
+        currentBackoffMultiplier = backoffMultiplier;
+      } else if (state == EdgeConnectionState.API_KEY_NOT_FOUND) {
+        log.warn("[featurehub-sdk] terminal failure attempting to connect to Edge, API KEY does not exist.");
+        notFoundState = true;
+      } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
+        executorService.submit(() -> {
+          backoff(serverDisconnectRetryMs, true);
 
-    if(connectionStateActions.containsKey(state)) {
-      connectionStateActions.get(state).accept(state, reConnector);
-    }
-  }
+          reConnector.reconnect();
+        });
+      } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
+        executorService.submit(() -> {
+          backoff(serverByeReconnectMs, false);
 
-  private void reconnect(int baseTime, boolean adjustBackoff, EdgeConnectionState state, EdgeReconnector reConnector) {
-    log.trace("[featurehub-sdk] retryer reconnecting to server due to {}", state);
-    executorService.submit(() -> {
-      backoff(baseTime, adjustBackoff);
-      reConnector.reconnect();
-    });
+          reConnector.reconnect();
+        });
+      } else if (state == EdgeConnectionState.SERVER_CONNECT_TIMEOUT) {
+        executorService.submit(() -> {
+          backoff(serverConnectTimeoutMs, true);
+
+          reConnector.reconnect();
+        });
+      }
+    }
   }
 
   public void close() {
