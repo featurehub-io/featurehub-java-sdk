@@ -1,6 +1,7 @@
 package io.featurehub.client;
 
 import io.featurehub.mr.model.FeatureValueType;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,8 +60,7 @@ public class FeatureStateBase implements FeatureState {
   }
 
   protected void notifyListeners() {
-    listeners.forEach(
-        (sl) -> featureStore.execute(() -> sl.notify(this)));
+    listeners.forEach((sl) -> featureStore.execute(() -> sl.notify(this)));
   }
 
   @Override
@@ -193,39 +193,35 @@ public class FeatureStateBase implements FeatureState {
   // stores the feature state and triggers notifyListeners if anything changed
   // should the notify actually be inside the listener code? given contexts?
   public FeatureState setFeatureState(io.featurehub.sse.model.FeatureState featureState) {
-    if (featureState != null) {
-      Object oldValue = getValue(type());
-
-      this._featureState = featureState;
-
-      Object value = null;
-
-      if (featureState.getValue() != null) {
-        try {
-          switch (featureState.getType()) {
-            case BOOLEAN:
-              value = Boolean.parseBoolean(featureState.getValue().toString());
-              break;
-            case STRING:
-              value = featureState.getValue().toString();
-              break;
-            case NUMBER:
-              value = new BigDecimal(featureState.getValue().toString());
-              break;
-            case JSON:
-              value = featureState.getValue().toString();
-              break;
-          }
-        } catch (Exception ignored) {
-        }
-      }
-
-      if (FeatureStateUtils.changed(oldValue, value)) {
-        notifyListeners();
-      }
+    if (featureState == null) return this;
+    Object oldValue = getValue(type());
+    this._featureState = featureState;
+    Object value = convertToRespectiveType(featureState);
+    if (FeatureStateUtils.changed(oldValue, value)) {
+      notifyListeners();
     }
-
     return this;
+  }
+
+  @Nullable
+  private Object convertToRespectiveType(io.featurehub.sse.model.FeatureState featureState) {
+    if (featureState.getValue() == null) {
+      return null;
+    }
+    try {
+      switch (featureState.getType()) {
+        case BOOLEAN:
+          return Boolean.parseBoolean(featureState.getValue().toString());
+        case STRING:
+          return featureState.getValue().toString();
+        case NUMBER:
+          return new BigDecimal(featureState.getValue().toString());
+        case JSON:
+          return featureState.getValue().toString();
+      }
+    } catch (Exception ignored) {
+    }
+    return null;
   }
 
   protected FeatureState copy() {

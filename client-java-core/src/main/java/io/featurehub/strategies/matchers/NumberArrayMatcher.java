@@ -1,6 +1,7 @@
 package io.featurehub.strategies.matchers;
 
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
+import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -19,26 +20,11 @@ public class NumberArrayMatcher implements StrategyMatcher {
         if (supplied == null) {
           supplied = new BigDecimal(suppliedValue);
         }
-
         return supplied;
       };
 
       Supplier<List<BigDecimal>> vals = () -> attr.getValues().stream()
-        .map(v -> {
-          if (v instanceof Integer) {
-            return new BigDecimal((Integer)v);
-          }
-          if (v instanceof Double) {
-            return new BigDecimal((Double)v);
-          }
-          if (v instanceof BigDecimal) {
-            return (BigDecimal)v;
-          }
-          if (v instanceof BigInteger) {
-            return new BigDecimal((BigInteger)v);
-          }
-          return null;
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+        .map(NumberArrayMatcher::toBigDecimal).filter(Objects::nonNull).collect(Collectors.toList());
 
       switch (attr.getConditional()) {
         case EQUALS:
@@ -67,5 +53,22 @@ public class NumberArrayMatcher implements StrategyMatcher {
     }
 
     return false;
+  }
+
+  @Nullable
+  private static BigDecimal toBigDecimal(Object v) {
+    if (v instanceof BigDecimal) {
+      return (BigDecimal) v;
+    }
+    if (v instanceof Integer) {
+      return new BigDecimal((Integer) v);
+    }
+    if (v instanceof BigInteger) {
+      return new BigDecimal((BigInteger) v);
+    }
+    if (v instanceof Double) {
+      return BigDecimal.valueOf((Double) v);
+    }
+    return null;
   }
 }

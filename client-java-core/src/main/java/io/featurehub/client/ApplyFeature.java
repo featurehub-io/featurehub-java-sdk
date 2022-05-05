@@ -128,6 +128,4 @@ public class ApplyFeature {
 
     return percentageAttributes.stream().map(pa -> cac.get(pa, "<none>")).collect(Collectors.joining("$"));
   }
-
-
 }

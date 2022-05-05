@@ -9,12 +9,11 @@ import java.util.concurrent.Executors;
 public class EdgeRetryer implements EdgeRetryService {
   private static final Logger log = LoggerFactory.getLogger(EdgeRetryer.class);
   private final ExecutorService executorService;
-  public final int serverConnectTimeoutMs;
-  public final int serverDisconnectRetryMs;
-  public final int serverByeReconnectMs;
-  public final int backoffMultiplier;
-  public final int maximumBackoffTimeMs;
-
+  private final int serverConnectTimeoutMs;
+  private final int serverDisconnectRetryMs;
+  private final int serverByeReconnectMs;
+  private final int backoffMultiplier;
+  private final int maximumBackoffTimeMs;
   // this will change over the lifetime of reconnect attempts
   private int currentBackoffMultiplier;
 
@@ -40,7 +39,7 @@ public class EdgeRetryer implements EdgeRetryService {
     return Executors.newFixedThreadPool(1);
   }
 
-  public void edgeResult(EdgeConnectionState state, EdgeReconnector reconnector) {
+  public void edgeResult(EdgeConnectionState state, EdgeReconnector reConnector) {
     log.trace("[featurehub-sdk] retryer triggered {}", state);
     if (!notFoundState && !executorService.isShutdown()) {
       if (state == EdgeConnectionState.SUCCESS) {
@@ -52,19 +51,19 @@ public class EdgeRetryer implements EdgeRetryService {
         executorService.submit(() -> {
           backoff(serverDisconnectRetryMs, true);
 
-          reconnector.reconnect();
+          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
         executorService.submit(() -> {
           backoff(serverByeReconnectMs, false);
 
-          reconnector.reconnect();
+          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_CONNECT_TIMEOUT) {
         executorService.submit(() -> {
           backoff(serverConnectTimeoutMs, true);
 
-          reconnector.reconnect();
+          reConnector.reconnect();
         });
       }
     }

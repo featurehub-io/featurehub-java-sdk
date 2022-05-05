@@ -70,6 +70,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
   private static final int MAX_INTITEM_LENGTH = 9;
 
   private static final int MAX_LONGITEM_LENGTH = 18;
+  public static final String INVALID_ITEM = "invalid item: ";
 
   private String value;
 
@@ -139,7 +140,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
           return 1; // 1.1 > 1-1
 
         default:
-          throw new IllegalStateException("invalid item: " + item.getClass());
+          throw new IllegalStateException(INVALID_ITEM + item.getClass());
       }
     }
 
@@ -212,7 +213,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
           return 1; // 1.1 > 1-1
 
         default:
-          throw new IllegalStateException("invalid item: " + item.getClass());
+          throw new IllegalStateException(INVALID_ITEM + item.getClass());
       }
     }
 
@@ -284,7 +285,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
           return 1; // 1.1 > 1-1
 
         default:
-          throw new IllegalStateException("invalid item: " + item.getClass());
+          throw new IllegalStateException(INVALID_ITEM + item.getClass());
       }
     }
 
@@ -405,7 +406,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
           return -1; // 1.any < 1-1
 
         default:
-          throw new IllegalStateException("invalid item: " + item.getClass());
+          throw new IllegalStateException(INVALID_ITEM + item.getClass());
       }
     }
 
@@ -507,7 +508,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
           return 0;
 
         default:
-          throw new IllegalStateException("invalid item: " + item.getClass());
+          throw new IllegalStateException(INVALID_ITEM + item.getClass());
       }
     }
 
@@ -619,18 +620,19 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
   }
 
   private static Item parseItem(boolean isDigit, String buf) {
-    if (isDigit) {
-      buf = stripLeadingZeroes(buf);
-      if (buf.length() <= MAX_INTITEM_LENGTH) {
-        // lower than 2^31
-        return new IntItem(buf);
-      } else if (buf.length() <= MAX_LONGITEM_LENGTH) {
-        // lower than 2^63
-        return new LongItem(buf);
-      }
-      return new BigIntegerItem(buf);
+    if (!isDigit) {
+      return new StringItem(buf, false);
     }
-    return new StringItem(buf, false);
+    buf = stripLeadingZeroes(buf);
+    if (buf.length() <= MAX_INTITEM_LENGTH) {
+      // lower than 2^31
+      return new IntItem(buf);
+    }
+    if (buf.length() <= MAX_LONGITEM_LENGTH) {
+      // lower than 2^63
+      return new LongItem(buf);
+    }
+    return new BigIntegerItem(buf);
   }
 
   private static String stripLeadingZeroes(String buf) {
@@ -706,7 +708,7 @@ public class SemanticVersionComparable implements Comparable<SemanticVersionComp
 
       if (prev != null) {
         int compare = prev.compareTo(c);
-        System.out.println("   " + prev.toString() + ' '
+        System.out.println("   " + prev + ' '
           + ((compare == 0) ? "==" : ((compare < 0) ? "<" : ">")) + ' ' + version);
       }
 
