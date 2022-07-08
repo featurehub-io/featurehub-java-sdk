@@ -1,6 +1,6 @@
 package io.featurehub.client;
 
-import io.featurehub.mr.model.FeatureValueType;
+import io.featurehub.sse.model.FeatureValueType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +13,7 @@ import java.util.function.Function;
 
 import static io.featurehub.client.BaseClientContext.C_ID;
 import static io.featurehub.client.GoogleAnalyticsApiClient.GA_VALUE;
-import static io.featurehub.mr.model.FeatureValueType.*;
+import static io.featurehub.sse.model.FeatureValueType.*;
 import static java.lang.Boolean.TRUE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 

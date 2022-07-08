@@ -1,6 +1,6 @@
 package io.featurehub.client;
 
-import io.featurehub.mr.model.FeatureValueType;
+import io.featurehub.sse.model.FeatureValueType;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

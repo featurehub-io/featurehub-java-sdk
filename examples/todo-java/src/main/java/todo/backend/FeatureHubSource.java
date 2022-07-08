@@ -52,7 +52,6 @@ public class FeatureHubSource implements FeatureHub {
     config.setRepository(repository);
 
     // Do this if you wish to force the connection to stay open.
-    // Do this if you wish to force the connection to stay open.
     if (clientSdk.equals("jersey3")) {
       final JerseyClient jerseyClient = new JerseyClient(config, true, repository, null);
       jerseyClient.setShutdownOnServerFailure(false);

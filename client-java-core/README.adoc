@@ -41,30 +41,58 @@ Where EdgeProvider is the name of your class that knows how to connect to the Ed
 
 - **SSE (Server Sent Events) realtime updates mechanism**
 
+There are three options for SSE connections - Jersey 2, Jersey 3 and OKHttp SSE. OKHttp is recommended for stacks
+that do _not_ already use Jersey as their transport of choice as it is considerably smaller, and less general purpose. We recommend SSE for long lived server or batch processes. 
+
+The dependency includes (Maven style) are below (choose *one*):
+
 [source,xml]
+Jersey 2
 ----
-    <dependency>
-      <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-jersey</artifactId>
-      <version>[2.1,3)</version>
-    </dependency>
+<dependency>
+  <groupId>io.featurehub.sdk</groupId>
+  <artifactId>java-client-jersey</artifactId>
+  <version>[2.1,3)</version>
+</dependency>
+----
+
+[source,xml]
+Jersey 3
+----
+<dependency>
+  <groupId>io.featurehub.sdk</groupId>
+  <artifactId>java-client-jersey3</artifactId>
+  <version>[2.1,3)</version>
+</dependency>
+----
+
+[source,xml]
+OKHttp SSE
+----
+<dependency>
+  <groupId>io.featurehub.sdk</groupId>
+  <artifactId>java-client-sse</artifactId>
+  <version>[1.2,2)</version>
+</dependency>
 ----
 
 If you do not already use Jersey in your code base, you should also include our runtime dependencies for Jersey
 and Jackson.
 
 [source,xml]
+set of jersey2 dependencies
 ----
-    <dependency>
-      <groupId>io.featurehub.composites</groupId>
-      <artifactId>composite-jersey</artifactId>
-      <version>[1.1, 2)</version>
-    </dependency>
+<dependency>
+  <groupId>io.featurehub.sdk.composites</groupId>
+  <artifactId>sdk-composite-jersey2</artifactId>
+  <version>[1.1, 2)</version>
+</dependency>
 ----
 
 - **FeatureHub polling client (GET request updates)**
 
-This is recommended for Mobile as it will only request updates when you ask for them and not keep the radio on.
+This is recommended for Mobile as it will only request updates when you ask for them and not keep the radio on. We also recommend them for short batch jobs, Functions as a Service (such as Knative, Cloud Functions, Lamba or
+Azure Cloud Functions or similar frameworks) where you can ensure you get the features up front and then carry on.
 
 [source,xml]
 ----
@@ -108,6 +136,7 @@ Create an instance of `EdgeFeatureHubConfig`. You need to provide the API Key an
 ----
 import io.featurehub.client.EdgeFeatureHubConfig;
 
+// typically you would get these from environment variables
 String edgeUrl = "http://localhost:8085/";
 String apiKey = "default/71ed3c04-122b-4312-9ea8-06b2b8d6ceac/fsTmCrcZZoGyl56kPHxfKAkbHrJ7xZMKO3dlBiab5IqUXjgKvqpjxYdI8zdXiJqYCpv92Jrki0jY5taE";
 

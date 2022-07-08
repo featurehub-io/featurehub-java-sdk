@@ -70,12 +70,12 @@
       <plugin>
         <groupId>org.openapitools</groupId>
         <artifactId>openapi-generator-maven-plugin</artifactId>
-        <version>5.2.1</version>
+        <version>6.0.1</version>
         <dependencies>
           <dependency>
             <groupId>cd.connect.openapi</groupId>
             <artifactId>connect-openapi-jersey3</artifactId>
-            <version>7.10</version>
+            <version>8.1</version>
           </dependency>
         </dependencies>
         <executions>
@@ -95,6 +95,7 @@
               <additionalProperties>
                 <additionalProperty>useBeanValidation=false</additionalProperty>
                 <additionalProperty>openApiNullable=false</additionalProperty>
+                <additionalProperty>useNullForUnknownEnumValue=true</additionalProperty>
               </additionalProperties>
             </configuration>
           </execution>

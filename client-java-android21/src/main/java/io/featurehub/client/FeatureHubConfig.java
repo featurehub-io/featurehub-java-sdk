@@ -12,7 +12,11 @@ public interface FeatureHubConfig {
 
   String baseUrl();
 
-  // start the service
+  /**
+   * If you are using a client evaluated feature context, this will initialise the service and block until
+   * you have received your first set of features. Server Evaluated contexts should not use it because it needs
+   * to re-request data from the server each time you change your context.
+   */
   void init();
 
   /**
@@ -82,4 +86,10 @@ public interface FeatureHubConfig {
    * @param jsonConfigObjectMapper - a Jackson ObjectMapper
    */
   void setJsonConfigObjectMapper(ObjectMapper jsonConfigObjectMapper);
+
+  /**
+   * You should use this close if you are using a client evaluated key and wish to close the connection to the remote
+   * server cleanly
+   */
+  void close();
 }

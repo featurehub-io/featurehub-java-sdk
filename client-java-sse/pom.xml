@@ -88,6 +88,7 @@
           <tiles>
             <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-sdk:[1.1-SNAPSHOT,2)</tile>
           </tiles>
         </configuration>
       </plugin>

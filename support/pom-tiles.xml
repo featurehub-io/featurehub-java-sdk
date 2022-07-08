@@ -35,6 +35,8 @@
 
   <modules>
     <module>support/tile-java8</module>
+    <module>support/tile-java11</module>
+    <module>support/tile-sdk</module>
     <module>support/tile-release</module>
   </modules>
 </project>

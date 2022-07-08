@@ -11,12 +11,19 @@ import java.util.concurrent.Future;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private static final Logger log = LoggerFactory.getLogger(EdgeFeatureHubConfig.class);
+  @NotNull
   private final String realtimeUrl;
   private final boolean serverEvaluation;
+  @NotNull
   private final String edgeUrl;
+  @NotNull
   private final String apiKey;
+  @Nullable
   private FeatureRepositoryContext repository;
+  @Nullable
   private ObjectSupplier<EdgeService> edgeService;
+  @Nullable
+  private EdgeService edgeClient;
 
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
 
@@ -103,7 +110,13 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       return new ServerEvalFeatureContext(this, repository, edgeService);
     }
 
-    return new ClientEvalFeatureContext(this, repository, edgeService.get());
+    // we are using a single connection to the remote server, so we hold onto the
+    // edge client. If they call close on here it will allow it to be reopened.
+    if (edgeClient == null) {
+      edgeClient = edgeService.get();
+    }
+
+    return new ClientEvalFeatureContext(this, repository, edgeClient);
   }
 
   /**
@@ -176,5 +189,14 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
+    getRepository().setJsonConfigObjectMapper(jsonConfigObjectMapper);
+  }
+
+  @Override
+  public void close() {
+    if (edgeClient != null) {
+      edgeClient.close();
+      edgeClient = null;
+    }
   }
 }
