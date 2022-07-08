@@ -43,7 +43,7 @@
   </scm>
 
   <properties>
-    <jackson.version>2.13.0</jackson.version>
+    <jackson.version>[2.13.2.1]</jackson.version>
   </properties>
 
 
@@ -57,7 +57,7 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>[${jackson.version}]</version>
+      <version>[${jackson.version}</version>
     </dependency>
 
     <dependency>
