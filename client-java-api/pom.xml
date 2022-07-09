@@ -60,7 +60,7 @@
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-jackson</artifactId>
-      <version>[1.1, 2)</version>
+      <version>[1.2, 2)</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
