@@ -45,7 +45,7 @@
   </scm>
 
   <properties>
-    <jersey.version>3.0.3</jersey.version>
+    <jersey.version>3.0.5</jersey.version>
   </properties>
 
   <dependencies>
