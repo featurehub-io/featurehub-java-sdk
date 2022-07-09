@@ -1,7 +1,7 @@
 package io.featurehub.client
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.featurehub.mr.model.FeatureValueType
+import io.featurehub.sse.model.FeatureValueType
 import io.featurehub.sse.model.StrategyAttributeCountryName
 import io.featurehub.sse.model.StrategyAttributeDeviceName
 import io.featurehub.sse.model.StrategyAttributePlatformName

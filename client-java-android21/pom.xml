@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>java-client-android21</artifactId>
-  <version>1.1-SNAPSHOT</version>
+  <version>1.2-SNAPSHOT</version>
   <name>java-client-android21</name>
 
   <description>
@@ -55,7 +55,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-api</artifactId>
-      <version>[2.1, 3)</version>
+      <version>[3.1, 4)</version>
     </dependency>
 
     <dependency>
@@ -73,7 +73,7 @@
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-jackson</artifactId>
-      <version>[1.1, 2)</version>
+      <version>[1.2, 2)</version>
       <scope>provided</scope>
     </dependency>
 
@@ -105,6 +105,7 @@
           <tiles>
             <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-sdk:[1.1-SNAPSHOT,2)</tile>
           </tiles>
         </configuration>
       </plugin>

@@ -23,7 +23,8 @@ public interface ClientContext {
   ClientContext clear();
 
   /**
-   * Triggers the build and setting of this context.
+   * Triggers the build and setting of this context. You *must* call this
+   * when using the server eval key.
    *
    * @return this
    */

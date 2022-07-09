@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>java-client-jersey</artifactId>
-  <version>2.5-SNAPSHOT</version>
+  <version>2.6-SNAPSHOT</version>
   <name>java-client-jersey</name>
 
   <description>
@@ -58,7 +58,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-core</artifactId>
-      <version>[2.6, 3)</version>
+      <version>[2.8, 3)</version>
     </dependency>
 
     <!-- required in general for the jersey client -->
@@ -115,7 +115,7 @@
           <dependency>
             <groupId>cd.connect.openapi</groupId>
             <artifactId>connect-openapi-jersey3</artifactId>
-            <version>7.12</version>
+            <version>7.15</version>
           </dependency>
         </dependencies>
         <executions>
@@ -172,6 +172,7 @@
           <tiles>
             <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-sdk:[1.1-SNAPSHOT,2)</tile>
           </tiles>
         </configuration>
       </plugin>

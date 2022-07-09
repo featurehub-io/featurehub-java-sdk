@@ -1,8 +1,8 @@
 package io.featurehub.client
 
-import io.featurehub.mr.model.FeatureValueType
-import io.featurehub.mr.model.RolloutStrategyAttributeConditional
-import io.featurehub.mr.model.RolloutStrategyFieldType
+import io.featurehub.sse.model.FeatureValueType
+import io.featurehub.sse.model.RolloutStrategyAttributeConditional
+import io.featurehub.sse.model.RolloutStrategyFieldType
 import io.featurehub.sse.model.FeatureRolloutStrategy
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute
 import spock.lang.Specification

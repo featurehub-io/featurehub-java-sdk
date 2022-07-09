@@ -9,14 +9,12 @@ import java.util.concurrent.Future;
  */
 class ClientEvalFeatureContext extends BaseClientContext {
   private final EdgeService edgeService;
-  private final boolean weOwnRepositoryAndEdge;
 
   public ClientEvalFeatureContext(FeatureHubConfig config, FeatureRepositoryContext repository,
                                   EdgeService edgeService) {
     super(repository, config);
 
     this.edgeService = edgeService;
-    this.weOwnRepositoryAndEdge = false;
   }
 
   // this doesn't matter for client eval
@@ -43,14 +41,9 @@ class ClientEvalFeatureContext extends BaseClientContext {
   }
 
   /**
-   * We only close if we created the edge and repository
+   * We never close anything, it is controlled in the FeatureConfig
    */
   @Override
   public void close() {
-    if (weOwnRepositoryAndEdge) {
-      repository.close();
-    }
-
-    edgeService.close();
   }
 }

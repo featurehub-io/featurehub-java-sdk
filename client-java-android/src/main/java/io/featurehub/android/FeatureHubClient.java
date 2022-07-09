@@ -6,6 +6,7 @@ import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureStore;
 import io.featurehub.client.Readyness;
+import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
@@ -74,6 +75,7 @@ public class FeatureHubClient implements EdgeService {
 
   private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
   private boolean busy = false;
+  private boolean triggeredAtLeastOnce = false;
   private List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
 
   public boolean checkForUpdates() {
@@ -81,12 +83,15 @@ public class FeatureHubClient implements EdgeService {
 
     if (ask) {
       busy = true;
+      triggeredAtLeastOnce = true;
 
       Request.Builder reqBuilder = new Request.Builder().url(this.url);
 
       if (xFeaturehubHeader != null) {
         reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
       }
+
+      reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
 
       Request request = reqBuilder.build();
 
@@ -158,7 +163,7 @@ public class FeatureHubClient implements EdgeService {
   public @NotNull Future<Readyness> contextChange(String newHeader) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
-    if (newHeader != null && !newHeader.equals(xFeaturehubHeader)) {
+    if (!triggeredAtLeastOnce || (newHeader != null && !newHeader.equals(xFeaturehubHeader))) {
       xFeaturehubHeader = newHeader;
       if (checkForUpdates() || busy) {
         waitingClients.add(change);

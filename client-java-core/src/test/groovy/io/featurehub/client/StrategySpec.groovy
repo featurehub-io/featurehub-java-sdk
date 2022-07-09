@@ -1,11 +1,11 @@
 package io.featurehub.client
 
-import io.featurehub.mr.model.FeatureValueType
-import io.featurehub.mr.model.RolloutStrategyAttributeConditional
-import io.featurehub.mr.model.RolloutStrategyFieldType
+import io.featurehub.sse.model.FeatureValueType
+import io.featurehub.sse.model.RolloutStrategyAttributeConditional
+import io.featurehub.sse.model.RolloutStrategyFieldType
 import io.featurehub.sse.model.StrategyAttributeCountryName
 import io.featurehub.sse.model.StrategyAttributePlatformName
-import io.featurehub.mr.model.StrategyAttributeWellKnownNames
+import io.featurehub.sse.model.StrategyAttributeWellKnownNames
 import io.featurehub.sse.model.FeatureRolloutStrategy
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute
 import io.featurehub.sse.model.FeatureState

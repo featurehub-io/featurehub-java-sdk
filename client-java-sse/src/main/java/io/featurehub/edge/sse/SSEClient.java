@@ -7,6 +7,7 @@ import io.featurehub.client.Readyness;
 import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.SSEResultState;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -56,6 +57,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     if (xFeaturehubHeader != null) {
       reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
     }
+
+    reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
 
     Request request = reqBuilder.build();
 

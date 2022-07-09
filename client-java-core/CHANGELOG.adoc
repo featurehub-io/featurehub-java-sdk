@@ -1,5 +1,19 @@
 === Changes
 
+=== 2.8
+- When using a Client Evaluated Feature context, the client was not getting reused if you used the default
+mechanism. Now the close() method for the context does nothing, and you need to issue a close on the 
+`EdgeFeatureHubConfig` itself. Server Evaluated Feature contexts remain the same and you should close them
+individually as they have their own connections.
+- The Android client would not attempt to connect unless it had an attribute set when operating in 
+Server Evaluated Feature mode. Now when a context change is requested and it has never triggered a request,
+it will always do so.
+- Some internal classes have changed packages (FeatureValueType, some others)
+- Some libraries have been upgraded
+- The client now tells the server what client it is using, which version of the client and which version of the
+server API it expects.
+- The client has been compiled against the new 1.1.3 API but does not currently use its functionality.
+
 === 2.3  
 - Expose analytic collector, readyness listener, readyness state, and value interceptor properties on the FeatureHubConfig
 - Respect context when using feature listeners

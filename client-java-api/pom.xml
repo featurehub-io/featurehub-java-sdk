@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>java-client-api</artifactId>
-  <version>2.2-SNAPSHOT</version>
+  <version>3.2-SNAPSHOT</version>
   <name>java-client-api</name>
 
   <description>
@@ -48,7 +48,7 @@
     <dependency>
       <groupId>org.jetbrains</groupId>
       <artifactId>annotations</artifactId>
-      <version>22.0.0</version>
+      <version>23.0.0</version>
     </dependency>
 
     <dependency>
@@ -60,7 +60,7 @@
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-jackson</artifactId>
-      <version>[1.1, 2)</version>
+      <version>[1.2, 2)</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
@@ -70,12 +70,12 @@
       <plugin>
         <groupId>org.openapitools</groupId>
         <artifactId>openapi-generator-maven-plugin</artifactId>
-        <version>5.2.1</version>
+        <version>6.0.1</version>
         <dependencies>
           <dependency>
             <groupId>cd.connect.openapi</groupId>
             <artifactId>connect-openapi-jersey3</artifactId>
-            <version>7.10</version>
+            <version>8.1</version>
           </dependency>
         </dependencies>
         <executions>
@@ -95,6 +95,7 @@
               <additionalProperties>
                 <additionalProperty>useBeanValidation=false</additionalProperty>
                 <additionalProperty>openApiNullable=false</additionalProperty>
+                <additionalProperty>useNullForUnknownEnumValue=true</additionalProperty>
               </additionalProperties>
             </configuration>
           </execution>

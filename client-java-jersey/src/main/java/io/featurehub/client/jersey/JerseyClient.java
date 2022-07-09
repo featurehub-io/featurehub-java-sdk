@@ -6,6 +6,7 @@ import io.featurehub.client.Feature;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureStore;
 import io.featurehub.client.Readyness;
+import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.api.FeatureService;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import io.featurehub.sse.model.SSEResultState;
@@ -134,6 +135,8 @@ public class JerseyClient implements EdgeService {
         if (xFeaturehubHeader != null) {
           request = request.header("x-featurehub", xFeaturehubHeader);
         }
+
+        request = request.header("X-SDK", SdkVersion.sdkVersionHeader("Java-Jersey2"));
 
         eventInput = request
           .get(EventInput.class);

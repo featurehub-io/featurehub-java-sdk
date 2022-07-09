@@ -11,14 +11,14 @@ public class ServerEvalFeatureContext extends BaseClientContext {
   private final ObjectSupplier<EdgeService> edgeService;
   private EdgeService currentEdgeService;
   private String xHeader;
-  private final boolean weOwnRepositoryAndEdge;
+  private boolean weOwnEdge;
 
   public ServerEvalFeatureContext(FeatureHubConfig config, FeatureRepositoryContext repository,
                                   ObjectSupplier<EdgeService> edgeService) {
     super(repository, config);
 
     this.edgeService = edgeService;
-    this.weOwnRepositoryAndEdge = false;
+    this.weOwnEdge = false;
   }
 
   @Override
@@ -50,11 +50,13 @@ public class ServerEvalFeatureContext extends BaseClientContext {
 
     try {
       change.get();
+
+      future.complete(this);
     } catch (Exception e) {
       log.error("Failed to update", e);
+      future.completeExceptionally(e);
     }
 
-    future.complete(this);
 
     return future;
   }
@@ -64,6 +66,8 @@ public class ServerEvalFeatureContext extends BaseClientContext {
     return currentEdgeService;
   }
 
+  public ObjectSupplier<EdgeService> getEdgeServiceSupplier() { return edgeService; }
+
   @Override
   public boolean exists(String key) {
     return false;
@@ -71,12 +75,8 @@ public class ServerEvalFeatureContext extends BaseClientContext {
 
   @Override
   public void close() {
-    if (weOwnRepositoryAndEdge) {
-      repository.close();
-
-      if (currentEdgeService != null) {
-        currentEdgeService.close();
-      }
+    if (weOwnEdge && currentEdgeService != null) {
+      currentEdgeService.close();
     }
   }
 }
