@@ -43,7 +43,7 @@
   </scm>
 
   <properties>
-    <jackson.version>2.13.0</jackson.version>
+    <jackson.version>2.13.3</jackson.version>
   </properties>
 
 
