@@ -1,8 +1,14 @@
 package io.featurehub.client.edge;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.featurehub.sse.model.SSEResultState;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -16,13 +22,15 @@ public class EdgeRetryer implements EdgeRetryService {
   private final int maximumBackoffTimeMs;
   // this will change over the lifetime of reconnect attempts
   private int currentBackoffMultiplier;
+  private ObjectMapper mapper = new ObjectMapper();
 
   // if this is set, then we stop recognizing any further requests from the connection,
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
   private boolean notFoundState = false;
+  private boolean stopped = false;
 
   protected EdgeRetryer(int serverConnectTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
-                      int backoffMultiplier, int maximumBackoffTimeMs) {
+                        int backoffMultiplier, int maximumBackoffTimeMs) {
     this.serverConnectTimeoutMs = serverConnectTimeoutMs;
     this.serverDisconnectRetryMs = serverDisconnectRetryMs;
     this.serverByeReconnectMs = serverByeReconnectMs;
@@ -41,7 +49,7 @@ public class EdgeRetryer implements EdgeRetryService {
 
   public void edgeResult(EdgeConnectionState state, EdgeReconnector reConnector) {
     log.trace("[featurehub-sdk] retryer triggered {}", state);
-    if (!notFoundState && !executorService.isShutdown()) {
+    if (!notFoundState && !stopped && !executorService.isShutdown()) {
       if (state == EdgeConnectionState.SUCCESS) {
         currentBackoffMultiplier = backoffMultiplier;
       } else if (state == EdgeConnectionState.API_KEY_NOT_FOUND) {
@@ -55,7 +63,7 @@ public class EdgeRetryer implements EdgeRetryService {
         });
       } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
         executorService.submit(() -> {
-          backoff(serverByeReconnectMs, false);
+//          backoff(serverByeReconnectMs, false);
 
           reConnector.reconnect();
         });
@@ -69,8 +77,38 @@ public class EdgeRetryer implements EdgeRetryService {
     }
   }
 
+  private static final TypeReference<Map<String, Object>> mapConfig = new TypeReference<Map<String, Object>>() {};
+
+  @Override
+  public void edgeConfigInfo(String config) {
+    try {
+      Map<String, Object> data = mapper.readValue(config, mapConfig);
+
+      if (data.containsKey("edge.stale")) {
+        stopped = true; // force us to stop trying for this connection
+      }
+    } catch (JsonProcessingException e) {
+      // ignored
+    }
+
+  }
+
+  @Override
+  public @Nullable SSEResultState fromValue(String name) {
+    try {
+      return SSEResultState.fromValue(name);
+    } catch (Exception e) {
+      return null; // ok to have unrecognized values
+    }
+  }
+
   public void close() {
     executorService.shutdownNow();
+  }
+
+  @Override
+  public ExecutorService getExecutorService() {
+    return executorService;
   }
 
   @Override
@@ -112,7 +150,7 @@ public class EdgeRetryer implements EdgeRetryService {
   // while setting the next backoff incase we come back
   protected void backoff(int baseTime, boolean adjustBackoff) {
     try {
-      Thread.sleep(calculateBackoff(baseTime, currentBackoffMultiplier) );
+      Thread.sleep(calculateBackoff(baseTime, currentBackoffMultiplier));
     } catch (InterruptedException ignored) {
     }
 
@@ -132,7 +170,7 @@ public class EdgeRetryer implements EdgeRetryService {
   }
 
   public int newBackoff(int currentBackoff) {
-    int backoff = (int)((1+Math.random()) * currentBackoff);
+    int backoff = (int) ((1 + Math.random()) * currentBackoff);
 
     if (backoff < 2) {
       backoff = 3;
@@ -151,15 +189,19 @@ public class EdgeRetryer implements EdgeRetryService {
     private EdgeRetryerBuilder() {
       serverConnectTimeoutMs = propertyOrEnv("featurehub.edge.server-connect-timeout-ms", "5000");
       serverDisconnectRetryMs = propertyOrEnv("featurehub.edge.server-disconnect-retry-ms",
-        "5000");
+        "0"); // immediately try and reconnect if disconnected
       serverByeReconnectMs = propertyOrEnv("featurehub.edge.server-by-reconnect-ms",
-        "3000");
+        "0");
       backoffMultiplier = propertyOrEnv("featurehub.edge.backoff-multiplier", "10");
       maximumBackoffTimeMs = propertyOrEnv("featurehub.edge.maximum-backoff-ms", "30000");
     }
 
     private int propertyOrEnv(String name, String defaultVal) {
-      String val = System.getenv(name.replace(".", "_").replace("-", "_"));
+      String val = System.getenv(name);
+
+      if (val == null) {
+        val = System.getenv(name.replace(".", "_").replace("-", "_"));
+      }
 
       if (val == null) {
         val = System.getProperty(name, defaultVal);

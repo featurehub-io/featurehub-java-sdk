@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 @Singleton
+@Deprecated
 public class JerseyClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(JerseyClient.class);
   private final WebTarget target;
@@ -273,7 +274,7 @@ public class JerseyClient implements EdgeService {
   }
 
   @Override
-  public @NotNull Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
     if (fhConfig.isServerEvaluation() && ((newHeader != null && !newHeader.equals(xFeaturehubHeader)) || !initialized)) {

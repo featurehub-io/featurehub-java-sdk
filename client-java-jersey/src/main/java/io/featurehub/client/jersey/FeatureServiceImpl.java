@@ -5,8 +5,9 @@ import cd.connect.openapi.support.Pair;
 import io.featurehub.sse.api.FeatureService;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureStateUpdate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import javax.validation.constraints.NotNull;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.core.GenericType;
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ public class FeatureServiceImpl implements FeatureService {
   }
 
   @Override
-  public List<FeatureEnvironmentCollection> getFeatureStates(@NotNull List<String> sdkUrl) {
+  public List<FeatureEnvironmentCollection> getFeatureStates(@NotNull List<String> apiKey, @Nullable String contextSha) {
     return null;
   }
 

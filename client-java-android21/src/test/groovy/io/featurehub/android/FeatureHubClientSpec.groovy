@@ -35,9 +35,9 @@ class FeatureHubClientSpec extends Specification {
 
       repo = Mock {
       }
-      fhc = new FeatureHubClient("http://localhost", ["1234"], repo, client, Mock(FeatureHubConfig))
+      fhc = new FeatureHubClient("http://localhost", ["1234"], repo, client, Mock(FeatureHubConfig), 0)
     and: "i specify a header"
-      fhc.contextChange("fred=mary")
+      fhc.contextChange("fred=mary", "0")
     when: "i check for updates"
       fhc.checkForUpdates()
     then:

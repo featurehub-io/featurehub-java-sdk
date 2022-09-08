@@ -1,0 +1,7 @@
+= CHANGELOG (jersey3)
+
+- 1.4 - addition of JerseySSEClient which uses the standard Edge retryer code introduced in the 
+OkHTTP SSE version, which gives greater control over backoff and server  control. JerseyClient
+is deprecated and the JerseySSEClient is now preferred. If you haven't directly constructed it,
+it will automatically change under the covers using the Java services mechanism. Adds functionality for upcoming expired environments
+- 1.3 - last version using the JerseyClient as the preferred client.   
