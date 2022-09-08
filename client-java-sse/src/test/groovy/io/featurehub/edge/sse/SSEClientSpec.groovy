@@ -46,6 +46,7 @@ class SSEClientSpec extends Specification {
     then:
       1 * repository.notify(SSEResultState.FEATURES, "sausage")
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
   }
 
   def "success then bye but not close lifecycle"() {
@@ -57,6 +58,8 @@ class SSEClientSpec extends Specification {
     then:
       1 * repository.notify(SSEResultState.FEATURES, "sausage")
       1 * repository.notify(SSEResultState.BYE, "sausage")
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.fromValue('bye') >> SSEResultState.BYE
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       0 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
   }
@@ -72,6 +75,8 @@ class SSEClientSpec extends Specification {
       1 * repository.notify(SSEResultState.BYE, "sausage")
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.fromValue('bye') >> SSEResultState.BYE
       1 * repository.notify(SSEResultState.FAILURE, null)
       1 * repository.readyness >> Readyness.NotReady
   }
@@ -87,6 +92,7 @@ class SSEClientSpec extends Specification {
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
       1 * repository.notify(SSEResultState.FAILURE, null)
       1 * repository.readyness >> Readyness.NotReady
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
   }
 
   def "open then immediate failure"() {
@@ -102,18 +108,19 @@ class SSEClientSpec extends Specification {
 
   def "when i context change with a client side key, it gives me a future which resolves readyness"() {
     when: "i change context"
-      def future = client.contextChange("header")
+      def future = client.contextChange("header", '0')
       esListener.onEvent(mockEventSource, "1", "features", "data")
     then:
       1 * repository.notify(SSEResultState.FEATURES, "data")
       1 * repository.readyness >> Readyness.Failed
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
       future.get() == Readyness.Failed
   }
 
   def "when i context change with a server side key, it creates a request with the header"() {
     when: "i change context"
-      def future = client.contextChange("header")
+      def future = client.contextChange("header", '0')
     then:
       1 * config.serverEvaluation >> true
       request.header("x-featurehub") == "header"
@@ -121,9 +128,9 @@ class SSEClientSpec extends Specification {
 
   def "when i change context twice with a server side key, it cancels the existing event source and no incoming data means futures are not ready"() {
     when: "i change context"
-      def future1 = client.contextChange("header")
+      def future1 = client.contextChange("header", '0')
     and: "i change context again"
-      def future2 = client.contextChange("header2")
+      def future2 = client.contextChange("header2", '0')
     then:
       2 * config.serverEvaluation >> true
       1 * mockEventSource.cancel()
@@ -134,14 +141,15 @@ class SSEClientSpec extends Specification {
 
   def "when i change context twice with a server side key, and then results come in completes both futures"() {
     when: "i change context"
-      def future1 = client.contextChange("header")
+      def future1 = client.contextChange("header", '0')
     and: "i change context again"
-      def future2 = client.contextChange("header2")
+      def future2 = client.contextChange("header2", '0')
     and: "i resolve the incoming call"
       esListener.onEvent(mockEventSource, '1', 'features', 'data')
     then:
       2 * config.serverEvaluation >> true
       2 * repository.readyness >> Readyness.Ready
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
       request.header("x-featurehub") == "header2"
       future1.done
       future2.done

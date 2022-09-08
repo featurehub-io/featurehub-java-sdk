@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 @Singleton
+@Deprecated
 public class JerseyClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(JerseyClient.class);
   private final WebTarget target;
@@ -156,19 +157,25 @@ public class JerseyClient implements EdgeService {
 
           log.trace("notifying of {}", inboundEvent.getName());
 
-          final SSEResultState state = fromValue(inboundEvent.getName());
+          try {
+            final SSEResultState state = fromValue(inboundEvent.getName());
 
-          if (state != null) {
-            repository.notify(state, inboundEvent.readData());
-          }
+            if (state != null && state != SSEResultState.CONFIG) {
+              repository.notify(state, inboundEvent.readData());
+            } else if (state == SSEResultState.CONFIG) {
 
-          if (state == SSEResultState.FAILURE || state == SSEResultState.FEATURES) {
-            completeReadyness();
-          }
+            }
 
-          if (state == SSEResultState.FAILURE && shutdownOnServerFailure) {
-            log.warn("Failed to connect to FeatureHub Edge on {}, shutting down.", fhConfig.getRealtimeUrl());
-            shutdown();
+            if (state == SSEResultState.FAILURE || state == SSEResultState.FEATURES) {
+              completeReadyness();
+            }
+
+            if (state == SSEResultState.FAILURE && shutdownOnServerFailure) {
+              log.warn("Failed to connect to FeatureHub Edge on {}, shutting down.", fhConfig.getRealtimeUrl());
+              shutdown();
+            }
+          } catch (Exception e) {
+            log.warn("Failed to parse SSE state {}", inboundEvent.getName(), e);
           }
         }
       } catch (Exception e) {
@@ -273,7 +280,7 @@ public class JerseyClient implements EdgeService {
   }
 
   @Override
-  public @NotNull Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
     if (fhConfig.isServerEvaluation() && ((newHeader != null && !newHeader.equals(xFeaturehubHeader)) || !initialized)) {

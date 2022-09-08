@@ -71,7 +71,7 @@ class JerseyClientSpec extends Specification {
       mockFeatureService = Mock(FeatureService)
     and: "I have a client and mock the feature service url"
       def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
-          false, new ClientFeatureRepository(1), null) {
+        false, new ClientFeatureRepository(1), null) {
         @Override
         protected FeatureService makeFeatureServiceClient(ApiClient apiClient) {
           return mockFeatureService
@@ -88,34 +88,34 @@ class JerseyClientSpec extends Specification {
 
   def "a client side evaluation header does not trigger the context header to be set"() {
     given: "i have a client with a client eval url"
-        def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk*url2"),
-          false, new ClientFeatureRepository(1), null)
+      def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk*url2"),
+        false, new ClientFeatureRepository(1), null)
     when: "i set attributes"
-        client.contextChange("fred=mary,susan")
+      client.contextChange("fred=mary,susan", '0')
     then:
-        client.featurehubContextHeader == null
+      client.featurehubContextHeader == null
   }
 
   def "a server side evaluation header does not trigger the context header to be set if it is null"() {
     given: "i have a client with a server eval url"
-        def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
-          false, new ClientFeatureRepository(1), null)
-        client.neverConnect = true  // groovy is groovy
+      def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
+        false, new ClientFeatureRepository(1), null)
+      client.neverConnect = true  // groovy is groovy
     when: "i set attributes"
-        client.contextChange(null)
+      client.contextChange(null, '0')
     then:
-        client.featurehubContextHeader == null
+      client.featurehubContextHeader == null
 
   }
 
   def "a server side evaluation header does trigger the context header to be set"() {
     given: "i have a client with a client eval url"
-        def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
-          false, new ClientFeatureRepository(1), null)
+      def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
+        false, new ClientFeatureRepository(1), null)
     when: "i set attributes"
-        client.contextChange("fred=mary,susan")
+      client.contextChange("fred=mary,susan", '0')
     then:
-        client.featurehubContextHeader != null
+      client.featurehubContextHeader != null
   }
 
 }

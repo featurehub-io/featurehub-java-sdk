@@ -18,5 +18,6 @@ public enum EdgeConnectionState {
   // [SSE + GET] we never received a response after we did actually connect, we should backoff
   SERVER_WAS_DISCONNECTED, // we got a disconnect before we received a "bye"
 
-  SUCCESS
+  SUCCESS,
+
 }

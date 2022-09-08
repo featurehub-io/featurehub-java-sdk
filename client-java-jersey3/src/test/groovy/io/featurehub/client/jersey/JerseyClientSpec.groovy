@@ -91,7 +91,7 @@ class JerseyClientSpec extends Specification {
         def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk*url2"),
           false, new ClientFeatureRepository(1), null)
     when: "i set attributes"
-        client.contextChange("fred=mary,susan")
+        client.contextChange("fred=mary,susan", '0')
     then:
         client.featurehubContextHeader == null
   }
@@ -102,7 +102,7 @@ class JerseyClientSpec extends Specification {
           false, new ClientFeatureRepository(1), null)
         client.neverConnect = true  // groovy is groovy
     when: "i set attributes"
-        client.contextChange(null)
+        client.contextChange(null, '0')
     then:
         client.featurehubContextHeader == null
 
@@ -113,7 +113,7 @@ class JerseyClientSpec extends Specification {
         def client = new JerseyClient(new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url2"),
           false, new ClientFeatureRepository(1), null)
     when: "i set attributes"
-        client.contextChange("fred=mary,susan")
+        client.contextChange("fred=mary,susan", '0')
     then:
         client.featurehubContextHeader != null
   }

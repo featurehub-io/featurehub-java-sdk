@@ -22,7 +22,7 @@ class ClientEvalFeatureContext extends BaseClientContext {
   public Future<ClientContext> build() {
     return CompletableFuture.supplyAsync(() -> {
       try {
-        edgeService.contextChange(null).get();
+        edgeService.contextChange(null, null).get();
       } catch (InterruptedException|ExecutionException ignored) {
       }
 

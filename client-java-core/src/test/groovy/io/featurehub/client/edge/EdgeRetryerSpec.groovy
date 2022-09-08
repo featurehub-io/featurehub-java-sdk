@@ -47,14 +47,14 @@ class EdgeRetryerSpec extends Specification {
 
   // can't test any randomness
 
-  def "if the server says 'bye' then we will backoff with the bye timeout and not adjust backoff"() {
+  def "if the server says 'bye' then we will not backoff and immediately try and reconnect"() {
     when: "i send a bye event"
       retryer.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, reconnector )
     then:
-      !backoffAdjustBackoff
-      backoffBaseTime == retryer.serverByeReconnectMs
       1 * reconnector.reconnect()
       1 * mockExecutor.submit({ Runnable task -> task.run()})
+      1 * mockExecutor.isShutdown() >> false
+      0 * _
   }
 
   def "if the server says 'disconnect' then we will backoff with the disconnect timeout and adjust backoff"() {

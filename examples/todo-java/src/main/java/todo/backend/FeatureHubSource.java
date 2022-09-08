@@ -11,13 +11,11 @@ import io.featurehub.client.GoogleAnalyticsCollector;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor;
 import io.featurehub.client.jersey.GoogleAnalyticsJerseyApiClient;
-import io.featurehub.client.jersey.JerseyClient;
+import io.featurehub.client.jersey.JerseySSEClient;
 import io.featurehub.edge.sse.SSEClient;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.host")
@@ -53,12 +51,13 @@ public class FeatureHubSource implements FeatureHub {
 
     // Do this if you wish to force the connection to stay open.
     if (clientSdk.equals("jersey3")) {
-      final JerseyClient jerseyClient = new JerseyClient(config, true, repository, null);
-      jerseyClient.setShutdownOnServerFailure(false);
+      final JerseySSEClient jerseyClient = new JerseySSEClient(repository,
+        config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build());
       config.setEdgeService(() -> jerseyClient);
       androidClient = null;
     } else if (clientSdk.equals("android")) {
-      final FeatureHubClient client = new FeatureHubClient(featureHubUrl, Collections.singleton(sdkKey), repository, config);
+      final FeatureHubClient client = new FeatureHubClient(featureHubUrl, Collections.singleton(sdkKey), repository,
+        config, 1);
       config.setEdgeService(() -> client);
       androidClient = client;
     } else if (clientSdk.equals("sse")) {

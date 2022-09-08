@@ -6,6 +6,8 @@ import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.Feature;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureRepository;
+import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
@@ -18,16 +20,20 @@ enum Features implements Feature {
 
 public class JerseyClientSample {
   public static void main(String[] args) throws Exception {
-    final FeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8064/",
-      "default/82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN");
+    // use www.google.com:81 to test server connection timeout
+    final FeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8064/pistachio",
+      "default/2f4de83c-e13e-459e-b272-63e4f8b34bad/ReQpGic7lOaZuQDkxe3WD40EbtVDN1*z5iXRNRROCW4Gy2peXsr");
 
+    FeatureRepository cfr = config.getRepository();
+
+    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
+
+    config.setEdgeService(() -> new JerseySSEClient(config.getRepository(), config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
+
+    config.init();
     final ClientContext ctx = config.newContext();
 
     final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();
-
-    FeatureRepository cfr = ctx.getRepository();
-
-    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
 
     System.out.println("Wait for readyness or hit enter if server eval key");
 

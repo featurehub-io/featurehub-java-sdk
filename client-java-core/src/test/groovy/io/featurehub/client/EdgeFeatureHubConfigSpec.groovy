@@ -139,7 +139,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       config.init()
     then:
       1 * supplier.get() >> client
-      1 * client.contextChange(null) >> mockRequest
+      1 * client.contextChange(null, '0') >> mockRequest
       1 * mockRequest.get() >> Readyness.Ready
       0 * _
   }
