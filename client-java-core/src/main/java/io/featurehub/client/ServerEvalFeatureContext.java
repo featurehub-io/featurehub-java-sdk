@@ -3,6 +3,9 @@ package io.featurehub.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.Supplier;
@@ -14,9 +17,17 @@ public class ServerEvalFeatureContext extends BaseClientContext {
   private String xHeader;
   private boolean weOwnEdge;
 
+  private final MessageDigest shaDigester;
+
   public ServerEvalFeatureContext(FeatureHubConfig config, FeatureRepositoryContext repository,
                                   Supplier<EdgeService> edgeService) {
     super(repository, config);
+
+    try {
+      shaDigester = MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e);
+    }
 
     this.edgeService = edgeService;
     this.weOwnEdge = false;
@@ -44,7 +55,8 @@ public class ServerEvalFeatureContext extends BaseClientContext {
       weOwnEdge = true;
     }
 
-    Future<?> change = currentEdgeService.contextChange(newHeader);
+    Future<?> change = currentEdgeService.contextChange(newHeader,
+      newHeader == null ? "0" : bytesToHex(shaDigester.digest(newHeader.getBytes(StandardCharsets.UTF_8))));
 
     xHeader = newHeader;
 
@@ -61,6 +73,19 @@ public class ServerEvalFeatureContext extends BaseClientContext {
 
 
     return future;
+  }
+
+  // from https://www.baeldung.com/sha-256-hashing-java as we don't have any libs consistently to do this for us
+  private static String bytesToHex(byte[] hash) {
+    StringBuilder hexString = new StringBuilder(2 * hash.length);
+    for (int i = 0; i < hash.length; i++) {
+      String hex = Integer.toHexString(0xff & hash[i]);
+      if(hex.length() == 1) {
+        hexString.append('0');
+      }
+      hexString.append(hex);
+    }
+    return hexString.toString();
   }
 
   @Override

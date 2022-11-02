@@ -14,8 +14,8 @@ class FeatureHubClientSpec extends Specification {
 
   def "a null sdk url will never trigger a call"() {
     when: "i initialize the client"
-      call = Mock(Call)
-      def fhc = new FeatureHubClient(null, null, null, client, Mock(FeatureHubConfig))
+      call = Mock()
+      def fhc = new FeatureHubClient(null, null, null, client, Mock(FeatureHubConfig), 0)
     and: "check for updates"
       fhc.checkForUpdates()
     then:
@@ -24,20 +24,21 @@ class FeatureHubClientSpec extends Specification {
 
   def "a valid host and url will trigger a call when asked"() {
     given: "i validly initialize the client"
-      call = Mock(Call)
+      call = Mock()
 
       client = Mock {
         1 * newCall({ Request r ->
           r.header('x-featurehub') == 'fred=mary'
+          r.header('if-none-match') == 'jimbo'
         }) >> call
       }
 
-
       repo = Mock {
       }
-      fhc = new FeatureHubClient("http://localhost", ["1234"], repo, client, Mock(FeatureHubConfig))
+      fhc = new FeatureHubClient("http://localhost", ["1234"], repo, client, Mock(FeatureHubConfig), 0)
+      fhc.etag = 'jimbo'
     and: "i specify a header"
-      fhc.contextChange("fred=mary")
+      fhc.contextChange("fred=mary", "bonkers")
     when: "i check for updates"
       fhc.checkForUpdates()
     then:
@@ -45,4 +46,7 @@ class FeatureHubClientSpec extends Specification {
   }
 
   // can't test any further because okhttp uses too many final classes
+  def "a response"() {
+
+  }
 }

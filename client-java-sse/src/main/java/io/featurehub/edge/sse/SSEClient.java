@@ -32,9 +32,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private final FeatureHubConfig config;
   private EventSource eventSource;
   private EventSource.Factory eventSourceFactory;
-  private String xFeaturehubHeader;
   private OkHttpClient client;
+  private String xFeaturehubHeader;
   private final EdgeRetryService retryer;
+  private final List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
+
 
   public SSEClient(FeatureStore repository, FeatureHubConfig config, EdgeRetryService retryer) {
     this.repository = repository;
@@ -84,17 +86,19 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       public void onEvent(@NotNull EventSource eventSource, @Nullable String id, @Nullable String type,
                           @NotNull String data) {
         try {
-          final SSEResultState state = fromValue(type);
+          final SSEResultState state = retryer.fromValue(type);
 
           if (state == null) { // unknown state
             return;
           }
 
-          if (log.isTraceEnabled()) {
-            log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
-          }
+          log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
 
-          repository.notify(state, data);
+          if (state == SSEResultState.CONFIG) {
+            retryer.edgeConfigInfo(data);
+          } else {
+            repository.notify(state, data);
+          }
 
           // reset the timer
           if (state == SSEResultState.FEATURES) {
@@ -110,7 +114,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
           }
 
           // tell any waiting clients we are now ready
-          if (!waitingClients.isEmpty() && (state != SSEResultState.ACK) ) {
+          if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
             waitingClients.forEach(wc -> wc.complete(repository.getReadyness()));
           }
         } catch (Exception e) {
@@ -135,14 +139,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     });
   }
 
-  protected SSEResultState fromValue(String name) {
-    try {
-      return SSEResultState.fromValue(name);
-    } catch (Exception e) {
-      return null; // ok to have unrecognized values
-    }
-  }
-
   protected EventSource makeEventSource(Request request, EventSourceListener listener) {
     if (eventSourceFactory == null) {
       client =
@@ -156,10 +152,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     return eventSourceFactory.newEventSource(request, listener);
   }
 
-  private final List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
 
   @Override
-  public @NotNull Future<Readyness> contextChange(String newHeader) {
+  public @NotNull Future<Readyness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readyness> change = new CompletableFuture<>();
 
     if (config.isServerEvaluation() &&

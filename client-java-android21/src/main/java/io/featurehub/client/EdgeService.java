@@ -13,7 +13,7 @@ public interface EdgeService {
    * @return a completable future when it has actually changed
    */
   @NotNull
-  Future<Readyness> contextChange(@Nullable String newHeader);
+  Future<Readyness> contextChange(@Nullable String newHeader, @Nullable String contextSha);
 
   /**
    * are we doing client side evaluation?
