@@ -94,7 +94,7 @@
                 <artifactItem>
                   <groupId>io.featurehub.sdk</groupId>
                   <artifactId>java-client-api</artifactId>
-                  <version>3.2-SNAPSHOT</version>
+                  <version>3.2</version>
                   <classifier>api</classifier>
                   <type>yaml</type>
                   <outputDirectory>${project.basedir}/target</outputDirectory>
