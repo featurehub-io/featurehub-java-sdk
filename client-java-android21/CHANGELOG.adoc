@@ -1,5 +1,7 @@
 = Changelog
 
--  2.1 - Breaking change on polling. The client now requires an initial configured polling timeout. Using the default mechanism it will get a 180-second timeout. You should manually create the client if you wish to override this. Requests to poll before the timeout has passed will be ignored. If the server sends a `cache-control:` header and it has a max-age set, this will override/replace the polling timeout. There has been a cleanup of error codes from the server and the specific conditions will cause the client to stop (such as using an invalid API  key). These reasons have been exposed.    
--  1.5 - Android version supporting FeatureHub functionality below 1.5.9. Manual control  over polling
+- 2.2 - Percentage calculator was not consistent from run to run, meaning percentage values could be evaluated differently between runs.
+
+- 2.1 - Breaking change on polling. The client now requires an initial configured polling timeout. Using the default mechanism it will get a 180-second timeout. You should manually create the client if you wish to override this. Requests to poll before the timeout has passed will be ignored. If the server sends a `cache-control:` header and it has a max-age set, this will override/replace the polling timeout. There has been a cleanup of error codes from the server and the specific conditions will cause the client to stop (such as using an invalid API  key). These reasons have been exposed.    
+- 1.5 - Android version supporting FeatureHub functionality below 1.5.9. Manual control  over polling
 required
