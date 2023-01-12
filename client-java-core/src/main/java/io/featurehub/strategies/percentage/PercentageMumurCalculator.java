@@ -11,7 +11,9 @@ public class PercentageMumurCalculator implements PercentageCalculator {
   }
 
   public PercentageMumurCalculator() {
-    this.hashFunction = new io.featurehub.strategies.percentage.Murmur3_32HashFunction(io.featurehub.strategies.percentage.Murmur3_32HashFunction.GOOD_FAST_HASH_SEED);
+    this.hashFunction = new io.featurehub.strategies.percentage.Murmur3_32HashFunction(
+      -1532782654
+    );
   }
 
   public int determineClientPercentage(String userKey, String id) {

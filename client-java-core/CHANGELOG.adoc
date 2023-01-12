@@ -1,5 +1,12 @@
 === Changes
 
+=== 3.2
+- Percentage calculator was not consistent from run to run, meaning percentage values could be evaluated differently between runs.
+
+=== 3.1 
+- New Edge APIs required some changes to polling and internal
+classes.
+
 === 2.8
 - When using a Client Evaluated Feature context, the client was not getting reused if you used the default
 mechanism. Now the close() method for the context does nothing, and you need to issue a close on the 
