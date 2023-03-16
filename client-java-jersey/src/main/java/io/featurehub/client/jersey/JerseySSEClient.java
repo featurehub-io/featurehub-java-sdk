@@ -9,7 +9,6 @@ import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.SSEResultState;
-import javax.ws.rs.ProcessingException;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
@@ -132,25 +131,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     try {
       eventSource = makeEventSource();
     } catch (Exception e) {
-      log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl());
-
-      if (e instanceof WebApplicationException) {
-        WebApplicationException wae = (WebApplicationException)e;
-        final Response response = wae.getResponse();
-
-        if (response != null) {
-          if (response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
-            retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
-            return;
-          } else if (response.getStatusInfo().getFamily() == Response.Status.Family.SERVER_ERROR) {
-            retryer.edgeResult(EdgeConnectionState.SERVER_CONNECT_TIMEOUT, this);
-            return;
-          }
-        }
-
-        retryer.edgeResult(EdgeConnectionState.SERVER_CONNECT_TIMEOUT, this);
-        return;
-      }
+      onMakeEventSourceException(e);
+      return;
     }
 
     log.trace("[featurehub-sdk] connected to {}", config.getRealtimeUrl());
@@ -228,6 +210,21 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       // send this once we are actually disconnected and not before
       retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
         EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+    }
+  }
+
+  private void onMakeEventSourceException(Exception e) {
+    log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl());
+    if (e instanceof WebApplicationException) {
+      WebApplicationException wae = (WebApplicationException) e;
+      final Response response = wae.getResponse();
+      if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
+        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+      } else {
+        retryer.edgeResult(EdgeConnectionState.SERVER_CONNECT_TIMEOUT, this);
+      }
+    } else {
+      retryer.edgeResult(EdgeConnectionState.SERVER_CONNECT_TIMEOUT, this);
     }
   }
 
