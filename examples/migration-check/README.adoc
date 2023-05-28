@@ -1,0 +1,13 @@
+= Migration Check
+
+This example is designed to show how you can block your application from starting to confirm featurehub is available and responding with the keys you have been configured with. The first connection uses the Android SDK to connect, waiting for the ready status, and then swap to the SSE api for all future connectivity.
+
+The logging is dialled to the highest level of detail so you can see the incoming
+sets of data. 
+
+It is not how you would normally wire a server application, but some examples:
+
+- there may be some initialization you may wish to do and you must have the features configured for it
+- you may be migrating off one feature flagging system to another and need to know
+you new flagging system is up. Its unexpected to have FeatureHub being unable to
+respond.
