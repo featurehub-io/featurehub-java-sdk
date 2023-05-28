@@ -227,6 +227,7 @@ public class FeatureHubClient implements EdgeService {
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE, null);
+        completeReadiness();
       }
     }
   }
