@@ -26,6 +26,10 @@ public interface ClientContext {
 
   ClientContext clear();
 
+  @Nullable String getAttr(@NotNull String name);
+  @Nullable  String getAttr(@NotNull String name, @Nullable  String defaultVal);
+  @Nullable List<String> getAttrs(@NotNull String name);
+
   /**
    * Triggers the build and setting of this context.
    *
@@ -36,15 +40,12 @@ public interface ClientContext {
   Map<String, List<String>> context();
   String defaultPercentageKey();
 
-  FeatureState feature(String name);
-  FeatureState feature(Feature name);
-  List<FeatureState> allFeatures();
+  @NotNull FeatureState<?> feature(String name);
+  @NotNull FeatureState<?> feature(Feature name);
+  @NotNull List<FeatureState<?>> allFeatures();
 
-  FeatureRepository getRepository();
-  EdgeService getEdgeService();
-
-  ClientContext logAnalyticsEvent(String action, Map<String, String> other);
-  ClientContext logAnalyticsEvent(String action);
+  @NotNull FeatureRepository getRepository();
+  @NotNull EdgeService getEdgeService();
 
   /**
    * true if it is a boolean feature and is true within this context.

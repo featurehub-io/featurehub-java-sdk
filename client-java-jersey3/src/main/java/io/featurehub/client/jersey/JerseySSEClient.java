@@ -2,8 +2,8 @@ package io.featurehub.client.jersey;
 
 import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
-import io.featurehub.client.FeatureStore;
-import io.featurehub.client.Readyness;
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
@@ -32,18 +32,27 @@ import java.util.concurrent.Future;
 
 public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(JerseySSEClient.class);
-  private final FeatureStore repository;
+  private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
   private String xFeaturehubHeader;
   private final EdgeRetryService retryer;
   private EventInput eventSource;
   private final WebTarget target;
-  private final List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
+  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
-  public JerseySSEClient(FeatureStore repository, FeatureHubConfig config, EdgeRetryService retryer) {
-    this.repository = repository;
+  public JerseySSEClient(@NotNull FeatureHubConfig config, @NotNull EdgeRetryService retryer) {
+    this((InternalFeatureRepository) null, config, retryer);
+  }
+  public JerseySSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
+                         @NotNull EdgeRetryService retryer) {
+    this.repository = repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
+
+    if (config.isServerEvaluation()) {
+      log.warn("Jersey SSE client hangs on Context attribute changes for up to 30 seconds, it is recommending using " +
+        "the pure SSE client");
+    }
 
     Client client = ClientBuilder.newBuilder()
       .register(JacksonFeature.class)
@@ -60,8 +69,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
-  public @NotNull Future<Readyness> contextChange(@Nullable String newHeader, @Nullable String contextSha) {
-    final CompletableFuture<Readyness> change = new CompletableFuture<>();
+  public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @Nullable String contextSha) {
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
     if (config.isServerEvaluation() &&
       (
@@ -93,6 +102,11 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
+  public boolean isStopped() {
+    return retryer.isStopped();
+  }
+
+  @Override
   public void close() {
     if (eventSource != null) {
       if (!eventSource.isClosed()) {
@@ -106,11 +120,6 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   @Override
   public @NotNull FeatureHubConfig getConfig() {
     return config;
-  }
-
-  @Override
-  public boolean isRequiresReplacementOnHeaderChange() {
-    return true;
   }
 
   protected EventInput makeEventSource() {
@@ -171,8 +180,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
         if (state == SSEResultState.CONFIG) {
           retryer.edgeConfigInfo(data);
-        } else {
-          repository.notify(state, data);
+        } else if (data != null) {
+          retryer.convertSSEState(state, data, repository);
         }
 
         // reset the timer
@@ -203,8 +212,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       log.trace("[featurehub-sdk] closed");
 
       // we never received a satisfactory connection
-      if (repository.getReadyness() == Readyness.NotReady) {
-        repository.notify(SSEResultState.FAILURE, null);
+      if (repository.getReadyness() == Readiness.NotReady) {
+        repository.notify(SSEResultState.FAILURE);
       }
 
       // send this once we are actually disconnected and not before
@@ -229,10 +238,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
-  public void poll() {
+  public Future<Readiness> poll() {
     if (eventSource == null) {
+      final CompletableFuture<Readiness> change = new CompletableFuture<>();
+
+      waitingClients.add(change);
       retryer.getExecutorService().submit(this::initEventSource);
+      return change;
     }
+
+    return CompletableFuture.completedFuture(repository.getReadiness());
   }
 
   @Override

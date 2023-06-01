@@ -12,16 +12,15 @@ import java.util.function.Supplier;
 
 public class ServerEvalFeatureContext extends BaseClientContext {
   private static final Logger log = LoggerFactory.getLogger(ServerEvalFeatureContext.class);
-  private final Supplier<EdgeService> edgeService;
-  private EdgeService currentEdgeService;
   private String xHeader;
-  private boolean weOwnEdge;
-
+  private final RepositoryEventHandler newFeatureStateHandler;
+  private final RepositoryEventHandler featureUpdatedHandler;
   private final MessageDigest shaDigester;
 
-  public ServerEvalFeatureContext(FeatureHubConfig config, FeatureRepositoryContext repository,
-                                  Supplier<EdgeService> edgeService) {
-    super(repository, config);
+
+  public ServerEvalFeatureContext(FeatureHubConfig config, InternalFeatureRepository repository,
+                                  EdgeService edgeService) {
+    super(repository, config, edgeService);
 
     try {
       shaDigester = MessageDigest.getInstance("SHA-256");
@@ -29,47 +28,52 @@ public class ServerEvalFeatureContext extends BaseClientContext {
       throw new RuntimeException(e);
     }
 
-    this.edgeService = edgeService;
-    this.weOwnEdge = false;
+    newFeatureStateHandler = repository.registerNewFeatureStateAvailable((fr) -> {
+      recordRelativeValuesForUser();
+    });
+
+    featureUpdatedHandler = repository.registerFeatureUpdateAvailable((fs) -> {
+      recordFeatureChangedForUser((FeatureStateBase<?>)fs);
+    });
+  }
+
+  @Override
+  public void close() {
+    super.close();
+
+    newFeatureStateHandler.cancel();
+    featureUpdatedHandler.cancel();
   }
 
   @Override
   public Future<ClientContext> build() {
-    String newHeader = FeatureStateUtils.generateXFeatureHubHeaderFromMap(clientContext);
+    String newHeader = FeatureStateUtils.generateXFeatureHubHeaderFromMap(attributes);
 
     if (newHeader != null || xHeader != null) {
       if ((newHeader != null && xHeader == null) || newHeader == null || !newHeader.equals(xHeader)) {
         xHeader = newHeader;
 
-        repository.notReady();
-
-        if (currentEdgeService != null && currentEdgeService.isRequiresReplacementOnHeaderChange()) {
-          currentEdgeService.close();
-          currentEdgeService = edgeService.get();
-        }
+        repository.repositoryNotReady();
       }
     }
 
-    if (currentEdgeService == null) {
-      currentEdgeService = edgeService.get();
-      weOwnEdge = true;
-    }
-
-    Future<?> change = currentEdgeService.contextChange(newHeader,
+    Future<?> change = edgeService.contextChange(newHeader,
       newHeader == null ? "0" : bytesToHex(shaDigester.digest(newHeader.getBytes(StandardCharsets.UTF_8))));
 
     xHeader = newHeader;
 
     CompletableFuture<ClientContext> future = new CompletableFuture<>();
 
-    try {
-      change.get();
+    repository.execute(() -> {
+      try {
+        change.get();
 
-      future.complete(this);
-    } catch (Exception e) {
-      log.error("Failed to update", e);
-      future.completeExceptionally(e);
-    }
+        future.complete(this);
+      } catch (Exception e) {
+        log.error("Failed to update", e);
+        future.completeExceptionally(e);
+      }
+    });
 
 
     return future;
@@ -86,24 +90,5 @@ public class ServerEvalFeatureContext extends BaseClientContext {
       hexString.append(hex);
     }
     return hexString.toString();
-  }
-
-  @Override
-  public EdgeService getEdgeService() {
-    return currentEdgeService;
-  }
-
-  public Supplier<EdgeService> getEdgeServiceSupplier() { return edgeService; }
-
-  @Override
-  public boolean exists(String key) {
-    return false;
-  }
-
-  @Override
-  public void close() {
-    if (weOwnEdge && currentEdgeService != null) {
-      currentEdgeService.close();
-    }
   }
 }

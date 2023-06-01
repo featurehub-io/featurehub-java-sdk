@@ -2,8 +2,9 @@ package io.featurehub.edge.sse;
 
 import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
-import io.featurehub.client.FeatureStore;
-import io.featurehub.client.Readyness;
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
@@ -28,27 +29,35 @@ import java.util.concurrent.TimeUnit;
 
 public class SSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(SSEClient.class);
-  private final FeatureStore repository;
+  private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
   private EventSource eventSource;
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
   private String xFeaturehubHeader;
   private final EdgeRetryService retryer;
-  private final List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
+  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
 
-  public SSEClient(FeatureStore repository, FeatureHubConfig config, EdgeRetryService retryer) {
-    this.repository = repository;
+  public SSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
+                   @NotNull EdgeRetryService retryer) {
+    this.repository = repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
   }
 
+  public SSEClient(@NotNull FeatureHubConfig config,
+                   @NotNull EdgeRetryService retryer) {
+    this(null, config, retryer);
+  }
+
   @Override
-  public void poll() {
+  public Future<Readiness> poll() {
     if (eventSource == null) {
       initEventSource();
     }
+
+    return CompletableFuture.completedFuture(repository.getReadiness());
   }
 
   private boolean connectionSaidBye;
@@ -73,8 +82,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       public void onClosed(@NotNull EventSource eventSource) {
         log.trace("[featurehub-sdk] closed");
 
-        if (repository.getReadyness() == Readyness.NotReady) {
-          repository.notify(SSEResultState.FAILURE, null);
+        if (repository.getReadiness() == Readiness.NotReady) {
+          repository.notify(SSEResultState.FAILURE);
         }
 
         // send this once we are actually disconnected and not before
@@ -84,7 +93,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
       @Override
       public void onEvent(@NotNull EventSource eventSource, @Nullable String id, @Nullable String type,
-                          @NotNull String data) {
+                          @Nullable String data) {
         try {
           final SSEResultState state = retryer.fromValue(type);
 
@@ -96,8 +105,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
           if (state == SSEResultState.CONFIG) {
             retryer.edgeConfigInfo(data);
-          } else {
-            repository.notify(state, data);
+          } else if (data != null) {
+            retryer.convertSSEState(state, data, repository);
           }
 
           // reset the timer
@@ -115,7 +124,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
           // tell any waiting clients we are now ready
           if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
-            waitingClients.forEach(wc -> wc.complete(repository.getReadyness()));
+            waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
           }
         } catch (Exception e) {
           log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
@@ -125,8 +134,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       @Override
       public void onFailure(@NotNull EventSource eventSource, @Nullable Throwable t, @Nullable Response response) {
         log.trace("[featurehub-sdk] failed to connect to {} - {}", config.baseUrl(), response, t);
-        if (repository.getReadyness() == Readyness.NotReady) {
-          repository.notify(SSEResultState.FAILURE, null);
+        if (repository.getReadiness() == Readiness.NotReady) {
+          repository.notify(SSEResultState.FAILURE);
         }
 
         retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
@@ -154,8 +163,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
 
   @Override
-  public @NotNull Future<Readyness> contextChange(String newHeader, String contextSha) {
-    final CompletableFuture<Readyness> change = new CompletableFuture<>();
+  public @NotNull Future<Readiness> contextChange(String newHeader, String contextSha) {
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
     if (config.isServerEvaluation() &&
       (
@@ -178,7 +187,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
       poll();
     } else {
-      change.complete(repository.getReadyness());
+      change.complete(repository.getReadiness());
     }
 
     return change;
@@ -187,6 +196,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Override
   public boolean isClientEvaluation() {
     return !config.isServerEvaluation();
+  }
+
+  @Override
+  public boolean isStopped() {
+    return retryer.isStopped();
   }
 
   @Override
@@ -216,11 +230,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Override
   public @NotNull FeatureHubConfig getConfig() {
     return config;
-  }
-
-  @Override
-  public boolean isRequiresReplacementOnHeaderChange() {
-    return false;
   }
 
   @Override

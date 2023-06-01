@@ -2,7 +2,7 @@ package io.featurehub.android
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.FeatureHubConfig
-import io.featurehub.client.FeatureStore
+import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.sse.model.FeatureEnvironmentCollection
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -12,7 +12,7 @@ class FeatureHubClientMockSpec extends Specification {
   MockWebServer mockWebServer
   FeatureHubClient client
   FeatureHubConfig config
-  FeatureStore store
+  InternalFeatureRepository store
   ObjectMapper mapper
 
   def setup() {

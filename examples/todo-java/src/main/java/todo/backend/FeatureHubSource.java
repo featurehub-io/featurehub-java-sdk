@@ -6,16 +6,15 @@ import io.featurehub.android.FeatureHubClient;
 import io.featurehub.client.ClientContext;
 import io.featurehub.client.ClientFeatureRepository;
 import io.featurehub.client.EdgeFeatureHubConfig;
-import io.featurehub.client.FeatureRepositoryContext;
-import io.featurehub.client.GoogleAnalyticsCollector;
+import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor;
-import io.featurehub.client.jersey.GoogleAnalyticsJerseyApiClient;
 import io.featurehub.client.jersey.JerseySSEClient;
 import io.featurehub.edge.sse.SSEClient;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.host")
@@ -29,7 +28,7 @@ public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.sdk")
   String clientSdk = "jersey3";
 
-  private final FeatureRepositoryContext repository;
+  private final ClientFeatureRepository repository;
   private final EdgeFeatureHubConfig config;
   @Nullable
   private final FeatureHubClient androidClient;
@@ -42,10 +41,10 @@ public class FeatureHubSource implements FeatureHub {
     repository = new ClientFeatureRepository(5);
     repository.registerValueInterceptor(true, new SystemPropertyValueInterceptor());
 
-    if (analyticsCid.length() > 0 && analyticsKey.length() > 0) {
-      repository.addAnalyticCollector(new GoogleAnalyticsCollector(analyticsKey, analyticsCid,
-        new GoogleAnalyticsJerseyApiClient()));
-    }
+//    if (analyticsCid.length() > 0 && analyticsKey.length() > 0) {
+//      repository.addAnalyticCollector(new GoogleAnalyticsCollector(analyticsKey, analyticsCid,
+//        new GoogleAnalyticsJerseyApiClient()));
+//    }
 
     config.setRepository(repository);
 
@@ -56,8 +55,7 @@ public class FeatureHubSource implements FeatureHub {
       config.setEdgeService(() -> jerseyClient);
       androidClient = null;
     } else if (clientSdk.equals("android")) {
-      final FeatureHubClient client = new FeatureHubClient(featureHubUrl, Collections.singleton(sdkKey), repository,
-        config, 1);
+      final FeatureHubClient client = new FeatureHubClient(config, 1);
       config.setEdgeService(() -> client);
       androidClient = client;
     } else if (clientSdk.equals("sse")) {
@@ -77,14 +75,20 @@ public class FeatureHubSource implements FeatureHub {
   }
 
   @Override
-  public FeatureRepositoryContext getRepository() {
-    return repository;
+  public FeatureHubConfig getConfig() {
+    return config;
   }
 
   @Override
-  public void poll() {
+  public Future<?> poll() {
     if (androidClient != null) {
-      androidClient.poll();
+      return androidClient.poll();
     }
+
+    return CompletableFuture.completedFuture(true);
+  }
+
+  public void close() {
+    config.close();
   }
 }

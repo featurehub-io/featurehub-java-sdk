@@ -8,13 +8,10 @@ import java.util.concurrent.Future;
  * This class is ONLY used when we are doing client side evaluation. So the edge service stays the same.
  */
 class ClientEvalFeatureContext extends BaseClientContext {
-  private final EdgeService edgeService;
 
-  public ClientEvalFeatureContext(FeatureHubConfig config, FeatureRepositoryContext repository,
+  public ClientEvalFeatureContext(FeatureHubConfig config, InternalFeatureRepository repository,
                                   EdgeService edgeService) {
-    super(repository, config);
-
-    this.edgeService = edgeService;
+    super(repository, config, edgeService);
   }
 
   // this doesn't matter for client eval
@@ -28,16 +25,6 @@ class ClientEvalFeatureContext extends BaseClientContext {
 
       return this;
     });
-  }
-
-  @Override
-  public FeatureState feature(String name) {
-    return repository.getFeatureState(name).withContext(this);
-  }
-
-  @Override
-  public EdgeService getEdgeService() {
-    return edgeService;
   }
 
   /**

@@ -1,18 +1,23 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.List;
 
 public interface FeatureHubConfig {
   /**
    * What is the fully deconstructed URL for the server?
    */
-  String getRealtimeUrl();
+  @NotNull String getRealtimeUrl();
 
-  String apiKey();
+  @NotNull String apiKey();
+  @NotNull List<@NotNull String> apiKeys();
 
-  String baseUrl();
+  @NotNull String baseUrl();
 
   /**
    * If you are using a client evaluated feature context, this will initialise the service and block until
@@ -31,43 +36,24 @@ public interface FeatureHubConfig {
    *
    * @return a new context
    */
-  ClientContext newContext();
+  @NotNull ClientContext newContext();
 
-  /**
-   * Allows you to create a new context for the user.
-   *
-   * @param repository - this repository is for this call only, it is not remembered, you should set the repository
-   *                   on repository() to make it the default.
-   *
-   * @param edgeService - this edgeService is for this call only, it is not remembered, you should set it on
-   *                    edgeService() to make it the default
-   * @return a new context
-   */
-  ClientContext newContext(FeatureRepositoryContext repository, Supplier<EdgeService> edgeService);
-
-  static boolean sdkKeyIsClientSideEvaluated(String sdkKey) {
-    return sdkKey.contains("*");
+  static boolean sdkKeyIsClientSideEvaluated(Collection<String> sdkKey) {
+    return sdkKey.stream().anyMatch(key -> key.contains("*"));
   }
 
-  void setRepository(FeatureRepositoryContext repository);
-  FeatureRepositoryContext getRepository();
+  void setRepository(FeatureRepository repository);
+  @NotNull FeatureRepository getRepository();
 
   void setEdgeService(Supplier<EdgeService> edgeService);
-  Supplier<EdgeService> getEdgeService();
+  @NotNull Supplier<EdgeService> getEdgeService();
 
   /**
    * Allows you to specify a readyness listener to trigger every time the repository goes from
    * being in any way not reaay, to ready.
-   * @param readynessListener
+   * @param readinessListener
    */
-  void addReadynessListener(ReadynessListener readynessListener);
-
-  /**
-   * Allows you to specify an analytics collector
-   *
-   * @param collector
-   */
-  void addAnalyticCollector(AnalyticsCollector collector);
+  @NotNull RepositoryEventHandler addReadinessListener(@NotNull Consumer<Readiness> readinessListener);
 
   /**
    * Allows you to register a value interceptor
@@ -80,7 +66,7 @@ public interface FeatureHubConfig {
    * Allows you to query the state of the repository's readyness - such as in a heartbeat API
    * @return
    */
-  Readyness getReadyness();
+  @NotNull Readiness getReadiness();
 
   /**
    * Allows you to override how your config will be deserialized when "getJson" is called.

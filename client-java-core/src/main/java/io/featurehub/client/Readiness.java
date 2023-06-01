@@ -1,5 +1,5 @@
 package io.featurehub.client;
 
-public enum Readyness {
+public enum Readiness {
   NotReady, Ready, Failed
 }

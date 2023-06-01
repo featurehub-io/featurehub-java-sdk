@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
-import io.featurehub.client.FeatureStore;
-import io.featurehub.client.Readyness;
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.Readiness;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -35,10 +34,10 @@ import java.util.stream.Collectors;
 
 public class FeatureHubClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(FeatureHubClient.class);
-  private final FeatureStore repository;
-  private final Call.Factory client;
+  @NotNull private final InternalFeatureRepository repository;
+  @NotNull private final Call.Factory client;
   private boolean makeRequests;
-  private final String url;
+  @NotNull private final String url;
   private final ObjectMapper mapper = new ObjectMapper();
   @Nullable
   private String xFeaturehubHeader;
@@ -52,11 +51,15 @@ public class FeatureHubClient implements EdgeService {
 
   private long whenPollingCacheExpires;
   private final boolean clientSideEvaluation;
-  private final FeatureHubConfig config;
-  private final ExecutorService executorService;
+  @NotNull private final FeatureHubConfig config;
+  @NotNull private final ExecutorService executorService;
 
-  public FeatureHubClient(String host, Collection<String> sdkUrls, FeatureStore repository,
-                          Call.Factory client, FeatureHubConfig config, int timeoutInSeconds) {
+  public FeatureHubClient(@Nullable InternalFeatureRepository repository,
+                          Call.@NotNull Factory client, @NotNull FeatureHubConfig config, int timeoutInSeconds) {
+    if (repository == null) {
+      repository = (InternalFeatureRepository) config.getRepository();
+    }
+
     this.repository = repository;
     this.client = client;
     this.config = config;
@@ -65,20 +68,14 @@ public class FeatureHubClient implements EdgeService {
     // ensure the poll has expired the first time we ask for it
     whenPollingCacheExpires = System.currentTimeMillis() - 100;
 
-    if (host != null && sdkUrls != null && !sdkUrls.isEmpty()) {
-      this.clientSideEvaluation = sdkUrls.stream().anyMatch(FeatureHubConfig::sdkKeyIsClientSideEvaluated);
+    this.clientSideEvaluation = !config.isServerEvaluation();
+    this.makeRequests = true;
+    executorService = makeExecutorService();
 
-      this.makeRequests = true;
+    url = config.baseUrl() + "/features?" + config.apiKeys().stream().map(u -> "apiKey=" + u).collect(Collectors.joining("&"));
 
-      executorService = makeExecutorService();
-
-      url = host + "/features?" + sdkUrls.stream().map(u -> "apiKey=" + u).collect(Collectors.joining("&"));
-
-      if (clientSideEvaluation) {
-        checkForUpdates();
-      }
-    } else {
-      throw new RuntimeException("FeatureHubClient initialized without any sdkUrls");
+    if (clientSideEvaluation) {
+      checkForUpdates(null);
     }
   }
 
@@ -86,34 +83,46 @@ public class FeatureHubClient implements EdgeService {
     return Executors.newWorkStealingPool();
   }
 
-  public FeatureHubClient(String host, Collection<String> sdkUrls, FeatureStore repository, FeatureHubConfig config,
+  public FeatureHubClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                           int timeoutInSeconds) {
-    this(host, sdkUrls, repository, (Call.Factory) new OkHttpClient(), config, timeoutInSeconds);
+    this(repository, (Call.Factory) new OkHttpClient(), config, timeoutInSeconds);
   }
 
-  public FeatureHubClient(String host, Collection<String> sdkUrls, FeatureStore repository, FeatureHubConfig config) {
-    this(host, sdkUrls, repository, (Call.Factory) new OkHttpClient(), config, 180);
+  public FeatureHubClient(@NotNull FeatureHubConfig config,
+                          int timeoutInSeconds) {
+    this(null, (Call.Factory) new OkHttpClient(), config, timeoutInSeconds);
+  }
+
+  public FeatureHubClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config) {
+    this(repository, (Call.Factory) new OkHttpClient(), config, 180);
+  }
+
+  public FeatureHubClient(@NotNull FeatureHubConfig config) {
+    this(null, (Call.Factory) new OkHttpClient(), config, 180);
   }
 
   private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
   private boolean busy = false;
-  private boolean triggeredAtLeastOnce = false;
   private boolean headerChanged = false;
-  private List<CompletableFuture<Readyness>> waitingClients = new ArrayList<>();
+  private List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
   protected Long now() {
     return System.currentTimeMillis();
   }
 
-  public boolean checkForUpdates() {
+  public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
     final boolean breakCache = now() > whenPollingCacheExpires || headerChanged;
     final boolean ask = makeRequests && !busy && !stopped && breakCache;
 
     headerChanged = false;
 
     if (ask) {
+      if (change != null) {
+        // we are going to call, so we take a note of who we need to tell
+        waitingClients.add(change);
+      }
+
       busy = true;
-      triggeredAtLeastOnce = true;
 
       String url = this.url + "&contextSha=" + xContextSha;
       log.debug("Url is {}", url);
@@ -152,7 +161,7 @@ public class FeatureHubClient implements EdgeService {
     return etag;
   }
 
-  protected void setEtag(String etag) {
+  protected void setEtag(@Nullable String etag) {
     this.etag = etag;
   }
 
@@ -167,7 +176,7 @@ public class FeatureHubClient implements EdgeService {
     if (matcher.find()) {
       final String interval = matcher.group().split("=")[1];
       try {
-        Long newInterval = Long.parseLong(interval);
+        long newInterval = Long.parseLong(interval);
         if (newInterval > 0) {
           this.pollingInterval = newInterval;
         }
@@ -179,7 +188,7 @@ public class FeatureHubClient implements EdgeService {
 
   protected void processFailure(@NotNull IOException e) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE, null);
+    repository.notify(SSEResultState.FAILURE);
     busy = false;
     completeReadiness();
   }
@@ -212,7 +221,7 @@ public class FeatureHubClient implements EdgeService {
           }
         });
 
-        repository.notify(states);
+        repository.updateFeatures(states);
         completeReadiness();
 
         if (response.code() == 236) {
@@ -226,7 +235,7 @@ public class FeatureHubClient implements EdgeService {
       } else if (response.code() == 400 || response.code() == 404) {
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
-        repository.notify(SSEResultState.FAILURE, null);
+        repository.notify(SSEResultState.FAILURE);
         completeReadiness();
       }
     }
@@ -236,10 +245,10 @@ public class FeatureHubClient implements EdgeService {
     return makeRequests && !stopped;
   }
 
-  boolean isStopped() { return stopped; }
+  public boolean isStopped() { return stopped; }
 
   private void completeReadiness() {
-    List<CompletableFuture<Readyness>> current = waitingClients;
+    List<CompletableFuture<Readiness>> current = waitingClients;
     waitingClients = new ArrayList<>();
     current.forEach(c -> {
       try {
@@ -251,17 +260,17 @@ public class FeatureHubClient implements EdgeService {
   }
 
   @Override
-  public @NotNull Future<Readyness> contextChange(@Nullable String newHeader, @NotNull String contextSha) {
-    final CompletableFuture<Readyness> change = new CompletableFuture<>();
+  public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @NotNull String contextSha) {
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
     headerChanged = (newHeader != null && !newHeader.equals(xFeaturehubHeader));
 
     xFeaturehubHeader = newHeader;
     xContextSha = contextSha;
 
-    if (checkForUpdates() || busy) {
+    if (busy) {
       waitingClients.add(change);
-    } else {
+    } else if (!checkForUpdates(change)) {
       change.complete(repository.getReadyness());
     }
 
@@ -292,13 +301,17 @@ public class FeatureHubClient implements EdgeService {
   }
 
   @Override
-  public boolean isRequiresReplacementOnHeaderChange() {
-    return false;
-  }
+  public Future<Readiness> poll() {
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-  @Override
-  public void poll() {
-    checkForUpdates();
+    if (busy) {
+      waitingClients.add(change);
+    } else if (!checkForUpdates(change)) {
+      // not even planning to ask
+      change.complete(repository.getReadyness());
+    }
+
+    return change;
   }
 
   public long getWhenPollingCacheExpires() {

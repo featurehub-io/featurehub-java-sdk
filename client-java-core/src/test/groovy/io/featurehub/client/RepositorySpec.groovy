@@ -32,7 +32,7 @@ class RepositorySpec extends Specification {
     when: "ask for the readyness status"
       def ready = repo.readyness
     then:
-      ready == Readyness.NotReady
+      ready == Readiness.NotReady
   }
 
   def "a set of features should trigger readyness and make all features available"() {
@@ -44,12 +44,12 @@ class RepositorySpec extends Specification {
         new FeatureState().id(UUID.randomUUID()).key('peach_config').version(1L).value("{}").type(FeatureValueType.JSON),
       ]
     and: "we have a readyness listener"
-      def readynessListener = Mock(ReadynessListener)
-      repo.addReadynessListener(readynessListener)
+      def readynessListener = Mock(ReadinessListener)
+      repo.addReadinessListener(readynessListener)
     when:
       repo.notify(SSEResultState.FEATURES, new ObjectMapper().writeValueAsString(features))
     then:
-      1 * readynessListener.notify(Readyness.Ready)
+      1 * readynessListener.notify(Readiness.Ready)
       !repo.getFeatureState('banana').boolean
       repo.getFeatureState('banana').key == 'banana'
       repo.exists('banana')
@@ -206,16 +206,16 @@ class RepositorySpec extends Specification {
         new FeatureState().id(UUID.randomUUID()).key('banana').version(1L).value(false).type(FeatureValueType.BOOLEAN),
       ]
     and: "i notify the repo"
-      def mockReadyness = Mock(ReadynessListener)
-      repo.addReadynessListener(mockReadyness)
+      def mockReadyness = Mock(ReadinessListener)
+      repo.addReadinessListener(mockReadyness)
       repo.notify(features)
       def readyness = repo.readyness
     when: "i indicate failure"
       repo.notify(SSEResultState.FAILURE, null)
     then: "we swap to not ready"
-      repo.readyness == Readyness.Failed
-      readyness == Readyness.Ready
-      1 * mockReadyness.notify(Readyness.Failed)
+      repo.readyness == Readiness.Failed
+      readyness == Readiness.Ready
+      1 * mockReadyness.notify(Readiness.Failed)
   }
 
   def "ack and bye are ignored"() {
@@ -229,7 +229,7 @@ class RepositorySpec extends Specification {
       repo.notify(SSEResultState.ACK, null)
       repo.notify(SSEResultState.BYE, null)
     then:
-      repo.readyness == Readyness.Ready
+      repo.readyness == Readiness.Ready
   }
 
   def "i can attach to a feature before it is added and receive notifications when it is"() {

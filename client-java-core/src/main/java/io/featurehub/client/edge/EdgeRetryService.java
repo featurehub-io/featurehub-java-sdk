@@ -1,6 +1,8 @@
 package io.featurehub.client.edge;
 
+import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.sse.model.SSEResultState;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.ExecutorService;
@@ -15,6 +17,8 @@ public interface EdgeRetryService {
   void edgeConfigInfo(String config);
 
   @Nullable SSEResultState fromValue(String value);
+  void convertSSEState(@NotNull SSEResultState state, @NotNull String data, @NotNull InternalFeatureRepository
+                       repository);
 
   void close();
 
@@ -33,4 +37,6 @@ public interface EdgeRetryService {
   int getBackoffMultiplier();
 
   boolean isNotFoundState();
+
+  boolean isStopped();
 }
