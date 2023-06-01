@@ -4,7 +4,7 @@ import cd.connect.app.config.ConfigKey;
 import cd.connect.app.config.DeclaredConfigResolver;
 import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
-import io.featurehub.client.Readyness;
+import io.featurehub.client.Readiness;
 import org.glassfish.grizzly.http.server.HttpServer;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
@@ -52,8 +52,8 @@ public class Application {
 
     // call "server.start()" here if you wish to start the application without waiting for features
     log.info("Waiting on a complete list of features before starting.");
-    fhSource.getRepository().addReadynessListener((ready) -> {
-      if (ready == Readyness.Ready) {
+    fhSource.getConfig().addReadinessListener((ready) -> {
+      if (ready == Readiness.Ready) {
         try {
           server.start();
         } catch (IOException e) {
@@ -62,13 +62,14 @@ public class Application {
         }
 
         log.info("Application started. (HTTP/2 enabled!) -> {}", BASE_URI);
-      } else if (ready == Readyness.Failed) {
+      } else if (ready == Readiness.Failed) {
         log.info("Connection failed, wait for it to come back up.");
       }
     });
 
     ApplicationLifecycleManager.registerListener(trans -> {
       if (trans.next == LifecycleStatus.TERMINATING) {
+        fhSource.close();
         server.shutdown(10, TimeUnit.SECONDS);
       }
     });

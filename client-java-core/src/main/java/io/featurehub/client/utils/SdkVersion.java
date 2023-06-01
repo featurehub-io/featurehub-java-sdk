@@ -10,7 +10,7 @@ public class SdkVersion {
   private static String version = null;
   private static String constructedVariant = null;
 
-  public static String SSE_API_VERSION = "1.1.2"; // while we are compiled against 1.1.3, we don't understand it
+  public static String SSE_API_VERSION = "1.1.3";
 
   public static String sdkVersionHeader(String variant) {
     if (constructedVariant == null) {

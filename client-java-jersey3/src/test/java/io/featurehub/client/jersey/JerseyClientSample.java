@@ -6,7 +6,6 @@ import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.Feature;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureRepository;
-import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
@@ -26,9 +25,9 @@ public class JerseyClientSample {
 
     FeatureRepository cfr = config.getRepository();
 
-    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
+    cfr.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
 
-    config.setEdgeService(() -> new JerseySSEClient(config.getRepository(), config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
+    config.setEdgeService(() -> new JerseySSEClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
 
     config.init();
     final ClientContext ctx = config.newContext();

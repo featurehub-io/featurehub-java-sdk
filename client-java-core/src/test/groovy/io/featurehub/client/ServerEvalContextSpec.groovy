@@ -24,7 +24,7 @@ class ServerEvalContextSpec extends Specification {
       scc.userKey("fred").build()
       scc.clear().build();
     then: ""
-      2 * repo.notReady()
+      2 * repo.repositoryNotReady()
       2 * edge.isRequiresReplacementOnHeaderChange()
       2 * edge.contextChange(null, '0') >> {
         def future = new CompletableFuture<>()

@@ -2,12 +2,17 @@ package io.featurehub.client.edge;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +33,9 @@ public class EdgeRetryer implements EdgeRetryService {
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
   private boolean notFoundState = false;
   private boolean stopped = false;
+
+  private final TypeReference<List<FeatureState>> FEATURE_LIST_TYPEDEF =
+    new TypeReference<List<io.featurehub.sse.model.FeatureState>>() {};
 
   protected EdgeRetryer(int serverConnectTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs) {
@@ -102,6 +110,26 @@ public class EdgeRetryer implements EdgeRetryService {
     }
   }
 
+  @Override
+  public void convertSSEState(@NotNull SSEResultState state, @NotNull String data,
+                              @NotNull InternalFeatureRepository repository) {
+    try {
+      if (state == SSEResultState.FEATURES) {
+        List<FeatureState> features =
+          repository.getJsonObjectMapper().readValue(data, FEATURE_LIST_TYPEDEF);
+        repository.updateFeatures(features);
+      } else if (state == SSEResultState.FEATURE) {
+        repository.updateFeature(repository.getJsonObjectMapper().readValue(data,
+          io.featurehub.sse.model.FeatureState.class));
+      } else if (state == SSEResultState.DELETE_FEATURE) {
+        repository.deleteFeature(repository.getJsonObjectMapper().readValue(data,
+          io.featurehub.sse.model.FeatureState.class));
+      }
+    } catch (JsonProcessingException jpe) {
+      throw new RuntimeException("JSON failed", jpe);
+    }
+  }
+
   public void close() {
     executorService.shutdownNow();
   }
@@ -144,6 +172,11 @@ public class EdgeRetryer implements EdgeRetryService {
   @Override
   public boolean isNotFoundState() {
     return notFoundState;
+  }
+
+  @Override
+  public boolean isStopped() {
+    return stopped;
   }
 
   // holds the thread for a specific period of time and then returns

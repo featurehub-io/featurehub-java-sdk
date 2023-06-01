@@ -1,7 +1,7 @@
 package io.featurehub.android
 
 import io.featurehub.client.FeatureHubConfig
-import io.featurehub.client.FeatureStore
+import io.featurehub.client.InternalFeatureRepository
 import okhttp3.Call
 import okhttp3.Request
 import spock.lang.Specification
@@ -9,7 +9,7 @@ import spock.lang.Specification
 class FeatureHubClientSpec extends Specification {
   Call.Factory client
   Call call;
-  FeatureStore repo
+  InternalFeatureRepository repo
   FeatureHubClient fhc
 
   def "a null sdk url will never trigger a call"() {
@@ -17,7 +17,7 @@ class FeatureHubClientSpec extends Specification {
       call = Mock()
       def fhc = new FeatureHubClient(null, null, null, client, Mock(FeatureHubConfig), 0)
     and: "check for updates"
-      fhc.checkForUpdates()
+      fhc.checkForUpdates(change)
     then:
       thrown RuntimeException
   }
@@ -40,7 +40,7 @@ class FeatureHubClientSpec extends Specification {
     and: "i specify a header"
       fhc.contextChange("fred=mary", "bonkers")
     when: "i check for updates"
-      fhc.checkForUpdates()
+      fhc.checkForUpdates(change)
     then:
       1 == 1
   }

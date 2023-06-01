@@ -27,7 +27,7 @@ public class JerseyClientSample {
 
     FeatureRepository cfr = ctx.getRepository();
 
-    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
+    cfr.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
 
     System.out.println("Wait for readyness or hit enter if server eval key");
 

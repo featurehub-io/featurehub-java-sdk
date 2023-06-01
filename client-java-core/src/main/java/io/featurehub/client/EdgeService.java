@@ -13,13 +13,19 @@ public interface EdgeService {
    * @return a completable future when it has actually changed
    */
   @NotNull
-  Future<Readyness> contextChange(@Nullable String newHeader, String contextSha);
+  Future<Readiness> contextChange(@Nullable String newHeader, String contextSha);
 
   /**
    * are we doing client side evaluation?
    * @return
    */
   boolean isClientEvaluation();
+
+  /**
+   * Has been stopped for some reason
+   * @return true if stopped
+   */
+  boolean isStopped();
 
   /**
    * Shut down this service
@@ -29,7 +35,9 @@ public interface EdgeService {
   @NotNull
   FeatureHubConfig getConfig();
 
-  boolean isRequiresReplacementOnHeaderChange();
-
-  void poll();
+  /**
+   * @return a future which will be completed when the poll has finished. for SSE this will be the 1st return, for
+   * REST it will be the response.
+   */
+  Future<Readiness> poll();
 }

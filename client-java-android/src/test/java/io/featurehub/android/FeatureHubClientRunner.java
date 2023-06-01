@@ -17,13 +17,13 @@ public class FeatureHubClientRunner {
       "default/82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN");
 
     final ClientContext ctx = config.newContext();
-    ctx.getRepository().addReadynessListener(rl -> System.out.println("readyness " + rl.toString()));
+    ctx.getRepository().addReadinessListener(rl -> System.out.println("readyness " + rl.toString()));
 
     final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();
 
     FeatureRepository cfr = ctx.getRepository();
 
-    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
+    cfr.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
 
     System.out.println("Wait for readyness or hit enter if server eval key");
 

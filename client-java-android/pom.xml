@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>java-client-android</artifactId>
-  <version>2.3-SNAPSHOT</version>
+  <version>3.1-SNAPSHOT</version>
   <name>java-client-android</name>
 
   <description>
@@ -47,7 +47,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-core</artifactId>
-      <version>[3, 4)</version>
+      <version>[4, 5)</version>
     </dependency>
 
     <dependency>

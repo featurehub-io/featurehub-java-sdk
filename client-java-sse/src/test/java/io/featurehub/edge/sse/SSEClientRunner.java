@@ -18,13 +18,15 @@ public class SSEClientRunner {
     ClientFeatureRepository cfr = new ClientFeatureRepository();
     EdgeRetryer retryer = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build();
 
-    final ClientContext ctx = config.newContext(cfr, () -> new SSEClient(cfr, config, retryer)).build().get();
-    ctx.getRepository().addReadynessListener(rl -> System.out.println("readyness " + rl.toString()));
+    config.setEdgeService(() -> new SSEClient(cfr, config, retryer));
+    config.setRepository(cfr);
+    final ClientContext ctx = config.newContext(cfr, ).build().get();
+    ctx.getRepository().addReadinessListener(rl -> System.out.println("readyness " + rl.toString()));
 
     final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();
 
 
-    cfr.addReadynessListener((rl) -> System.out.println("Readyness is " + rl));
+    cfr.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
 
     System.out.println("Wait for readyness or hit enter if server eval key");
 

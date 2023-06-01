@@ -6,8 +6,11 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.ServiceLoader;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {
@@ -19,22 +22,31 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @NotNull
   private final String edgeUrl;
   @NotNull
-  private final String apiKey;
+  private final List<String> apiKeys;
+  @NotNull
+  private InternalFeatureRepository repository = new ClientFeatureRepository();
   @Nullable
-  private FeatureRepositoryContext repository;
+  private EdgeService edgeService;
   @Nullable
-  private Supplier<EdgeService> edgeService;
+  private Supplier<EdgeService> edgeServiceSupplier;
+
+  @Nullable private ServerEvalFeatureContext serverEvalFeatureContext;
 
   @Nullable
   private EdgeService edgeClient;
 
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
+    this(edgeUrl, Collections.singletonList(apiKey));
+  }
 
-    if (apiKey == null || edgeUrl == null) {
-      throw new RuntimeException("Both edge url and sdk key must be set.");
+  public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull List<String> apiKeys) {
+    this.apiKeys = apiKeys;
+
+    if (this.apiKeys.isEmpty()) {
+      throw new RuntimeException("Cannot use empty list of sdk keys");
     }
 
-    serverEvaluation = !FeatureHubConfig.sdkKeyIsClientSideEvaluated(apiKey);
+    serverEvaluation = !FeatureHubConfig.sdkKeyIsClientSideEvaluated(apiKeys);
 
     if (edgeUrl.endsWith("/")) {
       edgeUrl = edgeUrl.substring(0, edgeUrl.length()-1);
@@ -45,9 +57,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     }
 
     this.edgeUrl = String.format("%s", edgeUrl);
-    this.apiKey = apiKey;
 
-    realtimeUrl = String.format("%s/features/%s", edgeUrl, apiKey);
+    realtimeUrl = String.format("%s/features/%s", edgeUrl, apiKeys.get(0));
   }
 
   @Override
@@ -59,7 +70,12 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   @NotNull
   public String apiKey() {
-    return apiKey;
+    return apiKeys.get(0);
+  }
+
+  @Override
+  public List<String> apiKeys() {
+    return apiKeys;
   }
 
   @Override
@@ -89,37 +105,16 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   @NotNull
   public ClientContext newContext() {
-    return newContext(null, null);
-  }
-
-  @Override
-  @NotNull
-  public ClientContext newContext(@Nullable FeatureRepositoryContext repository,
-                                  @Nullable Supplier<EdgeService> edgeService) {
-    if (repository == null) {
-      if (this.repository == null) {
-        this.repository = new ClientFeatureRepository();
-      }
-
-      repository = this.repository;
-    }
-
-    if (edgeService == null) {
-      if (this.edgeService == null) {
-        this.edgeService = loadEdgeService(repository);
-      }
-
-      edgeService = this.edgeService;
+    if (this.edgeService == null) {
+      this.edgeService = loadEdgeService(repository).get();
     }
 
     if (isServerEvaluation()) {
-      return new ServerEvalFeatureContext(this, repository, edgeService);
-    }
+      if (serverEvalFeatureContext == null) {
+        serverEvalFeatureContext = new ServerEvalFeatureContext(this, repository, edgeService);
+      }
 
-    // we are using a single connection to the remote server, so we hold onto the
-    // edge client. If they call close on here it will allow it to be reopened.
-    if (edgeClient == null) {
-      edgeClient = edgeService.get();
+      return serverEvalFeatureContext;
     }
 
     return new ClientEvalFeatureContext(this, repository, edgeClient);
@@ -129,57 +124,50 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
    * dynamically load an edge service implementation
    */
   @NotNull
-  protected Supplier<EdgeService> loadEdgeService(@NotNull  FeatureRepositoryContext repository) {
-    ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
+  protected Supplier<EdgeService> loadEdgeService(@NotNull  InternalFeatureRepository repository) {
+    if (edgeServiceSupplier == null) {
+      ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 
-    for(FeatureHubClientFactory f : loader) {
-      Supplier<EdgeService> edgeService = f.createEdgeService(this, repository);
-      if (edgeService != null) {
-        return edgeService;
+      for (FeatureHubClientFactory f : loader) {
+        Supplier<EdgeService> edgeService = f.createEdgeService(this, repository);
+        if (edgeService != null) {
+          edgeServiceSupplier = edgeService;
+          break;
+        }
       }
     }
+
+    if (edgeServiceSupplier != null)
+      return edgeServiceSupplier;
 
     throw new RuntimeException("Unable to find an edge service for featurehub, please include one on classpath.");
   }
 
   @Override
-  public void setRepository(@NotNull FeatureRepositoryContext repository) {
-    this.repository = repository;
+  public void setRepository(@NotNull FeatureRepository repository) {
+    this.repository = (InternalFeatureRepository) repository;
   }
 
   @Override
   @NotNull
-  public FeatureRepositoryContext getRepository() {
-    if (repository == null) {
-      repository = new ClientFeatureRepository();
-    }
-
+  public FeatureRepository getRepository() {
     return repository;
   }
 
   @Override
   public void setEdgeService(@NotNull Supplier<EdgeService> edgeService) {
-    this.edgeService = edgeService;
+    this.edgeServiceSupplier = edgeService;
   }
 
   @Override
   @NotNull
   public Supplier<EdgeService> getEdgeService() {
-    if (edgeService == null) {
-      edgeService = loadEdgeService(getRepository());
-    }
-
-    return edgeService;
+    return loadEdgeService(repository);
   }
 
   @Override
-  public void addReadynessListener(@NotNull ReadynessListener readynessListener) {
-    getRepository().addReadynessListener(readynessListener);
-  }
-
-  @Override
-  public void addAnalyticCollector(@NotNull AnalyticsCollector collector) {
-    getRepository().addAnalyticCollector(collector);
+  public @NotNull RepositoryEventHandler addReadinessListener(@NotNull Consumer<Readiness> readinessListener) {
+    return repository.addReadinessListener(readinessListener);
   }
 
   @Override
@@ -189,8 +177,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   @NotNull
-  public Readyness getReadyness() {
-    return getRepository().getReadyness();
+  public Readiness getReadiness() {
+    return getRepository().getReadiness();
   }
 
   @Override

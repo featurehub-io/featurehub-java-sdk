@@ -47,7 +47,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       config.setRepository(repo)
     and: "I have some values ready to set"
       def om = new ObjectMapper()
-      def readynessListener = Mock(ReadynessListener)
+      def readynessListener = Mock(ReadinessListener)
       def analyticsCollector = Mock(AnalyticsCollector)
       def featureValueOverride = Mock(FeatureValueInterceptor)
     when: "i set all the passthrough settings"
@@ -57,7 +57,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       config.registerValueInterceptor(false, featureValueOverride)
     then:
       1 * repo.registerValueInterceptor(false, featureValueOverride)
-      1 * repo.addReadynessListener(readynessListener)
+      1 * repo.addReadinessListener(readynessListener)
       1 * repo.addAnalyticCollector(analyticsCollector)
       1 * repo.setJsonConfigObjectMapper(om)
       0 * _  // nothing else
@@ -121,7 +121,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
     then:
       config.repository instanceof ClientFeatureRepository
-      config.readyness == Readyness.NotReady
+      config.readyness == Readiness.NotReady
       config.edgeService == FeatureHubTestClientFactory.edgeServiceSupplier
   }
 
@@ -134,13 +134,13 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def repo = Mock(FeatureRepositoryContext)
       config.repository = repo
     and: "i mock out the futures"
-      def mockRequest = Mock(Future<Readyness>)
+      def mockRequest = Mock(Future<Readiness>)
     when:
       config.init()
     then:
       1 * supplier.get() >> client
       1 * client.contextChange(null, '0') >> mockRequest
-      1 * mockRequest.get() >> Readyness.Ready
+      1 * mockRequest.get() >> Readiness.Ready
       0 * _
   }
 }

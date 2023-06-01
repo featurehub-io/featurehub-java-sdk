@@ -1,14 +1,13 @@
 package io.featurehub.edge.sse
 
-import io.featurehub.client.ClientFeatureRepository
+
 import io.featurehub.client.FeatureHubConfig
-import io.featurehub.client.FeatureStore
-import io.featurehub.client.Readyness
+import io.featurehub.client.InternalFeatureRepository
+import io.featurehub.client.Readiness
 import io.featurehub.client.edge.EdgeConnectionState
 import io.featurehub.client.edge.EdgeRetryService
 import io.featurehub.sse.model.SSEResultState
 import okhttp3.Request
-import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import spock.lang.Specification
@@ -16,7 +15,7 @@ import spock.lang.Specification
 class SSEClientSpec extends Specification {
   EventSource mockEventSource
   EdgeRetryService retry
-  FeatureStore repository
+  InternalFeatureRepository repository
   FeatureHubConfig config
   EventSourceListener esListener
   SSEClient client
@@ -25,7 +24,7 @@ class SSEClientSpec extends Specification {
   def setup() {
     mockEventSource = Mock(EventSource)
     retry = Mock(EdgeRetryService)
-    repository = Mock(FeatureStore)
+    repository = Mock(InternalFeatureRepository)
     config = Mock(FeatureHubConfig)
     config.realtimeUrl >> "http://special"
 
@@ -78,7 +77,7 @@ class SSEClientSpec extends Specification {
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.fromValue('bye') >> SSEResultState.BYE
       1 * repository.notify(SSEResultState.FAILURE, null)
-      1 * repository.readyness >> Readyness.NotReady
+      1 * repository.readyness >> Readiness.NotReady
   }
 
   def "success then close with no bye"() {
@@ -91,7 +90,7 @@ class SSEClientSpec extends Specification {
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
       1 * repository.notify(SSEResultState.FAILURE, null)
-      1 * repository.readyness >> Readyness.NotReady
+      1 * repository.readyness >> Readiness.NotReady
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
   }
 
@@ -101,7 +100,7 @@ class SSEClientSpec extends Specification {
 //      esListener.onOpen(mockEventSource, Mock(Response))
       esListener.onFailure(mockEventSource, null, null)
     then:
-      1 * repository.readyness >> Readyness.NotReady
+      1 * repository.readyness >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE, null)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
   }
@@ -112,10 +111,10 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, "1", "features", "data")
     then:
       1 * repository.notify(SSEResultState.FEATURES, "data")
-      1 * repository.readyness >> Readyness.Failed
+      1 * repository.readyness >> Readiness.Failed
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
-      future.get() == Readyness.Failed
+      future.get() == Readiness.Failed
   }
 
   def "when i context change with a server side key, it creates a request with the header"() {
@@ -148,13 +147,13 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, '1', 'features', 'data')
     then:
       2 * config.serverEvaluation >> true
-      2 * repository.readyness >> Readyness.Ready
+      2 * repository.readyness >> Readiness.Ready
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       request.header("x-featurehub") == "header2"
       future1.done
       future2.done
-      future1.get() == Readyness.Ready
-      future2.get() == Readyness.Ready
+      future1.get() == Readiness.Ready
+      future2.get() == Readiness.Ready
   }
 
   def "when config says client evaluated code, this will echo"() {
