@@ -83,11 +83,6 @@ public class FeatureHubClient implements EdgeService {
     return Executors.newWorkStealingPool();
   }
 
-  public FeatureHubClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
-                          int timeoutInSeconds) {
-    this(repository, (Call.Factory) new OkHttpClient(), config, timeoutInSeconds);
-  }
-
   public FeatureHubClient(@NotNull FeatureHubConfig config,
                           int timeoutInSeconds) {
     this(null, (Call.Factory) new OkHttpClient(), config, timeoutInSeconds);
@@ -125,7 +120,7 @@ public class FeatureHubClient implements EdgeService {
       busy = true;
 
       String url = this.url + "&contextSha=" + xContextSha;
-      log.debug("Url is {}", url);
+      log.trace("request url is {}", url);
       Request.Builder reqBuilder = new Request.Builder().url(url);
 
       if (xFeaturehubHeader != null) {
@@ -157,7 +152,7 @@ public class FeatureHubClient implements EdgeService {
     return ask;
   }
 
-  protected String getEtag() {
+  protected @Nullable String getEtag() {
     return etag;
   }
 
@@ -196,6 +191,8 @@ public class FeatureHubClient implements EdgeService {
   protected void processResponse(Response response) throws IOException {
     busy = false;
 
+    log.trace("response code is {}", response.code());
+
     // check the cache-control for the max-age
     final String cacheControlHeader = response.header("cache-control");
     if (cacheControlHeader != null) {
@@ -210,8 +207,15 @@ public class FeatureHubClient implements EdgeService {
 
     try (ResponseBody body = response.body()) {
       if (response.isSuccessful() && body != null) {
-        List<FeatureEnvironmentCollection> environments = mapper.readValue(body.bytes(), ref);
-        log.debug("updating feature repository: {}", environments);
+        List<FeatureEnvironmentCollection> environments;
+
+        try {
+          environments = mapper.readValue(body.bytes(), ref);
+        } catch (Exception e) {
+          log.error("Failed to process successful response from FH Edge server", e);
+          processFailure(new IOException(e));
+          return;
+        }
 
         List<FeatureState> states = new ArrayList<>();
         environments.forEach(e -> {
@@ -220,6 +224,8 @@ public class FeatureHubClient implements EdgeService {
             states.addAll(e.getFeatures());
           }
         });
+
+        log.trace("updating feature repository: {}", states);
 
         repository.updateFeatures(states);
         completeReadiness();
@@ -237,7 +243,11 @@ public class FeatureHubClient implements EdgeService {
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE);
         completeReadiness();
+      } else if (response.code() >= 500) {
+        completeReadiness(); // we haven't changed anything, but we have to unblock clients as we can't just hang
       }
+    } catch (Exception e) {
+      log.error("Failed to parse response {}", response.code(), e);
     }
   }
 
@@ -252,7 +262,7 @@ public class FeatureHubClient implements EdgeService {
     waitingClients = new ArrayList<>();
     current.forEach(c -> {
       try {
-        c.complete(repository.getReadyness());
+        c.complete(repository.getReadiness());
       } catch (Exception e) {
         log.error("Unable to complete future", e);
       }
@@ -271,7 +281,7 @@ public class FeatureHubClient implements EdgeService {
     if (busy) {
       waitingClients.add(change);
     } else if (!checkForUpdates(change)) {
-      change.complete(repository.getReadyness());
+      change.complete(repository.getReadiness());
     }
 
     return change;
@@ -290,6 +300,8 @@ public class FeatureHubClient implements EdgeService {
 
     if (client instanceof OkHttpClient) {
       ((OkHttpClient)client).dispatcher().executorService().shutdownNow();
+    } else {
+      log.warn("client is not OKHttpClient {}", client.getClass().getName());
     }
 
     executorService.shutdownNow();
@@ -308,7 +320,7 @@ public class FeatureHubClient implements EdgeService {
       waitingClients.add(change);
     } else if (!checkForUpdates(change)) {
       // not even planning to ask
-      change.complete(repository.getReadyness());
+      change.complete(repository.getReadiness());
     }
 
     return change;

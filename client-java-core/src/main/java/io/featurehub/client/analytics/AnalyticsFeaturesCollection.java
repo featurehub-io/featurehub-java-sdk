@@ -12,7 +12,7 @@ import java.util.Map;
 public class AnalyticsFeaturesCollection extends AnalyticsEvent {
   @NotNull List<FeatureHubAnalyticsValue> featureValues = new ArrayList<>();
 
-  public AnalyticsFeaturesCollection(@Nullable String userKey, @NotNull Map<String, Object> additionalParams) {
+  public AnalyticsFeaturesCollection(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     super(userKey, additionalParams);
   }
 
@@ -25,7 +25,7 @@ public class AnalyticsFeaturesCollection extends AnalyticsEvent {
   void ready() {}
 
   @Override
-  @NotNull Map<String, Object> toMap() {
+  @NotNull protected Map<String, Object> toMap() {
     Map<String, Object> m = new HashMap<>(super.toMap());
     featureValues.forEach((fv) -> m.put(fv.key, fv.value));
 

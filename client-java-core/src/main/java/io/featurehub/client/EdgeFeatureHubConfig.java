@@ -1,6 +1,7 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.featurehub.client.analytics.AnalyticsProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -31,9 +32,6 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private Supplier<EdgeService> edgeServiceSupplier;
 
   @Nullable private ServerEvalFeatureContext serverEvalFeatureContext;
-
-  @Nullable
-  private EdgeService edgeClient;
 
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
     this(edgeUrl, Collections.singletonList(apiKey));
@@ -74,7 +72,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public List<String> apiKeys() {
+  public @NotNull List<String> apiKeys() {
     return apiKeys;
   }
 
@@ -88,13 +86,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
    * This is only intended to be used for client evaluated contexts, do not use it for server evaluated ones
    */
   @Override
-  public void init() {
-    try {
-      final Future<ClientContext> futureContext = newContext().build();
-      futureContext.get();
-    } catch (Exception e) {
-      log.error("Failed to initialize FeatureHub client", e);
-    }
+  public Future<ClientContext> init() {
+    return newContext().build();
   }
 
   @Override
@@ -109,15 +102,17 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       this.edgeService = loadEdgeService(repository).get();
     }
 
+    log.info("xx edge client {}", edgeService);
+
     if (isServerEvaluation()) {
       if (serverEvalFeatureContext == null) {
-        serverEvalFeatureContext = new ServerEvalFeatureContext(this, repository, edgeService);
+        serverEvalFeatureContext = new ServerEvalFeatureContext(repository, edgeService);
       }
 
       return serverEvalFeatureContext;
     }
 
-    return new ClientEvalFeatureContext(this, repository, edgeClient);
+    return new ClientEvalFeatureContext(this, repository, edgeService);
   }
 
   /**
@@ -137,8 +132,9 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       }
     }
 
-    if (edgeServiceSupplier != null)
+    if (edgeServiceSupplier != null) {
       return edgeServiceSupplier;
+    }
 
     throw new RuntimeException("Unable to find an edge service for featurehub, please include one on classpath.");
   }
@@ -176,6 +172,11 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
+  public void registerAnalyticsProvider(@NotNull AnalyticsProvider provider) {
+    getRepository().registerAnalyticsProvider(provider);
+  }
+
+  @Override
   @NotNull
   public Readiness getReadiness() {
     return getRepository().getReadiness();
@@ -188,9 +189,11 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public void close() {
-    if (edgeClient != null) {
-      edgeClient.close();
-      edgeClient = null;
+    log.info("edge client {}", edgeService);
+    if (edgeService != null) {
+      log.info("closing edge connection");
+      edgeService.close();
+      edgeService = null;
     }
   }
 }

@@ -3,6 +3,7 @@ package io.featurehub.android
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
+import io.featurehub.client.Readiness
 import io.featurehub.sse.model.FeatureEnvironmentCollection
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -12,28 +13,27 @@ class FeatureHubClientMockSpec extends Specification {
   MockWebServer mockWebServer
   FeatureHubClient client
   FeatureHubConfig config
-  InternalFeatureRepository store
+  InternalFeatureRepository repo
   ObjectMapper mapper
 
   def setup() {
     mapper = new ObjectMapper()
     config = Mock()
-    store = Mock()
+    repo = Mock()
+    config.repository >> repo
     mockWebServer = new MockWebServer()
 
     def url = mockWebServer.url("/").toString()
-    client = new FeatureHubClient(url.substring(0, url.length()-1), ["one", "two"], store, config, 0)
+    config.baseUrl() >> url.substring(0, url.length() - 1)
+    config.apiKeys() >> ["one", "two"]
+    config.serverEvaluation >> true
+    client = new FeatureHubClient(config, 0)
     mockWebServer.url("/features")
   }
 
   def cleanup() {
     client.close()
     mockWebServer.shutdown()
-  }
-
-  def poll() {
-    client.poll()
-    sleep(500)
   }
 
   def "a request for a known feature set with zero features"() {
@@ -43,9 +43,9 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(200)
       })
     when:
-      poll()
+      client.poll().get()
     then:
-      1 * store.notify([])
+      1 * repo.updateFeatures([])
   }
 
   def "a request with an etag and a cache-control should work as expected"() {
@@ -63,14 +63,17 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(236)
       })
     when:
-      poll()
-      def etag = client.etag
+      def future = client.poll()
       def req1 = mockWebServer.takeRequest()
+      future.get()
+      def etag = client.etag
     and:
-      poll()
+      def future2 = client.poll()
       def req2 = mockWebServer.takeRequest()
+      future2.get()
       def interval = client.pollingInterval
     then:
+      2 * repo.updateFeatures([])
       req1.requestUrl.queryParameter("contextSha") == "0"
       etag == "etag12345"
       interval == 20
@@ -84,7 +87,9 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(400)
       })
     when:
-      poll()
+      def future = client.poll()
+      mockWebServer.takeRequest()
+      future.get()
     then:
       !client.canMakeRequests()
   }
@@ -95,7 +100,9 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(404)
       })
     when:
-      poll()
+      def future = client.poll()
+      mockWebServer.takeRequest()
+      future.get()
     then:
       !client.canMakeRequests()
   }
@@ -106,9 +113,24 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(500)
       })
     when:
-      poll()
+      def future = client.poll()
+      mockWebServer.takeRequest()
+      def result = future.get()
+    then:
+      result == Readiness.NotReady
+      1 * repo.getReadiness() >> Readiness.NotReady
+    when: "followed by a success"
+      mockWebServer.enqueue( new MockResponse().with {
+        setBody(mapper.writeValueAsString([new FeatureEnvironmentCollection().id(UUID.randomUUID()).features([])]))
+        setHeader("etag", "etag12345")
+        setResponseCode(200)
+      })
+    and:
+      client.poll().get()
     then:
       client.canMakeRequests()
+      1 * repo.getReadiness() >> Readiness.Ready
+      1 * repo.updateFeatures(_)
   }
 
   def "a context header causes the connection to be tried with a contextSha"() {
@@ -117,9 +139,9 @@ class FeatureHubClientMockSpec extends Specification {
         setResponseCode(500)
       })
     when:
-      client.contextChange("header1", "sha-value")
-      sleep(500)
+      def future = client.contextChange("header1", "sha-value")
       def req1 = mockWebServer.takeRequest()
+      future.get()
     then:
       req1.requestUrl.queryParameter("contextSha") == "sha-value"
       req1.requestUrl.queryParameterValues("apiKey") == ["one", "two"]

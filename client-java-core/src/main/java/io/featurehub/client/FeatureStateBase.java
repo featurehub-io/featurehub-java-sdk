@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -19,53 +18,67 @@ import java.util.UUID;
  */
 public class FeatureStateBase<K> implements FeatureState<K> {
   private static final Logger log = LoggerFactory.getLogger(FeatureStateBase.class);
-  protected final String key;
-  protected io.featurehub.sse.model.FeatureState _featureState;
-  List<FeatureListener> listeners = new ArrayList<>();
-  protected BaseClientContext context;
+  protected final TopFeatureState feature;
+  protected final FeatureStateBase<K> top;
+  protected final List<FeatureListener> listeners;
+  protected InternalContext context;
   protected FeatureStateBase<K> parentHolder;
   protected final InternalFeatureRepository repository;
 
+  // any levels of the hierarchy always point to this object
+  class TopFeatureState {
+    public io.featurehub.sse.model.FeatureState fs;
+    public String key;  // we always keep this in case the state gets reset to null
+
+    public TopFeatureState(String key) {
+      this.key = key;
+    }
+  }
+
+  // if this is a child
   public FeatureStateBase(
-    InternalFeatureRepository repository,
-    FeatureStateBase<K> parentHolder, String key) {
-    this(repository, key);
-    this.parentHolder = parentHolder;
-  }
-
-  public FeatureStateBase(InternalFeatureRepository repository, String key) {
-    this.key = key;
+    @NotNull InternalFeatureRepository repository,
+    @NotNull FeatureStateBase<K> parentHolder) {
     this.repository = repository;
+    this.parentHolder = parentHolder;
+    feature = parentHolder.feature;
+
+    top = top();
+    listeners = top.listeners;
   }
 
-  public FeatureStateBase<K> withContext(BaseClientContext context) {
+  // this is exclusively for internal analytic copying
+  protected FeatureStateBase(@NotNull InternalFeatureRepository repository, @NotNull String key,
+                             @Nullable io.featurehub.sse.model.FeatureState featureState) {
+    this.repository = repository;
+    this.parentHolder = null;
+    this.feature = new TopFeatureState(key);
+    this.feature.fs = featureState;
+    top = this;
+    this.listeners = new ArrayList<>();
+  }
+
+  // this is for a new FeatureStateBase
+  public FeatureStateBase(@NotNull InternalFeatureRepository repository, String key) {
+    this.repository = repository;
+    this.feature = new TopFeatureState(key);
+    top = this;
+    this.listeners = new ArrayList<>();
+  }
+
+  public FeatureStateBase<K> withContext(InternalContext context) {
     final FeatureStateBase<K> copy = _copy();
     copy.context = context;
     return copy;
   }
 
-  @NotNull protected FeatureStateBase<K> topFeatureState() {
+  // should only be used in constructor and is set once
+  @NotNull protected FeatureStateBase<K> top() {
     if (parentHolder == null) {
       return this;
     }
 
-    return parentHolder.topFeatureState();
-  }
-
-  @Nullable
-  protected io.featurehub.sse.model.FeatureState featureState() {
-    // clones for analytics will set the feature state
-    if (_featureState != null) {
-      return _featureState;
-    }
-
-    // child objects for contexts will use this
-    if (parentHolder != null) {
-      return parentHolder.featureState();
-    }
-
-    // otherwise it isn't set
-    return null;
+    return parentHolder.top();
   }
 
   protected void notifyListeners() {
@@ -73,19 +86,17 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   }
 
   public String getId() {
-    io.featurehub.sse.model.FeatureState fs = featureState();
-    return (fs == null) ? "" : fs.getId().toString();
+    return (feature.fs == null) ? "" : feature.fs.getId().toString();
   }
 
   @Override
   public @NotNull String getKey() {
-    return key;
+    return feature.fs == null ? feature.key : feature.fs.getKey();
   }
 
   @Override
   public boolean isLocked() {
-    final io.featurehub.sse.model.FeatureState featureState = this.featureState();
-    return featureState != null && featureState.getL() == Boolean.TRUE;
+    return feature.fs != null && feature.fs.getL() == Boolean.TRUE;
   }
 
   @Override
@@ -120,10 +131,8 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   }
 
   @Override
-  public FeatureValueType getType() {
-    io.featurehub.sse.model.FeatureState fs = featureState();
-
-    return (fs == null) ? null : fs.getType();
+  @Nullable public FeatureValueType getType() {
+    return (feature.fs == null) ? null : feature.fs.getType();
   }
 
   public Object getAnalyticsFreeValue() {
@@ -136,43 +145,48 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   }
 
   private Object internalGetValue(@Nullable FeatureValueType passedType, boolean triggerUsage) {
-    final io.featurehub.sse.model.FeatureState featureState = featureState();
-
-    boolean locked = featureState != null && Boolean.TRUE.equals(featureState.getL());
+    boolean locked = feature.fs != null && Boolean.TRUE.equals(feature.fs.getL());
 
     // unlike js, locking is registered on a per-interceptor basis
-    FeatureValueInterceptor.ValueMatch vm = repository.findIntercept(locked, key);
+    FeatureValueInterceptor.ValueMatch vm = repository.findIntercept(locked, feature.key);
 
     if (vm != null) {
       return vm.value;
     }
 
-    if (featureState == null || ( passedType == null && featureState.getType() == null )) {
+    if (feature.fs == null || ( passedType == null && feature.fs.getType() == null )) {
       return null;
     }
 
-    final FeatureValueType type = passedType == null ? featureState.getType() : passedType;
+    final FeatureValueType type = passedType == null ? feature.fs.getType() : passedType;
 
-    if (featureState.getType() != type) {
+    if (feature.fs.getType() != type) {
       return null;
     }
 
-    if (context != null) {
+    if (context != null && feature.fs.getStrategies() != null && !feature.fs.getStrategies().isEmpty()) {
       final Applied applied =
         repository.applyFeature(
-          featureState.getStrategies(), key, featureState.getId().toString(), context);
+          feature.fs.getStrategies(), feature.key, feature.fs.getId().toString(), context);
 
+      log.info("feature is {}", applied);
       if (applied.isMatched()) {
-        return triggerUsage ? used(key, featureState.getId(), applied.getValue(), type) : applied.getValue();
+        return triggerUsage ? used(feature.key, feature.fs.getId(), applied.getValue(), type) : applied.getValue();
       }
+    } else {
+      log.info("not matched using {}", feature.fs.getValue());
     }
 
-    return triggerUsage ? used(key, featureState.getId(), featureState.getValue(), type) : featureState.getValue();
+    return triggerUsage ? used(feature.key, feature.fs.getId(), feature.fs.getValue(), type) :
+      feature.fs.getValue();
   }
 
   Object used(@NotNull String key, @NotNull UUID id, @Nullable Object value, @NotNull FeatureValueType type) {
     if (context != null) {
       context.used(key, id, value, type);
+    } else {
+      log.info("calling used with  {}", value);
+      repository.used(key, id, type, value, null, null);
     }
 
     return value;
@@ -235,9 +249,19 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   // stores the feature state and triggers notifyListeners if anything changed
   // should notify actually be inside the listener code? given contexts?
   public FeatureState<K> setFeatureState(io.featurehub.sse.model.FeatureState featureState) {
-    if (featureState == null) return this;
-    Object oldValue = getValue(type());
-    this._featureState = featureState;
+    if (featureState == null) {
+      boolean changed = feature.fs != null;
+      feature.fs = featureState;
+      if (changed) {
+        notifyListeners();
+      }
+      return this;
+    }
+
+    feature.key = featureState.getKey();
+
+    Object oldValue = feature.fs == null ? null : feature.fs.getValue();
+    feature.fs = featureState;
     Object value = convertToRespectiveType(featureState);
     if (FeatureStateUtils.changed(oldValue, value)) {
       notifyListeners();
@@ -272,30 +296,24 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   }
 
   protected FeatureState<K> analyticsCopy() {
-    final FeatureStateBase<K> aCopy = _copy();
-    aCopy._featureState = featureState();
-    return aCopy;
+    return new FeatureStateBase<K>(repository, feature.key, feature.fs);
   }
 
   protected FeatureStateBase<K> _copy() {
-    final FeatureStateBase<K> copy = new FeatureStateBase<>(repository, this, key);
-    copy.parentHolder = this;
-    return copy;
+    return new FeatureStateBase<>(repository, this);
   }
 
   public boolean exists() {
-    final io.featurehub.sse.model.FeatureState featureState = featureState();
-    return featureState != null && featureState.getVersion() != null && featureState.getVersion() != -1;
+    return feature.fs != null && feature.fs.getVersion() != null && feature.fs.getVersion() != -1;
   }
 
   protected FeatureValueType type() {
-    final io.featurehub.sse.model.FeatureState featureState = featureState();
-    return featureState == null ? null : featureState.getType();
+    return feature.fs == null ? null : feature.fs.getType();
   }
 
   @Override
   public String toString() {
-    Object value = getValue(type());
+    Object value = feature.fs == null ? null : feature.fs.getValue();
     return value == null ? null : value.toString();
   }
 }

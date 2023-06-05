@@ -6,12 +6,14 @@ import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
 import io.featurehub.client.Readiness;
 import org.glassfish.grizzly.http.server.HttpServer;
+import org.glassfish.hk2.api.Immediate;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import todo.backend.resources.FeatureAnalyticsFilter;
+import todo.backend.resources.HealthResource;
 import todo.backend.resources.TodoResource;
 
 import jakarta.inject.Singleton;
@@ -33,43 +35,24 @@ public class Application {
 
     log.info("attempting to start on port {} - will wait for features", BASE_URI.toASCIIString());
 
-    FeatureHubSource fhSource = new FeatureHubSource();
-
     // register our resources, try and tag them as singleton as they are instantiated faster
     ResourceConfig config = new ResourceConfig(
       TodoResource.class,
+      HealthResource.class,
       FeatureAnalyticsFilter.class)
       .register(new AbstractBinder() {
         @Override
         protected void configure() {
-          bind(fhSource).in(Singleton.class).to(FeatureHub.class);
+          bind(FeatureHubSource.class).in(Immediate.class).to(FeatureHub.class);
         }
-      })
-
-      ;
+      });
 
     final HttpServer server = GrizzlyHttpServerFactory.createHttpServer(BASE_URI, config, false);
 
-    // call "server.start()" here if you wish to start the application without waiting for features
-    log.info("Waiting on a complete list of features before starting.");
-    fhSource.getConfig().addReadinessListener((ready) -> {
-      if (ready == Readiness.Ready) {
-        try {
-          server.start();
-        } catch (IOException e) {
-          log.error("Failed to start", e);
-          throw new RuntimeException(e);
-        }
-
-        log.info("Application started. (HTTP/2 enabled!) -> {}", BASE_URI);
-      } else if (ready == Readiness.Failed) {
-        log.info("Connection failed, wait for it to come back up.");
-      }
-    });
+    server.start();
 
     ApplicationLifecycleManager.registerListener(trans -> {
       if (trans.next == LifecycleStatus.TERMINATING) {
-        fhSource.close();
         server.shutdown(10, TimeUnit.SECONDS);
       }
     });

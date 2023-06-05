@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-abstract class BaseClientContext implements ClientContext {
+class BaseClientContext implements InternalContext {
   private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);
   protected final EdgeService edgeService;
 
@@ -34,11 +34,9 @@ abstract class BaseClientContext implements ClientContext {
   public static final String VERSION_KEY = "version";
   protected final Map<String, List<String>> attributes = new ConcurrentHashMap<>();
   protected final InternalFeatureRepository repository;
-  protected final FeatureHubConfig config;
 
-  public BaseClientContext(InternalFeatureRepository repository, FeatureHubConfig config, EdgeService edgeService) {
+  public BaseClientContext(InternalFeatureRepository repository, EdgeService edgeService) {
     this.repository = repository;
-    this.config = config;
     this.edgeService = edgeService;
   }
 
@@ -111,7 +109,8 @@ abstract class BaseClientContext implements ClientContext {
     return this;
   }
 
-  void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
+  @Override
+  public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
                              @NotNull FeatureValueType valueType) {
 
     repository.execute(() -> {
@@ -156,6 +155,11 @@ abstract class BaseClientContext implements ClientContext {
   }
 
   @Override
+  public void recordAnalyticsEvent(@NotNull AnalyticsEvent event) {
+    repository.recordAnalyticsEvent(fillAnalyticsCollection(event));
+  }
+
+  @Override
   @Nullable public String getAttr(@NotNull String name, @Nullable String defaultVal) {
     String val = getAttr(name);
     return val == null ? defaultVal : val;
@@ -169,6 +173,11 @@ abstract class BaseClientContext implements ClientContext {
   @Override
   @Nullable public List<String> getAttrs(@NotNull String name) {
     return attributes.getOrDefault(name, null);
+  }
+
+  @Override
+  public Future<ClientContext> build() {
+    return CompletableFuture.completedFuture(this);
   }
 
   @Override
@@ -201,7 +210,6 @@ abstract class BaseClientContext implements ClientContext {
 
   @Override
   public @NotNull List<FeatureState<?>> allFeatures() {
-    boolean isServerEvaluation = getRepository().isServerEvaluation();
     return repository.getFeatureKeys().stream()
       .map(f -> repository.getFeat(f).withContext(this))
       .collect(Collectors.toList());

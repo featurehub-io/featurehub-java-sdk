@@ -17,11 +17,11 @@ class InterceptorSpec extends Specification {
       System.setProperty(name, "true")
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_ALLOW_OVERRIDE, "true")
     then:
-      fr.getFeatureState(featureName).boolean
-      fr.getFeatureState(featureName).string == 'true'
-      fr.getFeatureState(featureName).number == null
-      fr.getFeatureState("feature_none").string == null
-      !fr.getFeatureState("feature_none").boolean
+      fr.getFeat(featureName).flag
+      fr.getFeat(featureName).string == 'true'
+      fr.getFeat(featureName).number == null
+      fr.getFeat("feature_none").string == null
+      !fr.getFeat("feature_none").flag
   }
 
   def "we can deserialize json in an override"() {
@@ -36,12 +36,12 @@ class InterceptorSpec extends Specification {
       System.setProperty(name, rawJson)
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_ALLOW_OVERRIDE, "true")
     then:
-      !fr.getFeatureState(featureName).boolean
-      fr.getFeatureState(featureName).string == rawJson
-      fr.getFeatureState(featureName).rawJson == rawJson
-      fr.getFeatureState(featureName).getJson(BananaSample) instanceof BananaSample
-      fr.getFeatureState(featureName).getJson(BananaSample).sample == 18
-      fr.getFeatureState("feature_none").getJson(BananaSample) == null
+      !fr.getFeat(featureName).flag
+      fr.getFeat(featureName).string == rawJson
+      fr.getFeat(featureName).rawJson == rawJson
+      fr.getFeat(featureName).getJson(BananaSample) instanceof BananaSample
+      fr.getFeat(featureName).getJson(BananaSample).sample == 18
+      fr.getFeat("feature_none").getJson(BananaSample) == null
   }
 
   def "we can deserialize a number in an override"() {
@@ -56,11 +56,11 @@ class InterceptorSpec extends Specification {
       System.setProperty(name, numString)
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_ALLOW_OVERRIDE, "true")
     then:
-      !fr.getFeatureState(featureName).boolean
-      fr.getFeatureState(featureName).string == numString
-      fr.getFeatureState(featureName).rawJson == numString
-      fr.getFeatureState(featureName).number == 17.65
-      fr.getFeatureState('feature_none').number == null
+      !fr.getFeat(featureName).flag
+      fr.getFeat(featureName).string == numString
+      fr.getFeat(featureName).rawJson == numString
+      fr.getFeat(featureName).number == 17.65
+      fr.getFeat('feature_none').number == null
   }
 
   def "if system property loader is turned off, overrides are ignored"() {
@@ -73,10 +73,10 @@ class InterceptorSpec extends Specification {
       System.setProperty(name, "true")
       System.clearProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_ALLOW_OVERRIDE)
     then:
-      !fr.getFeatureState("feature_one").boolean
-      fr.getFeatureState("feature_one").string == null
-      fr.getFeatureState("feature_none").string == null
-      !fr.getFeatureState("feature_none").boolean
+      !fr.getFeat("feature_one").flag
+      fr.getFeat("feature_one").string == null
+      fr.getFeat("feature_none").string == null
+      !fr.getFeat("feature_none").flag
   }
 
   def "if a feature is locked, we won't call an interceptor that is overridden"() {
@@ -84,9 +84,9 @@ class InterceptorSpec extends Specification {
       def fr = new ClientFeatureRepository(1);
       fr.registerValueInterceptor(false, Mock(FeatureValueInterceptor))
     and: "we register a feature"
-      fr.notify([new FeatureState().value(true).type(FeatureValueType.BOOLEAN).key("x").id(UUID.randomUUID()).l(true)])
+      fr.updateFeatures([new FeatureState().value(true).type(FeatureValueType.BOOLEAN).key("x").id(UUID.randomUUID()).l(true)])
     when: "i ask for the feature"
-     def f = fr.getFeatureState("x").boolean
+     def f = fr.getFeat("x").flag
     then:
       f
   }
@@ -102,7 +102,7 @@ class InterceptorSpec extends Specification {
       def peachQuantity = new FeatureState().id(UUID.randomUUID()).key('peach-quantity_or').version(1L).value(17).type(FeatureValueType.NUMBER)
       def peachConfig = new FeatureState().id(UUID.randomUUID()).key('peach-config_or').version(1L).value("{}").type(FeatureValueType.JSON)
       def features = [banana, orange, peachConfig, peachQuantity]
-      fr.notify(features)
+      fr.updateFeatures(features)
     when: "we set the feature override"
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_PREFIX + banana.key, "true")
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_PREFIX + orange.key, "nectarine")
@@ -110,11 +110,11 @@ class InterceptorSpec extends Specification {
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_PREFIX + peachConfig.key, '{"sample":12}')
       System.setProperty(SystemPropertyValueInterceptor.FEATURE_TOGGLES_ALLOW_OVERRIDE, "true")
     then:
-      fr.getFeatureState(banana.key).boolean
-      fr.getFeatureState(orange.key).string == 'nectarine'
-      fr.getFeatureState(peachQuantity.key).number == 13
-      fr.getFeatureState(peachConfig.key).rawJson == '{"sample":12}'
-      fr.getFeatureState(peachConfig.key).getJson(BananaSample).sample == 12
+      fr.getFeat(banana.key).flag
+      fr.getFeat(orange.key).string == 'nectarine'
+      fr.getFeat(peachQuantity.key).number == 13
+      fr.getFeat(peachConfig.key).rawJson == '{"sample":12}'
+      fr.getFeat(peachConfig.key).getJson(BananaSample).sample == 12
 
   }
 }

@@ -1,11 +1,21 @@
-= FeatureHub SDK for REST
+= FeatureHub SDK for REST clients
 
 == Overview
-This SDK is intended for client libraries, e.g.:
+This SDK operates using periodic REST requests. It should be used typically
+in client libraries when near-real-time updates are not required. It operates
+on a timeout + use based context where you can set a refresh period, and it
+will ignore any attempts to poll for new updates outside of that timeout period.
+Any request to evaluate a feature will automatically cause an attempt to poll,
+so use of your application will cause features to update within the time period,
+whereas lack of use will not consume any bandwidth.
 
-- Android - so you have control over how frequently feature updates are requested, making sure the battery would not drain quickly on the device
-- lambdas or cloud functions where control over the HTTP request object is desired and you only need to get the state once during the lifetime.
-- other situations where updating the state of the internal repository is intermittent or desired to be consistent 
+It is therefore up to you as to how "fresh" you wish to keep your features, 
+with the knowledge that once that freshness timeout has been exceeded and 
+the app is evaluating features, it will re-request the feature state.
+
+== Considerations
+
+=== Library Dependencies
 
 The REST SDK *does not poll*. It allows the user of the SDK to create a polling mechanism which suites their application. 
 
@@ -18,8 +28,8 @@ Visit our official web page for more information about the platform https://www.
 === Dependencies
 This library uses:
 
-- OKHttp 4 (for http(s))
-- Jackson (for json)
+- OKHttp 4 (for http)
+- Jackson 2.x (for json)
 - SLF4j (for logging)
 
 === Using

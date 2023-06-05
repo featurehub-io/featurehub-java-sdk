@@ -1,5 +1,6 @@
 package io.featurehub.client;
 
+import io.featurehub.client.analytics.AnalyticsEvent;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
@@ -61,6 +62,13 @@ public interface ClientContext {
 
   boolean exists(String key);
   boolean exists(Feature key);
+
+  /**
+   * If you have a custom analytics event you wish to record, add it here. It will capture any associated data from
+   * the current context if possible and add it to the analytics event.
+   * @param event
+   */
+  void recordAnalyticsEvent(@NotNull AnalyticsEvent event);
 
   void close();
 }

@@ -13,7 +13,7 @@ public interface AnalyticsProvider {
   }
 
   default AnalyticsFeature createAnalyticsFeature(@NotNull FeatureHubAnalyticsValue feature,
-                                                  @NotNull Map<String, List<String>> attributes,
+                                                  @Nullable Map<String, List<String>> attributes,
                                                   @Nullable String userKey) {
     return new AnalyticsFeature(feature, attributes, userKey);
   }

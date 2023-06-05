@@ -75,7 +75,7 @@
           <dependency>
             <groupId>cd.connect.openapi</groupId>
             <artifactId>connect-openapi-jersey3</artifactId>
-            <version>8.2</version>
+            <version>8.8</version>
           </dependency>
         </dependencies>
         <executions>
@@ -89,7 +89,7 @@
               <output>${project.basedir}/target/generated-sources/api</output>
               <apiPackage>io.featurehub.sse.api</apiPackage>
               <modelPackage>io.featurehub.sse.model</modelPackage>
-              <inputSpec>${project.basedir}/edge-api.yaml</inputSpec>
+              <inputSpec>https://api.dev.featurehub.io/edge/1.1.5.yaml</inputSpec>
               <generatorName>jersey3-api</generatorName>
               <generateApis>false</generateApis>
               <additionalProperties>
@@ -115,23 +115,6 @@
               <sources>
                 <source>${project.build.directory}/generated-sources/api/src/gen</source>
               </sources>
-            </configuration>
-          </execution>
-          <!-- publish the API at packaging time -->
-          <execution>
-            <id>attach-final-yaml</id>
-            <phase>package</phase>
-            <goals>
-              <goal>attach-artifact</goal>
-            </goals>
-            <configuration>
-              <artifacts>
-                <artifact>
-                  <file>${project.basedir}/edge-api.yaml</file>
-                  <type>yaml</type>
-                  <classifier>api</classifier>
-                </artifact>
-              </artifacts>
             </configuration>
           </execution>
         </executions>

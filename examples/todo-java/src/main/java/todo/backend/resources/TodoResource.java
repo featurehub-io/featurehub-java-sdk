@@ -1,30 +1,29 @@
 package todo.backend.resources;
 
 import io.featurehub.client.ClientContext;
+import io.featurehub.client.ThreadLocalContext;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.WebApplicationException;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import todo.api.TodoService;
-import todo.backend.FeatureHub;
 import todo.model.Todo;
 
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
-import jakarta.ws.rs.NotFoundException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-@Singleton
+
 public class TodoResource implements TodoService {
   private static final Logger log = LoggerFactory.getLogger(TodoResource.class);
   Map<String, Map<String, Todo>> todos = new ConcurrentHashMap<>();
-  private final FeatureHub featureHub;
 
   @Inject
-  public TodoResource(FeatureHub featureHub) {
-    this.featureHub = featureHub;
+  public TodoResource() {
     log.info("created");
   }
 
@@ -74,19 +73,18 @@ public class TodoResource implements TodoService {
     return title;
   }
 
-  private ClientContext fhClient(String user) {
+  @NotNull private ClientContext fhClient(String user) {
     try {
-      return featureHub.fhClient().userKey(user).build().get();
+      return ThreadLocalContext.getContext().userKey(user).build().get();
     } catch (Exception e) {
       log.error("Unable to get context!");
+      throw new WebApplicationException(e);
     }
-
-    return null;
   }
 
   @Override
-  public List<Todo> addTodo(String user, Todo body) {
-    if (body.getId() == null || body.getId().length() == 0) {
+  public List<Todo> addTodo(@NotNull String user, Todo body) {
+    if (body.getId().length() == 0) {
       body.id(UUID.randomUUID().toString());
     }
 
@@ -97,24 +95,24 @@ public class TodoResource implements TodoService {
   }
 
   @Override
-  public List<Todo> listTodos(String user) {
+  public List<Todo> listTodos(@NotNull String user) {
     return getTodoList(getTodoMap(user), user);
   }
 
   @Override
-  public void removeAllTodos(String user) {
+  public void removeAllTodos(@NotNull String user) {
     getTodoMap(user).clear();
   }
 
   @Override
-  public List<Todo> removeTodo(String user, String id) {
+  public List<Todo> removeTodo(@NotNull String user, @NotNull String id) {
     Map<String, Todo> userTodo = getTodoMap(user);
     userTodo.remove(id);
     return getTodoList(userTodo, user);
   }
 
   @Override
-  public List<Todo> resolveTodo(String id, String user) {
+  public List<Todo> resolveTodo(@NotNull String id, @NotNull String user) {
     Map<String, Todo> userTodo = getTodoMap(user);
 
     Todo todo = userTodo.get(id);
