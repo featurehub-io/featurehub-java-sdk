@@ -6,6 +6,7 @@ import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.Feature;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.FeatureRepository;
+import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
@@ -23,7 +24,7 @@ public class JerseyClientSample {
 
     final ClientContext ctx = config.newContext();
 
-    final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();
+    final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").isEnabled();
 
     FeatureRepository cfr = ctx.getRepository();
 
@@ -64,10 +65,15 @@ public class JerseyClientSample {
 //  @Test
   public void changeToggleTest() {
     ClientFeatureRepository cfr = new ClientFeatureRepository(5);
-    final JerseyClient client =
-      new JerseyClient(new EdgeFeatureHubConfig("http://localhost:8553", changeToggleEnv), false,
-        cfr, null);
 
-    client.setFeatureState("NEW_BOAT", new FeatureStateUpdate().lock(false).value(Boolean.TRUE));
+    final EdgeFeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8553", changeToggleEnv);
+
+    final JerseySSEClient client =
+      new JerseySSEClient(null,
+        config,
+        EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build());
+
+    new TestSDKClient(config).setFeatureState( config.apiKey(),"NEW_BOAT",
+      new FeatureStateUpdate().lock(false).value(Boolean.TRUE));
   }
 }

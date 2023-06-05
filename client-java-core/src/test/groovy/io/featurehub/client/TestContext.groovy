@@ -4,15 +4,13 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Future
 
 class TestContext extends BaseClientContext {
-  TestContext(FeatureRepositoryContext repo) {
-    super(repo, null)
+  TestContext(InternalFeatureRepository repo, EdgeService edgeService) {
+    super(repo, edgeService)
   }
 
   @Override
   Future<ClientContext> build() {
-    CompletableFuture<ClientContext> x = new CompletableFuture<ClientContext>()
-    x.complete(this)
-    return x
+    return CompletableFuture.completedFuture(this)
   }
 
   @Override
@@ -21,21 +19,11 @@ class TestContext extends BaseClientContext {
   }
 
   @Override
-  ClientContext logAnalyticsEvent(String action, Map<String, String> other) {
-    return this
-  }
-
-  @Override
-  ClientContext logAnalyticsEvent(String action) {
-    return this
-  }
-
-  @Override
   void close() {
   }
 
   @Override
   boolean exists(String key) {
-    return repository.exists(key)
+    return feature(key).exists()
   }
 }

@@ -12,7 +12,7 @@ public class AnalyticsFeaturesCollectionContext extends AnalyticsFeaturesCollect
   @NotNull
   Map<String, List<String>> attributes = new HashMap<>();
 
-  public AnalyticsFeaturesCollectionContext(@Nullable String userKey, @NotNull Map<String, Object> additionalParams) {
+  public AnalyticsFeaturesCollectionContext(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     super(userKey, additionalParams);
   }
 
@@ -25,7 +25,7 @@ public class AnalyticsFeaturesCollectionContext extends AnalyticsFeaturesCollect
   }
 
   @Override
-  @NotNull Map<String, Object> toMap() {
+  @NotNull protected Map<String, Object> toMap() {
     Map<String, Object> m = new HashMap<>(super.toMap());
 
     m.putAll(attributes);

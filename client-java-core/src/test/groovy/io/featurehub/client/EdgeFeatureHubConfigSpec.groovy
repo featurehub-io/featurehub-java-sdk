@@ -1,99 +1,93 @@
 package io.featurehub.client
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.featurehub.client.analytics.AnalyticsProvider
 import spock.lang.Specification
 
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Future
+import java.util.function.Consumer
 import java.util.function.Supplier
 
 class EdgeFeatureHubConfigSpec extends Specification {
+  FeatureHubConfig config
+  EdgeService edgeClient
+
+  def setup() {
+    config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
+    edgeClient = Mock(EdgeService)
+    config.setEdgeService { -> edgeClient }
+  }
+
   def "i can create a valid client evaluated config and multiple requests for a a new context will result in a single connection"() {
-    given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
-    and: "i have configured a edge provider"
-      Supplier<EdgeService> edgeSupplier = Mock(Supplier<EdgeService>)
-      def edgeClient = Mock(EdgeService)
     when: "i ask for a new context"
-      def ctx1 = config.newContext(null, edgeSupplier)
+      def ctx1 = config.newContext()
     and: "i ask again"
-      def ctx2 = config.newContext(null, edgeSupplier)
+      def ctx2 = config.newContext()
     then:
-      1 * edgeSupplier.get() >> edgeClient
       0 * _
   }
 
   def "if we use a client eval key, closing after a newContext and re-opening will get a new connection"() {
-    given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
-    and: "i have configured a edge provider"
-      Supplier<EdgeService> edgeSupplier = Mock(Supplier<EdgeService>)
-      def edgeClient = Mock(EdgeService)
     when: "i ask for a new context"
-      def ctx1 = config.newContext(null, edgeSupplier)
+      def ctx1 = config.newContext()
       config.close()
     and: "i ask again"
-      def ctx2 = config.newContext(null, edgeSupplier)
+      def ctx2 = config.newContext()
     then:
-      2 * edgeSupplier.get() >> edgeClient
+      ctx1 != null
+      ctx2 != null
+      ctx1 != ctx2
+      config.edgeService.get() == edgeClient
       1 * edgeClient.close()
       0 * _
   }
 
   def "all the passthrough on the repository from the config works as expected"() {
-    given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
-    and: "i have mocked the repository and set it"
-      def repo = Mock(FeatureRepositoryContext)
+    given: "i have mocked the repository and set it"
+      def repo = Mock(InternalFeatureRepository)
       config.setRepository(repo)
     and: "I have some values ready to set"
       def om = new ObjectMapper()
-      def readynessListener = Mock(ReadinessListener)
-      def analyticsCollector = Mock(AnalyticsCollector)
+      Consumer<Readiness> readynessListener = Mock(Consumer<Readiness>)
       def featureValueOverride = Mock(FeatureValueInterceptor)
+      def analyticsProvider = Mock(AnalyticsProvider)
     when: "i set all the passthrough settings"
       config.setJsonConfigObjectMapper(om)
-      config.addReadynessListener(readynessListener)
-      config.addAnalyticCollector(analyticsCollector)
+      config.addReadinessListener(readynessListener)
       config.registerValueInterceptor(false, featureValueOverride)
+      config.registerAnalyticsProvider(analyticsProvider)
     then:
       1 * repo.registerValueInterceptor(false, featureValueOverride)
-      1 * repo.addReadinessListener(readynessListener)
-      1 * repo.addAnalyticCollector(analyticsCollector)
+      1 * repo.addReadinessListener(readynessListener) >> Mock(RepositoryEventHandler)
       1 * repo.setJsonConfigObjectMapper(om)
+      1 * repo.registerAnalyticsProvider(analyticsProvider)
       0 * _  // nothing else
   }
 
   def "when i create a client evaluated feature context it should auto find the provider"() {
-    given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
-    and: "i clean up the static provider"
-      FeatureHubTestClientFactory.repository = null
-      FeatureHubTestClientFactory.config = null
-      FeatureHubTestClientFactory.edgeServiceSupplier = Mock(Supplier<EdgeService>)
-      def edgeClient = Mock(EdgeService)
+    given: "i clean up the static provider"
+      FeatureHubTestClientFactory.fake = null
+      config = new EdgeFeatureHubConfig("http://localhost", "2*3")
     when: "i create a new client"
       def context = config.newContext()
     then:
       context instanceof ClientEvalFeatureContext
-      1 * FeatureHubTestClientFactory.edgeServiceSupplier.get() >> edgeClient
-      ((ClientEvalFeatureContext)context).edgeService == edgeClient
+      context.repository == config.repository
+      context.edgeService == FeatureHubTestClientFactory.fake
+      context.edgeService.config == config
       0 * _
   }
 
   def "when i create a server evaluated feature context it should auto find the provider"() {
     given: "i have a client eval feature config"
       def config = new EdgeFeatureHubConfig("http://localhost", "123-abc")
-    and: "i clean up the static provider"
-      FeatureHubTestClientFactory.repository = null
-      FeatureHubTestClientFactory.config = null
-      FeatureHubTestClientFactory.edgeServiceSupplier = Mock(Supplier<EdgeService>)
-      def edgeClient = Mock(EdgeService)
     when: "i create a new client"
       def context = config.newContext()
+    and: "i create a second client"
+      def context2 = config.newContext()
     then:
-      context instanceof ServerEvalFeatureContext
-      ((ServerEvalFeatureContext)context).edgeService == null
-      ((ServerEvalFeatureContext)context).edgeServiceSupplier == FeatureHubTestClientFactory.edgeServiceSupplier
+      context == context2
       0 * _
   }
 
@@ -115,32 +109,24 @@ class EdgeFeatureHubConfigSpec extends Specification {
   }
 
   def "default repository and edge service supplier work"() {
-    given: "i have mocked the edge supplier"
-      FeatureHubTestClientFactory.edgeServiceSupplier = Mock(Supplier<EdgeService>)
     when: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
+      def ctx = config.newContext()
     then:
       config.repository instanceof ClientFeatureRepository
-      config.readyness == Readiness.NotReady
-      config.edgeService == FeatureHubTestClientFactory.edgeServiceSupplier
+      config.readiness == Readiness.NotReady
+      config.edgeService.get() == edgeClient
   }
 
   def "i can pre-replace the repository and edge supplier and the context gets created as expected"() {
     given: "i have mocked the edge supplier"
-      def supplier = Mock(Supplier<EdgeService>)
-      def client = Mock(EdgeService)
-      FeatureHubTestClientFactory.edgeServiceSupplier = supplier
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123-abc")
-      def repo = Mock(FeatureRepositoryContext)
-      config.repository = repo
-    and: "i mock out the futures"
-      def mockRequest = Mock(Future<Readiness>)
+      def mockRepo = Mock(InternalFeatureRepository)
+      config.setRepository(mockRepo)
     when:
-      config.init()
+      def ctx  = config.init().get() as BaseClientContext
     then:
-      1 * supplier.get() >> client
-      1 * client.contextChange(null, '0') >> mockRequest
-      1 * mockRequest.get() >> Readiness.Ready
+      ctx.edgeService == edgeClient
+      ctx.repository == mockRepo
+      1 * edgeClient.contextChange(null, '0') >> CompletableFuture.completedFuture(Readiness.Ready)
       0 * _
   }
 }

@@ -1,11 +1,9 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.featurehub.client.analytics.AnalyticsAdapter;
 import io.featurehub.client.analytics.AnalyticsEvent;
 import io.featurehub.client.analytics.AnalyticsProvider;
 import io.featurehub.client.analytics.FeatureHubAnalyticsValue;
@@ -15,6 +13,7 @@ import io.featurehub.sse.model.SSEResultState;
 import io.featurehub.strategies.matchers.MatcherRegistry;
 import io.featurehub.strategies.percentage.PercentageMumurCalculator;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 public class ClientFeatureRepository implements InternalFeatureRepository {
   private static class Callback<T> implements RepositoryEventHandler {
@@ -63,11 +61,6 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   private ObjectMapper jsonConfigObjectMapper;
   private final ApplyFeature applyFeature;
-  private AnalyticsAdapter analyticsAdapter;
-  private boolean serverEvaluation = false; // the client tells us, we pass it out to others
-
-  private final TypeReference<List<io.featurehub.sse.model.FeatureState>> FEATURE_LIST_TYPEDEF =
-      new TypeReference<List<io.featurehub.sse.model.FeatureState>>() {};
 
   public ClientFeatureRepository(ExecutorService executor, ApplyFeature applyFeature) {
     jsonConfigObjectMapper = initializeMapper();
@@ -110,11 +103,6 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     this.jsonConfigObjectMapper = jsonConfigObjectMapper;
   }
 
-  @Override
-  public boolean isServerEvaluation() {
-    return serverEvaluation;
-  }
-
   public @NotNull Readiness getReadyness() {
     return getReadiness();
   }
@@ -154,33 +142,29 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void notify(SSEResultState state) {
+  public void notify(@NotNull SSEResultState state) {
     log.trace("received state {}", state);
-    if (state == null) {
-      log.warn("Unexpected null state");
-    } else {
-      try {
-        switch (state) {
-          case ACK:
-          case BYE:
-          case DELETE_FEATURE:
-          case FEATURE:
-          case FEATURES:
-            break;
-          case FAILURE:
-            readiness = Readiness.Failed;
-            broadcastReadyness();
-            break;
-        }
-      } catch (Exception e) {
-        log.error("Unable to process state `{}`", state, e);
+    try {
+      switch (state) {
+        case ACK:
+        case BYE:
+        case DELETE_FEATURE:
+        case FEATURE:
+        case FEATURES:
+          break;
+        case FAILURE:
+          readiness = Readiness.Failed;
+          broadcastReadyness();
+          break;
       }
+    } catch (Exception e) {
+      log.error("Unable to process state `{}`", state, e);
     }
   }
 
   @Override
-  public void updateFeatures(List<io.featurehub.sse.model.FeatureState> features) {
-
+  public void updateFeatures(@NotNull List<io.featurehub.sse.model.FeatureState> features) {
+    updateFeatures(features, false);
   }
 
   @Override
@@ -198,24 +182,19 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public Applied applyFeature(
-    List<FeatureRolloutStrategy> strategies, String key, String featureValueId, ClientContext cac) {
+  public @NotNull Applied applyFeature(
+    @NotNull List<FeatureRolloutStrategy> strategies, @NotNull String key, @NotNull String featureValueId, @NotNull ClientContext cac) {
     return applyFeature.applyFeature(strategies, key, featureValueId, cac);
   }
 
   @Override
-  public void execute(Runnable command) {
+  public void execute(@NotNull Runnable command) {
     executor.execute(command);
   }
 
   @Override
-  public ObjectMapper getJsonObjectMapper() {
+  public @NotNull ObjectMapper getJsonObjectMapper() {
     return jsonConfigObjectMapper;
-  }
-
-  @Override
-  public void setServerEvaluation(boolean val) {
-    this.serverEvaluation = val;
   }
 
   @Override
@@ -231,6 +210,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
     readiness = Readiness.NotReady;
     readinessListeners.forEach(rl -> rl.callback.accept(readiness));
+    readinessListeners.clear();
 
     executor.shutdownNow();
 
@@ -240,7 +220,6 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   @Override
   public @NotNull RepositoryEventHandler addReadinessListener(@NotNull Consumer<Readiness> rl) {
     final Callback<Readiness> callback = new Callback<>(readinessListeners, rl);
-    this.readinessListeners.add(callback);
 
     if (!executor.isShutdown()) {
       // let it know what the current state is
@@ -251,12 +230,13 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   private void broadcastReadyness() {
+    log.info("broadcasting readiness {} listener count {}", readiness, readinessListeners.size());
     if (!executor.isShutdown()) {
       readinessListeners.forEach((rl) -> executor.execute(() -> rl.callback.accept(readiness)));
     }
   }
 
-  public void deleteFeature(io.featurehub.sse.model.FeatureState readValue) {
+  public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue) {
     readValue.setValue(null);
     updateFeature(readValue);
   }
@@ -281,24 +261,24 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     return getFeat(key, clazz);
   }
 
-  public boolean updateFeature(io.featurehub.sse.model.FeatureState featureState) {
+  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState) {
     return updateFeature(featureState, false);
   }
 
   @Override
-  public boolean updateFeature(io.featurehub.sse.model.FeatureState featureState, boolean force) {
+  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force) {
     FeatureStateBase<?> holder = features.get(featureState.getKey());
-    if (holder == null || holder._featureState == null) {
+    if (holder == null) {
       holder = new FeatureStateBase<>(this, featureState.getKey());
 
       features.put(featureState.getKey(), holder);
-    } else if (!force) {
-      long existingVersion = holder._featureState.getVersion() == null ? -1 : holder._featureState.getVersion();
+    } else if (holder.feature.fs != null && !force) {
+      long existingVersion = holder.feature.fs.getVersion() == null ? -1 : holder.feature.fs.getVersion();
       long newVersion = featureState.getVersion() == null ? -1 : featureState.getVersion();
       if (existingVersion > newVersion
           || (newVersion == existingVersion
               && !FeatureStateUtils.changed(
-                  holder._featureState.getValue(), featureState.getValue()))) {
+                  holder.feature.fs.getValue(), featureState.getValue()))) {
         // if the old existingVersion is newer, or they are the same existingVersion and the value hasn't changed.
         // it can change with server side evaluation based on user data
         return false;
@@ -315,13 +295,18 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     return true;
   }
 
-  public FeatureStateBase<?> getFeat(String key) {
+  @NotNull public FeatureStateBase<?> getFeat(@NotNull String key) {
     return getFeat(key, Boolean.class);
   }
 
   @Override
+  @NotNull public FeatureStateBase<?> getFeat(@NotNull Feature key) {
+    return getFeat(key.name(), Boolean.class);
+  }
+
+  @Override
   @SuppressWarnings("unchecked") // it is all fake anyway
-  public <K> FeatureStateBase<K> getFeat(String key, Class<K> clazz) {
+  @NotNull public <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz) {
     return (FeatureStateBase<K>) features.computeIfAbsent(
       key,
       key1 -> {
@@ -335,12 +320,12 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
       });
   }
 
-  private void broadcastFeatureUpdatedListeners(FeatureState<?> fs) {
+  private void broadcastFeatureUpdatedListeners(@NotNull FeatureState<?> fs) {
     featureUpdateHandlers.forEach((handler) -> execute(() -> handler.callback.accept(fs)));
   }
 
   @Override
-  public void recordAnalyticsEvent(AnalyticsEvent event) {
+  public void recordAnalyticsEvent(@NotNull AnalyticsEvent event) {
     analyticsHandlers.forEach(handler -> execute(() -> handler.callback.accept(event)));
   }
 
@@ -351,7 +336,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void used(String key, UUID id, FeatureValueType valueType, Object value, Map<String, List<String>> attributes,
+  public void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType,
+                   @Nullable Object value, @Nullable Map<String, List<String>> attributes,
                    String analyticsUserKey) {
     recordAnalyticsEvent(analyticsProvider.createAnalyticsFeature(new FeatureHubAnalyticsValue(id.toString(), key,
       value, valueType
@@ -359,7 +345,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, String key) {
+  public FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, @NotNull String key) {
     return featureValueInterceptors.stream()
       .filter(vi -> !locked || vi.allowLockOverride)
       .map(
@@ -377,7 +363,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public AnalyticsProvider getAnalyticsProvider() {
+  public @NotNull AnalyticsProvider getAnalyticsProvider() {
     return analyticsProvider;
   }
 }

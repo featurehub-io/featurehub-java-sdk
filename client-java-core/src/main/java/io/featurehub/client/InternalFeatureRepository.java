@@ -20,7 +20,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
    * Any incoming state changes from a multi-varied set of possible data. This comes
    * from SSE.
    */
-  void notify(SSEResultState state);
+  void notify(@NotNull SSEResultState state);
 
   /**
    * Indicate the feature states have updated and if their versions have
@@ -28,7 +28,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
    *
    * @param features - the features
    */
-  void updateFeatures(List<FeatureState> features);
+  void updateFeatures(@NotNull List<FeatureState> features);
   /**
    * Update the feature states and force them to be updated, ignoring their version numbers.
    * This still may not cause events to be triggered as event triggers are done on actual value changes.
@@ -36,24 +36,22 @@ public interface InternalFeatureRepository extends FeatureRepository {
    * @param features - the list of feature states
    * @param force  - whether we should force the states to change
    */
-  void updateFeatures(List<FeatureState> features, boolean force);
-  boolean updateFeature(FeatureState feature);
-  boolean updateFeature(FeatureState feature, boolean force);
-  void deleteFeature(FeatureState feature);
+  void updateFeatures(@NotNull List<FeatureState> features, boolean force);
+  boolean updateFeature(@NotNull FeatureState feature);
+  boolean updateFeature(@NotNull FeatureState feature, boolean force);
+  void deleteFeature(@NotNull FeatureState feature);
 
-  FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, String key);
+  @Nullable FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, @NotNull String key);
 
-  Applied applyFeature(List<FeatureRolloutStrategy> strategies, String key, String featureValueId,
-                       ClientContext cac);
+  @NotNull Applied applyFeature(@NotNull List<FeatureRolloutStrategy> strategies, @NotNull String key, @NotNull String featureValueId,
+                                @NotNull ClientContext cac);
 
-  void execute(Runnable command);
+  void execute(@NotNull Runnable command);
 
-  ObjectMapper getJsonObjectMapper();
-
-  void setServerEvaluation(boolean val);
+  @NotNull ObjectMapper getJsonObjectMapper();
 
   /**
-   * Tell the repository that its features are not in a valid state.
+   * Tell the repository that its features are not in a valid state. Only called by server eval context.
    */
   void repositoryNotReady();
 
@@ -61,14 +59,11 @@ public interface InternalFeatureRepository extends FeatureRepository {
 
   @NotNull Readiness getReadiness();
 
-  FeatureStateBase<?> getFeat(String key);
-  <K> FeatureStateBase<K> getFeat(String key, Class<K> clazz);
+  @NotNull FeatureStateBase<?> getFeat(@NotNull String key);
+  @NotNull FeatureStateBase<?> getFeat(@NotNull Feature key);
+  @NotNull <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz);
 
-  void recordAnalyticsEvent(AnalyticsEvent event);
-
-  /**
-   * Only called by server eval context when we swap context
-   */
+  void recordAnalyticsEvent(@NotNull AnalyticsEvent event);
 
   /**
    * Repository is empty, there are no features but repository is ready.
@@ -76,8 +71,8 @@ public interface InternalFeatureRepository extends FeatureRepository {
   void repositoryEmpty();
 
   void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType, @Nullable Object value,
-            @NotNull Map<String, List<String>> attributes,
+            @Nullable Map<String, List<String>> attributes,
             @Nullable String analyticsUserKey);
 
-  AnalyticsProvider getAnalyticsProvider();
+  @NotNull AnalyticsProvider getAnalyticsProvider();
 }

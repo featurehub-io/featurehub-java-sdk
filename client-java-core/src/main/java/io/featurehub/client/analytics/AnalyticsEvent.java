@@ -23,17 +23,19 @@ public class AnalyticsEvent {
     this.userKey = userKey;
   }
 
-  public void setAdditionalParams(Map<String, Object> additionalParams) {
+  public void setAdditionalParams(@NotNull Map<String, Object> additionalParams) {
     this.additionalParams = additionalParams;
   }
 
-  public AnalyticsEvent(@Nullable String userKey, @NotNull Map<String, Object> additionalParams) {
+  public AnalyticsEvent(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     this.userKey = userKey;
-    this.additionalParams = additionalParams;
+    if (additionalParams != null) {
+      this.additionalParams = additionalParams;
+    }
   }
 
   @NotNull
-  Map<String, Object> toMap() {
+  protected Map<String, Object> toMap() {
     return additionalParams;
   }
 }

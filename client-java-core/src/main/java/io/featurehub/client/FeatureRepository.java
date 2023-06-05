@@ -49,7 +49,5 @@ public interface FeatureRepository {
    */
   void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper);
 
-  boolean isServerEvaluation();
-
   void close();
 }

@@ -16,4 +16,12 @@ public class Applied {
   public Object getValue() {
     return value;
   }
+
+  @Override
+  public String toString() {
+    return "Applied{" +
+      "matched=" + matched +
+      ", value=" + value +
+      '}';
+  }
 }

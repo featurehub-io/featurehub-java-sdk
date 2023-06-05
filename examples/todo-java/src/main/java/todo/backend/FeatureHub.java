@@ -6,7 +6,5 @@ import io.featurehub.client.FeatureHubConfig;
 import java.util.concurrent.Future;
 
 public interface FeatureHub {
-  ClientContext fhClient();
   FeatureHubConfig getConfig();
-  Future<?> poll();
 }

@@ -1,9 +1,13 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.featurehub.client.analytics.AnalyticsEvent;
+import io.featurehub.client.analytics.AnalyticsProvider;
+import io.featurehub.sse.model.FeatureStateUpdate;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.List;
@@ -24,7 +28,7 @@ public interface FeatureHubConfig {
    * you have received your first set of features. Server Evaluated contexts should not use it because it needs
    * to re-request data from the server each time you change your context.
    */
-  void init();
+  Future<ClientContext> init();
 
   /**
    * The API Key indicates this is going to be server based evaluation
@@ -61,6 +65,13 @@ public interface FeatureHubConfig {
    * @param interceptor
    */
   void registerValueInterceptor(boolean allowLockOverride, FeatureValueInterceptor interceptor);
+
+  /**
+   * Allows the user to register a new analytics provider that determines what internal classes are
+   * created on analytical events
+   * @param provider
+   */
+  void registerAnalyticsProvider(@NotNull AnalyticsProvider provider);
 
   /**
    * Allows you to query the state of the repository's readyness - such as in a heartbeat API

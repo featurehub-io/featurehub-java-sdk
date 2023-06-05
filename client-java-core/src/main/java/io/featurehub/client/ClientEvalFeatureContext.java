@@ -11,7 +11,7 @@ class ClientEvalFeatureContext extends BaseClientContext {
 
   public ClientEvalFeatureContext(FeatureHubConfig config, InternalFeatureRepository repository,
                                   EdgeService edgeService) {
-    super(repository, config, edgeService);
+    super(repository, edgeService);
   }
 
   // this doesn't matter for client eval

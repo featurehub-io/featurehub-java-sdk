@@ -89,7 +89,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
       poll();
     } else {
-      change.complete(repository.getReadyness());
+      change.complete(repository.getReadiness());
     }
 
     return change;
@@ -198,7 +198,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
         // tell any waiting clients we are now ready
         if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
-          waitingClients.forEach(wc -> wc.complete(repository.getReadyness()));
+          waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
         }
       } catch (Exception e) {
         log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
@@ -211,7 +211,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       log.trace("[featurehub-sdk] closed");
 
       // we never received a satisfactory connection
-      if (repository.getReadyness() == Readiness.NotReady) {
+      if (repository.getReadiness() == Readiness.NotReady) {
         repository.notify(SSEResultState.FAILURE);
       }
 

@@ -8,7 +8,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 
 public class ServerEvalFeatureContext extends BaseClientContext {
   private static final Logger log = LoggerFactory.getLogger(ServerEvalFeatureContext.class);
@@ -18,9 +17,9 @@ public class ServerEvalFeatureContext extends BaseClientContext {
   private final MessageDigest shaDigester;
 
 
-  public ServerEvalFeatureContext(FeatureHubConfig config, InternalFeatureRepository repository,
+  public ServerEvalFeatureContext(InternalFeatureRepository repository,
                                   EdgeService edgeService) {
-    super(repository, config, edgeService);
+    super(repository, edgeService);
 
     try {
       shaDigester = MessageDigest.getInstance("SHA-256");
