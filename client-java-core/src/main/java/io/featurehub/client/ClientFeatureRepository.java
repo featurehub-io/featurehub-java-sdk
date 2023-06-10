@@ -230,7 +230,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   private void broadcastReadyness() {
-    log.info("broadcasting readiness {} listener count {}", readiness, readinessListeners.size());
+    log.trace("broadcasting readiness {} listener count {}", readiness, readinessListeners.size());
     if (!executor.isShutdown()) {
       readinessListeners.forEach((rl) -> executor.execute(() -> rl.callback.accept(readiness)));
     }

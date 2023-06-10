@@ -1,14 +1,16 @@
 package io.featurehub.migrationcheck;
 
-import io.featurehub.android.FeatureHubClient;
+import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeRetryer;
+import io.featurehub.okhttp.RestClient;
 import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.Readiness;
 import io.featurehub.edge.sse.SSEClientFactory;
+import io.featurehub.okhttp.SSEClient;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.concurrent.ExecutionException;
 
 public class Main {
@@ -25,13 +27,13 @@ public class Main {
     FeatureHubConfig config = new EdgeFeatureHubConfig(edgeUrl, apiKey);
 
     // now we _directly_ create the REST based client, pointing it at our config and our repository
-    FeatureHubClient client = new FeatureHubClient(config);
+    RestClient client = new RestClient(config);
 
     // and now we block, waiting for it to connect and tell us if it is ready or not
     if (client.contextChange(null, "0").get() == Readiness.Ready) {
       client.close(); // make sure you close it, it has a background thread
       // once it is ready, we tell the config to use SSE as its connector, and start the config going.
-      config.setEdgeService(new SSEClientFactory().createEdgeService(config));
+      config.setEdgeService(() -> new SSEClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
       config.init();
 
       System.out.println("ready and waiting for updates via SSE");

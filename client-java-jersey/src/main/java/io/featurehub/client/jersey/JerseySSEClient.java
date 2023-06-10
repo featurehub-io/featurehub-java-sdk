@@ -1,6 +1,5 @@
 package io.featurehub.client.jersey;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
@@ -9,7 +8,6 @@ import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.utils.SdkVersion;
-import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
@@ -31,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 
 public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(JerseySSEClient.class);
@@ -41,10 +40,11 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private EventInput eventSource;
   private final WebTarget target;
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
+  private Consumer<EventInput> notify;
 
-
-  public JerseySSEClient(InternalFeatureRepository repository, FeatureHubConfig config, EdgeRetryService retryer) {
-    this.repository = repository;
+  public JerseySSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
+                         @NotNull EdgeRetryService retryer) {
+    this.repository = repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
 
@@ -63,14 +63,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     target = makeEventSourceTarget(client, config.getRealtimeUrl());
   }
 
-  protected WebTarget makeEventSourceTarget(Client client, String sdkUrl) {
+  @NotNull protected WebTarget makeEventSourceTarget(Client client, String sdkUrl) {
     return client.target(sdkUrl);
   }
 
   @Override
   public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @Nullable String contextSha) {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-
     if (config.isServerEvaluation() &&
       (
         (newHeader != null && !newHeader.equals(xFeaturehubHeader)) ||
@@ -85,14 +83,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     if (eventSource == null) {
-      waitingClients.add(change);
-
-      poll();
-    } else {
-      change.complete(repository.getReadiness());
+      return poll();
     }
 
-    return change;
+    return CompletableFuture.completedFuture(repository.getReadiness());
   }
 
   @Override
@@ -151,6 +145,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     boolean interrupted = false;
 
     while (!eventSource.isClosed() && !interrupted) {
+      if (notify != null) { // this is for testing
+        notify.accept(null);
+      }
+
       @Nullable String data;
       InboundEvent event;
 
@@ -168,57 +166,78 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         continue;
       }
 
-      try {
-        final SSEResultState state = retryer.fromValue(event.getName());
-
-        if (state == null) { // unknown state
-          continue;
-        }
-
-        log.trace("[featurehub-sdk] decode packet {}:{}", event.getName(), data);
-
-        if (state == SSEResultState.CONFIG) {
-          retryer.edgeConfigInfo(data);
-        } else if (data != null) {
-          retryer.convertSSEState(state, data, repository);
-        }
-
-        // reset the timer
-        if (state == SSEResultState.FEATURES) {
-          retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
-        }
-
-        if (state == SSEResultState.BYE) {
-          connectionSaidBye = true;
-        }
-
-        if (state == SSEResultState.FAILURE) {
-          retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
-        }
-
-        // tell any waiting clients we are now ready
-        if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
-          waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
-        }
-      } catch (Exception e) {
-        log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
-      }
+      connectionSaidBye = processResult(connectionSaidBye, data, event);
     }
 
-    if (eventSource.isClosed() || interrupted) {
-      close();
+    if (retryer.isStopped() || eventSource.isClosed() || interrupted) {
+      final boolean closedOrInterrupted = eventSource.isClosed() || interrupted;
 
-      log.trace("[featurehub-sdk] closed");
-
-      // we never received a satisfactory connection
-      if (repository.getReadiness() == Readiness.NotReady) {
-        repository.notify(SSEResultState.FAILURE);
+      log.trace("[featurehub] closed");
+      if (!eventSource.isClosed()) {
+        close();
       }
 
-      // send this once we are actually disconnected and not before
-      retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
-        EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+      checkForUnsatisfactoryConversation();
+
+      notifyWaitingClients();
+
+     if (closedOrInterrupted) {
+       // send this once we are actually disconnected and not before
+       retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
+         EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+     }
     }
+  }
+
+  private void checkForUnsatisfactoryConversation() {
+    // we never received a satisfactory connection
+    if (repository.getReadiness() == Readiness.NotReady) {
+      repository.notify(SSEResultState.FAILURE);
+    }
+  }
+
+  private boolean processResult(boolean connectionSaidBye, String data, InboundEvent event) {
+    try {
+      final SSEResultState state = retryer.fromValue(event.getName());
+
+      if (state == null) { // unknown state
+        return connectionSaidBye;
+      }
+
+      log.trace("[featurehub-sdk] decode packet {}:{}", event.getName(), data);
+
+      if (state == SSEResultState.CONFIG) {
+        retryer.edgeConfigInfo(data);
+      } else {
+        retryer.convertSSEState(state, data, repository);
+      }
+
+      // reset the timer
+      if (state == SSEResultState.FEATURES) {
+        retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
+      }
+
+      if (state == SSEResultState.BYE) {
+        connectionSaidBye = true;
+      }
+
+      if (state == SSEResultState.FAILURE) {
+        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+      }
+
+      // tell any waiting clients we are now ready
+      if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
+        notifyWaitingClients();
+      }
+    } catch (Exception e) {
+      log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
+    }
+
+    return connectionSaidBye;
+  }
+
+  private void notifyWaitingClients() {
+    waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
   }
 
   private void onMakeEventSourceException(Exception e) {
@@ -254,5 +273,9 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   @Override
   public void reconnect() {
     poll();
+  }
+
+  public void setNotify(Consumer<EventInput> notify) {
+    this.notify = notify;
   }
 }

@@ -27,7 +27,7 @@ public class EdgeRetryer implements EdgeRetryService {
   private final int maximumBackoffTimeMs;
   // this will change over the lifetime of reconnect attempts
   private int currentBackoffMultiplier;
-  private ObjectMapper mapper = new ObjectMapper();
+  private final ObjectMapper mapper = new ObjectMapper();
 
   // if this is set, then we stop recognizing any further requests from the connection,
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
@@ -55,7 +55,7 @@ public class EdgeRetryer implements EdgeRetryService {
     return Executors.newFixedThreadPool(1);
   }
 
-  public void edgeResult(EdgeConnectionState state, EdgeReconnector reConnector) {
+  public void edgeResult(@NotNull EdgeConnectionState state, @NotNull EdgeReconnector reConnector) {
     log.trace("[featurehub-sdk] retryer triggered {}", state);
     if (!notFoundState && !stopped && !executorService.isShutdown()) {
       if (state == EdgeConnectionState.SUCCESS) {
@@ -63,6 +63,7 @@ public class EdgeRetryer implements EdgeRetryService {
       } else if (state == EdgeConnectionState.API_KEY_NOT_FOUND) {
         log.warn("[featurehub-sdk] terminal failure attempting to connect to Edge, API KEY does not exist.");
         notFoundState = true;
+        stopped = true;
       } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
         executorService.submit(() -> {
           backoff(serverDisconnectRetryMs, true);
@@ -111,19 +112,25 @@ public class EdgeRetryer implements EdgeRetryService {
   }
 
   @Override
-  public void convertSSEState(@NotNull SSEResultState state, @NotNull String data,
+  public void convertSSEState(@NotNull SSEResultState state, String data,
                               @NotNull InternalFeatureRepository repository) {
     try {
-      if (state == SSEResultState.FEATURES) {
-        List<FeatureState> features =
-          repository.getJsonObjectMapper().readValue(data, FEATURE_LIST_TYPEDEF);
-        repository.updateFeatures(features);
-      } else if (state == SSEResultState.FEATURE) {
-        repository.updateFeature(repository.getJsonObjectMapper().readValue(data,
-          io.featurehub.sse.model.FeatureState.class));
-      } else if (state == SSEResultState.DELETE_FEATURE) {
-        repository.deleteFeature(repository.getJsonObjectMapper().readValue(data,
-          io.featurehub.sse.model.FeatureState.class));
+      if (data != null) {
+        if (state == SSEResultState.FEATURES) {
+          List<FeatureState> features =
+            repository.getJsonObjectMapper().readValue(data, FEATURE_LIST_TYPEDEF);
+          repository.updateFeatures(features);
+        } else if (state == SSEResultState.FEATURE) {
+          repository.updateFeature(repository.getJsonObjectMapper().readValue(data,
+            io.featurehub.sse.model.FeatureState.class));
+        } else if (state == SSEResultState.DELETE_FEATURE) {
+          repository.deleteFeature(repository.getJsonObjectMapper().readValue(data,
+            io.featurehub.sse.model.FeatureState.class));
+        }
+      }
+
+      if (state == SSEResultState.FAILURE) {
+        repository.notify(state);
       }
     } catch (JsonProcessingException jpe) {
       throw new RuntimeException("JSON failed", jpe);

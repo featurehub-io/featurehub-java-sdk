@@ -1,5 +1,12 @@
 = Java Libraries
 
+== todo
+
+- ensure that all of the factories are correct and each client has a full test client + rest client + sse client and they are actually working against proper server 
+- implement polling via a timer in the code repo
+- move the remaining examples from featurehub-examples here (quarkus & spring)
+
+
 This is the set of libraries currently supporting the Java programming language and its JDK based cousins. It currently consists
 of two libraries:
 

@@ -33,6 +33,10 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Nullable private ServerEvalFeatureContext serverEvalFeatureContext;
 
+  @Nullable ServiceLoader<FeatureHubClientFactory> loader;
+
+  @Nullable TestApi testApi;
+
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
     this(edgeUrl, Collections.singletonList(apiKey));
   }
@@ -102,8 +106,6 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       this.edgeService = loadEdgeService(repository).get();
     }
 
-    log.info("xx edge client {}", edgeService);
-
     if (isServerEvaluation()) {
       if (serverEvalFeatureContext == null) {
         serverEvalFeatureContext = new ServerEvalFeatureContext(repository, edgeService);
@@ -124,7 +126,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 
       for (FeatureHubClientFactory f : loader) {
-        Supplier<EdgeService> edgeService = f.createEdgeService(this, repository);
+        Supplier<EdgeService> edgeService = f.createSSEEdge(this, repository);
         if (edgeService != null) {
           edgeServiceSupplier = edgeService;
           break;
@@ -189,11 +191,62 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public void close() {
-    log.info("edge client {}", edgeService);
     if (edgeService != null) {
-      log.info("closing edge connection");
+      log.trace("closing edge connection");
       edgeService.close();
       edgeService = null;
     }
+    if (testApi != null) {
+      log.trace("closing test api");
+      testApi.close();
+      testApi = null;
+    }
   }
+
+  @Override
+  public FeatureHubConfig streaming() {
+    return this;
+  }
+
+  private class RestConfigImpl implements RestConfig {
+    protected boolean useUseBased = false;
+    protected boolean enabled = false;
+    protected int interval = 180;
+
+    private final EdgeFeatureHubConfig config;
+
+    private RestConfigImpl(EdgeFeatureHubConfig config) {
+      this.config = config;
+    }
+
+    @Override
+    public FeatureHubConfig interval(int timeoutSeconds) {
+      this.interval = timeoutSeconds;
+      enabled = true;
+      return config;
+    }
+
+    @Override
+    public FeatureHubConfig interval() {
+      this.interval = 0;
+      enabled = true;
+      return config;
+    }
+
+    @Override
+    public FeatureHubConfig minUpdateInterval(int timeoutSeconds) {
+      useUseBased = true;
+      enabled = true;
+      interval = timeoutSeconds;
+      return config;
+    }
+  }
+
+  private final RestConfigImpl restConfig = new RestConfigImpl(this);
+
+  @Override
+  public RestConfig rest() {
+    return restConfig;
+  }
+
 }

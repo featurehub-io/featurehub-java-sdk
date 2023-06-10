@@ -1,13 +1,13 @@
 package io.featurehub.client.jersey;
 
 import cd.connect.openapi.support.ApiClient;
+import cd.connect.openapi.support.ApiResponse;
 import cd.connect.openapi.support.Pair;
-import io.featurehub.sse.api.FeatureService;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureStateUpdate;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.core.GenericType;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,34 +21,58 @@ public class FeatureServiceImpl implements FeatureService {
     this.apiClient = apiClient;
   }
 
-  @Override
-  public List<FeatureEnvironmentCollection> getFeatureStates(@NotNull List<String> sdkUrl) {
-    return null;
-  }
+  public @NotNull ApiResponse<List<FeatureEnvironmentCollection>> getFeatureStates(@NotNull List<String> apiKey,
+                                                                                   @Nullable String contextSha,
+                                                                                   @Nullable Map<String, String> extraHeaders) {
+    Object localVarPostBody = new Object();
 
-  @Override
-  public void setFeatureState(String apiKey, @org.jetbrains.annotations.NotNull String featureKey,
-                                            @org.jetbrains.annotations.NotNull FeatureStateUpdate featureStateUpdate) {
-    // verify the required parameter 'apiKey' is set
-    if (apiKey == null) {
-      throw new BadRequestException("Missing the required parameter 'apiKey' when calling setFeatureState");
-    }
-
-    // verify the required parameter 'featureKey' is set
-    if (featureKey == null) {
-      throw new BadRequestException("Missing the required parameter 'featureKey' when calling setFeatureState");
-    }
-
-    // create path and map variables /{apiKey}/{featureKey}
-    String localVarPath = "/features/{apiKey}/{featureKey}"
-      .replaceAll("\\{" + "apiKey" + "\\}", apiKey.toString())
-      .replaceAll("\\{" + "featureKey" + "\\}", featureKey.toString());
+    // create path and map variables /features/
+    String localVarPath = "/features/";
 
     // query params
-    List<Pair> localVarQueryParams = new ArrayList<Pair>();
+    List<Pair> localVarQueryParams = new ArrayList<>();
+    Map<String, String> localVarHeaderParams = new HashMap<>();
+    Map<String, Object> localVarFormParams = new HashMap<>();
+
+    if (extraHeaders != null) {
+      localVarHeaderParams.putAll(extraHeaders);
+    }
+
+    localVarQueryParams.addAll(apiClient.parameterToPairs("multi", "apiKey", apiKey));
+    localVarQueryParams.addAll(apiClient.parameterToPairs("", "contextSha", contextSha));
+
+    final String[] localVarAccepts = {
+      "application/json"
+    };
+    final String localVarAccept = apiClient.selectHeaderAccept(localVarAccepts);
+
+    final String[] localVarContentTypes = {
+
+    };
+    final String localVarContentType = apiClient.selectHeaderContentType(localVarContentTypes);
+
+    String[] localVarAuthNames = new String[] {  };
+
+    GenericType<List<FeatureEnvironmentCollection>> localVarReturnType = new GenericType<List<FeatureEnvironmentCollection>>() {};
+    return apiClient.invokeAPI(localVarPath, "GET", localVarQueryParams, localVarPostBody, localVarHeaderParams,
+      localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localVarReturnType);
+
+  }
+
+  public int setFeatureState(@NotNull String apiKey,
+                              @NotNull String featureKey,
+                              @NotNull FeatureStateUpdate featureStateUpdate,
+                              @Nullable Map<String, String> extraHeaders) {
+    // create path and map variables /{apiKey}/{featureKey}
+    String localVarPath = String.format("/features/%s/%s", apiKey, featureKey);
+
+    // query params
     Map<String, String> localVarHeaderParams = new HashMap<String, String>();
     Map<String, Object> localVarFormParams = new HashMap<String, Object>();
 
+    if (extraHeaders != null) {
+      localVarHeaderParams.putAll(extraHeaders);
+    }
 
     final String[] localVarAccepts = {
       "application/json"
@@ -64,7 +88,7 @@ public class FeatureServiceImpl implements FeatureService {
 
     GenericType<Object> localVarReturnType = new GenericType<Object>() {};
 
-    apiClient.invokeAPI(localVarPath, "PUT", localVarQueryParams, featureStateUpdate, localVarHeaderParams,
-      localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localVarReturnType).getData();
+    return apiClient.invokeAPI(localVarPath, "PUT", null, featureStateUpdate, localVarHeaderParams,
+      localVarFormParams, localVarAccept, localVarContentType, localVarAuthNames, localVarReturnType).getStatusCode();
   }
 }

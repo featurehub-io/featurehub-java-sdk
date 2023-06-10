@@ -45,7 +45,7 @@
   </scm>
 
   <properties>
-    <jersey.version>3.0.5</jersey.version>
+    <jersey.version>3.1.2</jersey.version>
   </properties>
 
   <dependencies>
@@ -73,13 +73,6 @@
     <dependency>
       <groupId>org.glassfish.jersey.core</groupId>
       <artifactId>jersey-server</artifactId>
-      <version>${jersey.version}</version>
-    </dependency>
-
-    <!-- used by the Google client -->
-    <dependency>
-      <groupId>org.glassfish.jersey.ext</groupId>
-      <artifactId>jersey-proxy-client</artifactId>
       <version>${jersey.version}</version>
     </dependency>
 

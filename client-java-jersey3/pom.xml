@@ -43,12 +43,16 @@
     <tag>HEAD</tag>
   </scm>
 
+  <properties>
+    <jersey.version>3.1.2</jersey.version>
+  </properties>
+
   <dependencies>
     <!-- required for the test api -->
     <dependency>
       <groupId>cd.connect.openapi.gensupport</groupId>
       <artifactId>openapi-jersey3-support</artifactId>
-      <version>2.1</version>
+      <version>2.6</version>
     </dependency>
 
     <dependency>
@@ -69,6 +73,20 @@
       <version>[1.1, 2)</version>
       <scope>test</scope>
     </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.jersey.test-framework</groupId>
+      <artifactId>jersey-test-framework-core</artifactId>
+      <version>${jersey.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.test-framework.providers</groupId>
+      <artifactId>jersey-test-framework-provider-grizzly2</artifactId>
+      <version>${jersey.version}</version>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
 
   <build>

@@ -28,13 +28,7 @@
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-sse</artifactId>
-      <version>[2.1-SNAPSHOT, 3)</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-android</artifactId>
+      <artifactId>java-client-okhttp</artifactId>
       <version>[3.1-SNAPSHOT, 4)</version>
     </dependency>
 
