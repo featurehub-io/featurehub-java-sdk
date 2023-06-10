@@ -50,13 +50,28 @@ class FeatureHubTestClientFactory implements FeatureHubClientFactory {
   static FakeEdgeService fake
 
   @Override
-  Supplier<EdgeService> createEdgeService(FeatureHubConfig config, InternalFeatureRepository repository) {
+  Supplier<EdgeService> createSSEEdge(FeatureHubConfig config, InternalFeatureRepository repository) {
     fake = new FakeEdgeService(repository, config)
     return { -> fake }
   }
 
   @Override
-  Supplier<EdgeService> createEdgeService(@NotNull FeatureHubConfig config) {
-    return createEdgeService(config, null)
+  Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config) {
+    return createSSEEdge(config, null)
+  }
+
+  @Override
+  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository, int timeoutInSeconds) {
+    return null
+  }
+
+  @Override
+  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds) {
+    return null
+  }
+
+  @Override
+  Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config) {
+    return null
   }
 }

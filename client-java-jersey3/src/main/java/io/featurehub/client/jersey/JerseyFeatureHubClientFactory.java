@@ -4,6 +4,7 @@ import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubClientFactory;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.TestApi;
 import io.featurehub.client.edge.EdgeRetryer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -12,13 +13,29 @@ import java.util.function.Supplier;
 
 public class JerseyFeatureHubClientFactory implements FeatureHubClientFactory {
   @Override
-  public Supplier<EdgeService> createEdgeService(@NotNull FeatureHubConfig config,
-                                                 @Nullable InternalFeatureRepository repository) {
+  public Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config,
+                                             @Nullable InternalFeatureRepository repository) {
     return () -> new JerseySSEClient(repository, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build());
   }
 
   @Override
-  public Supplier<EdgeService> createEdgeService(@NotNull FeatureHubConfig config) {
-    return createEdgeService(config, null);
+  public Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config) {
+    return createSSEEdge(config, null);
+  }
+
+  @Override
+  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
+                                              @Nullable InternalFeatureRepository repository, int timeoutInSeconds) {
+    return () -> new RestClient(repository, null, config, timeoutInSeconds);
+  }
+
+  @Override
+  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds) {
+    return createRestEdge(config, null, timeoutInSeconds);
+  }
+
+  @Override
+  public Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config) {
+    return () -> new TestSDKClient(config);
   }
 }

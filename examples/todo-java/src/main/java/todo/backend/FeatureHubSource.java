@@ -4,8 +4,7 @@ import cd.connect.app.config.ConfigKey;
 import cd.connect.app.config.DeclaredConfigResolver;
 import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
-import io.featurehub.android.FeatureHubClient;
-import io.featurehub.client.ClientContext;
+import io.featurehub.okhttp.RestClient;
 import io.featurehub.client.ClientFeatureRepository;
 import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.FeatureHubConfig;
@@ -13,12 +12,7 @@ import io.featurehub.client.ThreadLocalContext;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor;
 import io.featurehub.client.jersey.JerseySSEClient;
-import io.featurehub.edge.sse.SSEClient;
-import org.jetbrains.annotations.Nullable;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import io.featurehub.okhttp.SSEClient;
 
 public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.host")
@@ -57,7 +51,7 @@ public class FeatureHubSource implements FeatureHub {
         config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build());
       config.setEdgeService(() -> jerseyClient);
     } else if (clientSdk.equals("android")) {
-      final FeatureHubClient client = new FeatureHubClient(config, pollInterval);
+      final RestClient client = new RestClient(config, pollInterval);
       config.setEdgeService(() -> client);
     } else if (clientSdk.equals("sse")) {
       final SSEClient client = new SSEClient(repository, config,

@@ -169,12 +169,12 @@ public class FeatureStateBase<K> implements FeatureState<K> {
         repository.applyFeature(
           feature.fs.getStrategies(), feature.key, feature.fs.getId().toString(), context);
 
-      log.info("feature is {}", applied);
+      log.trace("feature is {}", applied);
       if (applied.isMatched()) {
         return triggerUsage ? used(feature.key, feature.fs.getId(), applied.getValue(), type) : applied.getValue();
       }
     } else {
-      log.info("not matched using {}", feature.fs.getValue());
+      log.trace("not matched using {}", feature.fs.getValue());
     }
 
     return triggerUsage ? used(feature.key, feature.fs.getId(), feature.fs.getValue(), type) :
@@ -185,7 +185,7 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     if (context != null) {
       context.used(key, id, value, type);
     } else {
-      log.info("calling used with  {}", value);
+      log.trace("calling used with  {}", value);
       repository.used(key, id, type, value, null, null);
     }
 

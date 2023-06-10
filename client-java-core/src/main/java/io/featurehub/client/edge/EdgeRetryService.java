@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.concurrent.ExecutorService;
 
 public interface EdgeRetryService {
-  void edgeResult(EdgeConnectionState state, EdgeReconnector reconnector);
+  void edgeResult(@NotNull EdgeConnectionState state, @NotNull EdgeReconnector reconnector);
 
   /**
    * Edge connected received a "config" set of data, process it
@@ -17,7 +17,7 @@ public interface EdgeRetryService {
   void edgeConfigInfo(String config);
 
   @Nullable SSEResultState fromValue(String value);
-  void convertSSEState(@NotNull SSEResultState state, @NotNull String data, @NotNull InternalFeatureRepository
+  void convertSSEState(@NotNull SSEResultState state, String data, @NotNull InternalFeatureRepository
                        repository);
 
   void close();

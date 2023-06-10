@@ -53,7 +53,7 @@
     <dependency>
       <groupId>cd.connect.openapi.gensupport</groupId>
       <artifactId>openapi-generator-support</artifactId>
-      <version>1.4</version>
+      <version>1.5</version>
     </dependency>
 
     <!-- required in general for the jersey client -->
@@ -67,13 +67,6 @@
     <dependency>
       <groupId>org.glassfish.jersey.core</groupId>
       <artifactId>jersey-server</artifactId>
-      <version>${jersey.version}</version>
-    </dependency>
-
-    <!-- used by the Google client -->
-    <dependency>
-      <groupId>org.glassfish.jersey.ext</groupId>
-      <artifactId>jersey-proxy-client</artifactId>
       <version>${jersey.version}</version>
     </dependency>
 

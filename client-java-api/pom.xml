@@ -93,6 +93,7 @@
               <generatorName>jersey3-api</generatorName>
               <generateApis>false</generateApis>
               <additionalProperties>
+<!--                <additionalProperty>client</additionalProperty>-->
                 <additionalProperty>useBeanValidation=false</additionalProperty>
                 <additionalProperty>openApiNullable=false</additionalProperty>
                 <additionalProperty>useNullForUnknownEnumValue=true</additionalProperty>
