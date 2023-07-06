@@ -1,10 +1,10 @@
 package io.featurehub.client;
 
-import io.featurehub.client.analytics.AnalyticsEvent;
-import io.featurehub.client.analytics.AnalyticsFeature;
-import io.featurehub.client.analytics.AnalyticsFeaturesCollection;
-import io.featurehub.client.analytics.AnalyticsFeaturesCollectionContext;
-import io.featurehub.client.analytics.FeatureHubAnalyticsValue;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageFeature;
+import io.featurehub.client.usage.UsageFeaturesCollection;
+import io.featurehub.client.usage.UsageFeaturesCollectionContext;
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
@@ -129,33 +129,33 @@ class BaseClientContext implements InternalContext {
 
 
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordAnalyticsEvent(new AnalyticsFeature(
-      new FeatureHubAnalyticsValue(feature.withContext(this)), attributes,
+    repository.recordAnalyticsEvent(new UsageFeature(
+      new FeatureHubUsageValue(feature.withContext(this)), attributes,
       analyticsUserKey()));
   }
 
   protected void recordRelativeValuesForUser() {
-    repository.recordAnalyticsEvent(fillAnalyticsCollection(repository.getAnalyticsProvider().createAnalyticsCollectionEvent()));
+    repository.recordAnalyticsEvent(fillAnalyticsCollection(repository.getAnalyticsProvider().createUsageCollectionEvent()));
   }
 
-  protected AnalyticsEvent fillAnalyticsCollection(AnalyticsEvent event) {
+  protected UsageEvent fillAnalyticsCollection(UsageEvent event) {
     event.setUserKey(analyticsUserKey());
 
-    if (event instanceof AnalyticsFeaturesCollection) {
-      ((AnalyticsFeaturesCollection)event).setFeatureValues(
+    if (event instanceof UsageFeaturesCollection) {
+      ((UsageFeaturesCollection)event).setFeatureValues(
         repository.getFeatureKeys().stream().map((k) ->
-          new FeatureHubAnalyticsValue(repository.getFeat(k))).collect(Collectors.toList()));
+          new FeatureHubUsageValue(repository.getFeat(k))).collect(Collectors.toList()));
     }
 
-    if (event instanceof AnalyticsFeaturesCollectionContext) {
-      ((AnalyticsFeaturesCollectionContext)event).setAttributes(attributes);
+    if (event instanceof UsageFeaturesCollectionContext) {
+      ((UsageFeaturesCollectionContext)event).setAttributes(attributes);
     }
 
     return event;
   }
 
   @Override
-  public void recordAnalyticsEvent(@NotNull AnalyticsEvent event) {
+  public void recordAnalyticsEvent(@NotNull UsageEvent event) {
     repository.recordAnalyticsEvent(fillAnalyticsCollection(event));
   }
 

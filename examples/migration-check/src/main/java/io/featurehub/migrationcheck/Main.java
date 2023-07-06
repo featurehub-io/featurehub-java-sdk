@@ -1,12 +1,10 @@
 package io.featurehub.migrationcheck;
 
-import io.featurehub.client.edge.EdgeRetryService;
-import io.featurehub.client.edge.EdgeRetryer;
-import io.featurehub.okhttp.RestClient;
 import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.Readiness;
-import io.featurehub.edge.sse.SSEClientFactory;
+import io.featurehub.client.edge.EdgeRetryer;
+import io.featurehub.okhttp.RestClient;
 import io.featurehub.okhttp.SSEClient;
 import org.jetbrains.annotations.NotNull;
 
@@ -30,7 +28,7 @@ public class Main {
     RestClient client = new RestClient(config);
 
     // and now we block, waiting for it to connect and tell us if it is ready or not
-    if (client.contextChange(null, "0").get() == Readiness.Ready) {
+    if (client.poll().get() == Readiness.Ready) {
       client.close(); // make sure you close it, it has a background thread
       // once it is ready, we tell the config to use SSE as its connector, and start the config going.
       config.setEdgeService(() -> new SSEClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));

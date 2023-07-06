@@ -1,6 +1,6 @@
 package io.featurehub.client;
 
-import io.featurehub.client.analytics.AnalyticsEvent;
+import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
@@ -68,7 +68,7 @@ public interface ClientContext {
    * the current context if possible and add it to the analytics event.
    * @param event
    */
-  void recordAnalyticsEvent(@NotNull AnalyticsEvent event);
+  void recordAnalyticsEvent(@NotNull UsageEvent event);
 
   void close();
 }

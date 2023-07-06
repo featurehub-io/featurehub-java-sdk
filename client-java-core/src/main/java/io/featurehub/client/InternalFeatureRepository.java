@@ -1,8 +1,8 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.analytics.AnalyticsEvent;
-import io.featurehub.client.analytics.AnalyticsProvider;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureValueType;
@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 public interface InternalFeatureRepository extends FeatureRepository {
 
@@ -47,6 +48,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
                                 @NotNull ClientContext cac);
 
   void execute(@NotNull Runnable command);
+  Executor getExecutor();
 
   @NotNull ObjectMapper getJsonObjectMapper();
 
@@ -63,7 +65,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
   @NotNull FeatureStateBase<?> getFeat(@NotNull Feature key);
   @NotNull <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz);
 
-  void recordAnalyticsEvent(@NotNull AnalyticsEvent event);
+  void recordAnalyticsEvent(@NotNull UsageEvent event);
 
   /**
    * Repository is empty, there are no features but repository is ready.
@@ -74,5 +76,5 @@ public interface InternalFeatureRepository extends FeatureRepository {
             @Nullable Map<String, List<String>> attributes,
             @Nullable String analyticsUserKey);
 
-  @NotNull AnalyticsProvider getAnalyticsProvider();
+  @NotNull UsageProvider getAnalyticsProvider();
 }

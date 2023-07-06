@@ -1,11 +1,11 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import io.featurehub.client.FeatureStateBase;
 import io.featurehub.sse.model.FeatureValueType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class FeatureHubAnalyticsValue {
+public class FeatureHubUsageValue {
   @NotNull
   final String id;
   @NotNull
@@ -32,16 +32,16 @@ public class FeatureHubAnalyticsValue {
     return null;
   }
 
-  public FeatureHubAnalyticsValue(@NotNull String id, @NotNull String key, @Nullable Object value,
-                                  @NotNull FeatureValueType type) {
+  public FeatureHubUsageValue(@NotNull String id, @NotNull String key, @Nullable Object value,
+                              @NotNull FeatureValueType type) {
     this.id = id;
     this.key = key;
     this.value = convert(value, type);
   }
 
-  public FeatureHubAnalyticsValue(@NotNull FeatureStateBase<?> holder) {
+  public FeatureHubUsageValue(@NotNull FeatureStateBase<?> holder) {
     this.id = holder.getId();
     this.key = holder.getKey();
-    this.value = convert(holder.getAnalyticsFreeValue(), holder.getType());
+    this.value = convert(holder.getUsageFreeValue(), holder.getType());
   }
 }

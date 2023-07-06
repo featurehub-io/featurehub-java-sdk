@@ -1,4 +1,4 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -6,17 +6,17 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
-public class AnalyticsEvent {
+public class UsageEvent {
   @Nullable
   private String userKey;
   @NotNull
   private Map<String, Object> additionalParams = new HashMap<>();
 
-  public AnalyticsEvent(@Nullable String userKey) {
+  public UsageEvent(@Nullable String userKey) {
     this.userKey = userKey;
   }
 
-  public AnalyticsEvent() {
+  public UsageEvent() {
   }
 
   public void setUserKey(String userKey) {
@@ -27,7 +27,7 @@ public class AnalyticsEvent {
     this.additionalParams = additionalParams;
   }
 
-  public AnalyticsEvent(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
+  public UsageEvent(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     this.userKey = userKey;
     if (additionalParams != null) {
       this.additionalParams = additionalParams;

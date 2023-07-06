@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import io.featurehub.client.analytics.AnalyticsEvent;
-import io.featurehub.client.analytics.AnalyticsProvider;
-import io.featurehub.client.analytics.FeatureHubAnalyticsValue;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageProvider;
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -56,8 +57,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<FeatureRepository>> newStateAvailableHandlers = new ArrayList<>();
   private final List<Callback<FeatureState<?>>> featureUpdateHandlers = new ArrayList<>();
   private final List<FeatureValueInterceptorHolder> featureValueInterceptors = new ArrayList<>();
-  private final List<Callback<AnalyticsEvent>> analyticsHandlers = new ArrayList<>();
-  private AnalyticsProvider analyticsProvider = new AnalyticsProvider.DefaultAnalyticsProvider();
+  private final List<Callback<UsageEvent>> analyticsHandlers = new ArrayList<>();
+  private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
 
   private ObjectMapper jsonConfigObjectMapper;
   private final ApplyFeature applyFeature;
@@ -122,8 +123,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void registerAnalyticsProvider(@NotNull AnalyticsProvider provider) {
-    this.analyticsProvider = provider;
+  public void registerAnalyticsProvider(@NotNull UsageProvider provider) {
+    this.usageProvider = provider;
   }
 
   @Override
@@ -137,7 +138,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<AnalyticsEvent> callback) {
+  public @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<UsageEvent> callback) {
     return new Callback<>(analyticsHandlers, callback);
   }
 
@@ -190,6 +191,11 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   @Override
   public void execute(@NotNull Runnable command) {
     executor.execute(command);
+  }
+
+  @Override
+  public Executor getExecutor() {
+    return executor;
   }
 
   @Override
@@ -325,7 +331,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void recordAnalyticsEvent(@NotNull AnalyticsEvent event) {
+  public void recordAnalyticsEvent(@NotNull UsageEvent event) {
     analyticsHandlers.forEach(handler -> execute(() -> handler.callback.accept(event)));
   }
 
@@ -339,7 +345,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   public void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType,
                    @Nullable Object value, @Nullable Map<String, List<String>> attributes,
                    String analyticsUserKey) {
-    recordAnalyticsEvent(analyticsProvider.createAnalyticsFeature(new FeatureHubAnalyticsValue(id.toString(), key,
+    recordAnalyticsEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
       value, valueType
       ), attributes, analyticsUserKey));
   }
@@ -363,7 +369,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull AnalyticsProvider getAnalyticsProvider() {
-    return analyticsProvider;
+  public @NotNull UsageProvider getAnalyticsProvider() {
+    return usageProvider;
   }
 }

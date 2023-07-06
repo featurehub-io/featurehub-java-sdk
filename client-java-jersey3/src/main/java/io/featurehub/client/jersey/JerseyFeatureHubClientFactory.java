@@ -25,13 +25,13 @@ public class JerseyFeatureHubClientFactory implements FeatureHubClientFactory {
 
   @Override
   public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
-                                              @Nullable InternalFeatureRepository repository, int timeoutInSeconds) {
-    return () -> new RestClient(repository, null, config, timeoutInSeconds);
+                                              @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPollingDelegate) {
+    return () -> new RestClient(repository, null, config, timeoutInSeconds, amPollingDelegate);
   }
 
   @Override
-  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds) {
-    return createRestEdge(config, null, timeoutInSeconds);
+  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate) {
+    return createRestEdge(config, null, timeoutInSeconds, amPollingDelegate);
   }
 
   @Override

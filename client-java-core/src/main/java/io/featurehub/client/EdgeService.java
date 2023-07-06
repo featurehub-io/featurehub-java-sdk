@@ -40,4 +40,11 @@ public interface EdgeService {
    * REST it will be the response.
    */
   Future<Readiness> poll();
+
+  /**
+   * Only used for REST interfacces, 0 otherwise, and 0 for one-shot calls.
+   *
+   * @return - current interval which can change based on data sent from server.
+   */
+  long currentInterval();
 }

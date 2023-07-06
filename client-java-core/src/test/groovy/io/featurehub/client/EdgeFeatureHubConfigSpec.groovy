@@ -1,13 +1,11 @@
 package io.featurehub.client
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.featurehub.client.analytics.AnalyticsProvider
+import io.featurehub.client.usage.UsageProvider
 import spock.lang.Specification
 
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Future
 import java.util.function.Consumer
-import java.util.function.Supplier
 
 class EdgeFeatureHubConfigSpec extends Specification {
   FeatureHubConfig config
@@ -51,7 +49,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def om = new ObjectMapper()
       Consumer<Readiness> readynessListener = Mock(Consumer<Readiness>)
       def featureValueOverride = Mock(FeatureValueInterceptor)
-      def analyticsProvider = Mock(AnalyticsProvider)
+      def analyticsProvider = Mock(UsageProvider)
     when: "i set all the passthrough settings"
       config.setJsonConfigObjectMapper(om)
       config.addReadinessListener(readynessListener)

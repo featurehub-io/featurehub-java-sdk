@@ -23,6 +23,8 @@ public class FeatureHubSource implements FeatureHub {
   String analyticsKey = "";
   @ConfigKey("feature-service.sdk")
   String clientSdk = "jersey3";
+  @ConfigKey("feature-service.client")
+  String client = "sse"; // sse, rest, rest-poll
   @ConfigKey("feature-service.poll-interval")
   Integer pollInterval = 1000; // in milliseconds
 

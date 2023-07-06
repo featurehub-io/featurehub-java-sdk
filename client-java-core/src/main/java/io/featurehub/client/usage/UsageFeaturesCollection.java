@@ -1,4 +1,4 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -9,18 +9,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AnalyticsFeaturesCollection extends AnalyticsEvent {
-  @NotNull List<FeatureHubAnalyticsValue> featureValues = new ArrayList<>();
+public class UsageFeaturesCollection extends UsageEvent {
+  @NotNull List<FeatureHubUsageValue> featureValues = new ArrayList<>();
 
-  public AnalyticsFeaturesCollection(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
+  public UsageFeaturesCollection(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     super(userKey, additionalParams);
   }
 
-  public void setFeatureValues(List<FeatureHubAnalyticsValue> featureValues) {
+  public void setFeatureValues(List<FeatureHubUsageValue> featureValues) {
     this.featureValues = featureValues;
   }
 
-  public AnalyticsFeaturesCollection() {}
+  public UsageFeaturesCollection() {}
 
   void ready() {}
 

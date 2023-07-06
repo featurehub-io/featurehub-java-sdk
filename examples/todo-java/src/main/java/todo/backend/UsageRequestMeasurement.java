@@ -1,16 +1,16 @@
 package todo.backend;
 
-import io.featurehub.client.analytics.AnalyticsFeaturesCollection;
+import io.featurehub.client.usage.UsageFeaturesCollection;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class AnalyticsRequestMeasurement extends AnalyticsFeaturesCollection {
+public class UsageRequestMeasurement extends UsageFeaturesCollection {
   private final long duration;
   @NotNull
   private final String url;
-  public AnalyticsRequestMeasurement(long duration, @NotNull String url) {
+  public UsageRequestMeasurement(long duration, @NotNull String url) {
     super(null, null);
 
     this.duration = duration;

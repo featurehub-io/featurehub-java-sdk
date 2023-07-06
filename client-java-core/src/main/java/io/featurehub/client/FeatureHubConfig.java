@@ -1,7 +1,7 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.analytics.AnalyticsProvider;
+import io.featurehub.client.usage.UsageProvider;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -69,7 +69,7 @@ public interface FeatureHubConfig {
    * created on analytical events
    * @param provider
    */
-  void registerAnalyticsProvider(@NotNull AnalyticsProvider provider);
+  void registerAnalyticsProvider(@NotNull UsageProvider provider);
 
   /**
    * Allows you to query the state of the repository's readyness - such as in a heartbeat API
@@ -92,26 +92,15 @@ public interface FeatureHubConfig {
 
   FeatureHubConfig streaming();
 
-  interface RestConfig {
-    /**
-     * creates a java Timer and will poll every X seconds. Also polls if context changes for
-     * server evaluated context.
-     * @param timeoutSeconds - the timeout between completed requests in seconds
-     */
-    FeatureHubConfig interval(int timeoutSeconds);
+  /**
+   * interval defaults to 180 seconds
+   */
+  FeatureHubConfig restPoll();
+  FeatureHubConfig restPoll(int intervalInSeconds);
+  FeatureHubConfig rest(int cacheTimeoutInSeconds);
 
-    /**
-     * no interval, just polls once (if it hasn't polled already) and returns. If using
-     * server evaluated context, it will poll once if context changes and that is all.
-     */
-    FeatureHubConfig interval();
-
-    /**
-     * @param timeoutSeconds - no active polling, will poll if feature requested after this period of time or if
-     *                       server evaluated and context changes.
-     */
-    FeatureHubConfig minUpdateInterval(int timeoutSeconds);
-  }
-
-  RestConfig rest();
+  /**
+   * cache timeout defaults to 180 seconds
+   */
+  FeatureHubConfig rest();
 }

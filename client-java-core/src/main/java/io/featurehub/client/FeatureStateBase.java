@@ -135,7 +135,7 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     return (feature.fs == null) ? null : feature.fs.getType();
   }
 
-  public Object getAnalyticsFreeValue() {
+  public Object getUsageFreeValue() {
     return internalGetValue(null, false);
   }
 
