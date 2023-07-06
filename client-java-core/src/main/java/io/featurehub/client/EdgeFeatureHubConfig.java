@@ -1,7 +1,7 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.analytics.AnalyticsProvider;
+import io.featurehub.client.usage.UsageProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -36,6 +36,9 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Nullable ServiceLoader<FeatureHubClientFactory> loader;
 
   @Nullable TestApi testApi;
+
+  private EdgeType edgeType = EdgeType.REST_TIMEOUT;
+  private int timeout;
 
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
     this(edgeUrl, Collections.singletonList(apiKey));
@@ -126,10 +129,14 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 
       for (FeatureHubClientFactory f : loader) {
-        Supplier<EdgeService> edgeService = f.createSSEEdge(this, repository);
-        if (edgeService != null) {
-          edgeServiceSupplier = edgeService;
-          break;
+        if (edgeType == EdgeType.STREAMING) {
+          edgeServiceSupplier = f.createSSEEdge(this, repository);
+        } else if (edgeType == EdgeType.REST_TIMEOUT) {
+          edgeServiceSupplier = f.createRestEdge(this, repository, timeout, false);
+        } else {
+          edgeServiceSupplier = () -> new PollingDelegateEdgeService(
+            f.createRestEdge(this, repository, timeout, true).get(),
+            repository);
         }
       }
     }
@@ -174,7 +181,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void registerAnalyticsProvider(@NotNull AnalyticsProvider provider) {
+  public void registerAnalyticsProvider(@NotNull UsageProvider provider) {
     getRepository().registerAnalyticsProvider(provider);
   }
 
@@ -205,48 +212,40 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig streaming() {
+    edgeType = EdgeType.STREAMING;
+    timeout = 0;
     return this;
   }
 
-  private class RestConfigImpl implements RestConfig {
-    protected boolean useUseBased = false;
-    protected boolean enabled = false;
-    protected int interval = 180;
-
-    private final EdgeFeatureHubConfig config;
-
-    private RestConfigImpl(EdgeFeatureHubConfig config) {
-      this.config = config;
-    }
-
-    @Override
-    public FeatureHubConfig interval(int timeoutSeconds) {
-      this.interval = timeoutSeconds;
-      enabled = true;
-      return config;
-    }
-
-    @Override
-    public FeatureHubConfig interval() {
-      this.interval = 0;
-      enabled = true;
-      return config;
-    }
-
-    @Override
-    public FeatureHubConfig minUpdateInterval(int timeoutSeconds) {
-      useUseBased = true;
-      enabled = true;
-      interval = timeoutSeconds;
-      return config;
-    }
+  private enum EdgeType {
+    STREAMING, REST_TIMEOUT, REST_POLL
   }
-
-  private final RestConfigImpl restConfig = new RestConfigImpl(this);
 
   @Override
-  public RestConfig rest() {
-    return restConfig;
+  public FeatureHubConfig restPoll() {
+    this.timeout = 180;
+    edgeType = EdgeType.REST_POLL;
+    return this;
   }
 
+  @Override
+  public FeatureHubConfig restPoll(int intervalInSeconds) {
+    this.timeout = intervalInSeconds;
+    edgeType = EdgeType.REST_POLL;
+    return this;
+  }
+
+  @Override
+  public FeatureHubConfig rest(int cacheTimeoutInSeconds) {
+    this.timeout = cacheTimeoutInSeconds;
+    edgeType = EdgeType.REST_TIMEOUT;
+    return this;
+  }
+
+  @Override
+  public FeatureHubConfig rest() {
+    this.timeout = 180;
+    edgeType = EdgeType.REST_TIMEOUT;
+    return this;
+  }
 }

@@ -51,15 +51,17 @@ public class RestClient implements EdgeService {
 
   private long whenPollingCacheExpires;
   private final boolean clientSideEvaluation;
+  private final boolean amPollingDelegate;
   @NotNull private final FeatureHubConfig config;
   @NotNull private final ExecutorService executorService;
 
   public RestClient(@Nullable InternalFeatureRepository repository,
-                    @NotNull FeatureHubConfig config, int timeoutInSeconds) {
+                    @NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate) {
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
 
+    this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
     this.client = new OkHttpClient();
     this.config = config;
@@ -85,15 +87,11 @@ public class RestClient implements EdgeService {
 
   public RestClient(@NotNull FeatureHubConfig config,
                     int timeoutInSeconds) {
-    this(null, config, timeoutInSeconds);
-  }
-
-  public RestClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config) {
-    this(repository, config, 180);
+    this(null, config, timeoutInSeconds, false);
   }
 
   public RestClient(@NotNull FeatureHubConfig config) {
-    this(null, config, 180);
+    this(null, config, 180, false);
   }
 
   private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
@@ -106,7 +104,8 @@ public class RestClient implements EdgeService {
   }
 
   public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
-    final boolean breakCache = pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
+    final boolean breakCache =
+      amPollingDelegate || pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
     final boolean ask = makeRequests && !busy && !stopped && breakCache;
 
     headerChanged = false;
@@ -324,6 +323,11 @@ public class RestClient implements EdgeService {
     }
 
     return change;
+  }
+
+  @Override
+  public long currentInterval() {
+    return pollingInterval;
   }
 
   public long getWhenPollingCacheExpires() {

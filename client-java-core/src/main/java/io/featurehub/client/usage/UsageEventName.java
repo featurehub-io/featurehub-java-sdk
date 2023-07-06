@@ -1,7 +1,7 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import org.jetbrains.annotations.NotNull;
 
-public interface AnalyticsEventName {
+public interface UsageEventName {
   @NotNull String getEventName();
 }

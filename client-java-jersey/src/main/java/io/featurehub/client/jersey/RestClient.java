@@ -41,6 +41,7 @@ public class RestClient implements EdgeService {
   @Nullable
   private String etag = null;
   private long pollingInterval;
+  private final boolean amPollingDelegate;
 
   private long whenPollingCacheExpires;
   private final boolean clientSideEvaluation;
@@ -57,11 +58,13 @@ public class RestClient implements EdgeService {
   public RestClient(@Nullable InternalFeatureRepository repository,
                     @Nullable FeatureService client,
                     @NotNull FeatureHubConfig config,
-                    int timeoutInSeconds) {
+                    int timeoutInSeconds,
+                    boolean amPollingDelegate) {
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
 
+    this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
     this.client = client == null ? makeClient(config) : client;
     this.config = config;
@@ -86,15 +89,15 @@ public class RestClient implements EdgeService {
 
   public RestClient(@NotNull FeatureHubConfig config,
                     int timeoutInSeconds) {
-    this(null, null, config, timeoutInSeconds);
+    this(null, null, config, timeoutInSeconds, false);
   }
 
   public RestClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config) {
-    this(repository, null, config, 180);
+    this(repository, null, config, 180, false);
   }
 
   public RestClient(@NotNull FeatureHubConfig config) {
-    this(null, null, config, 180);
+    this(null, null, config, 180, false);
   }
 
   private boolean busy = false;
@@ -106,7 +109,8 @@ public class RestClient implements EdgeService {
   }
 
   public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
-    final boolean breakCache = pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
+    final boolean breakCache =
+      amPollingDelegate || pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
     final boolean ask = !busy && !stopped && breakCache;
 
     headerChanged = false;
@@ -134,6 +138,8 @@ public class RestClient implements EdgeService {
         processResponse(response);
       } catch (Exception e) {
         processFailure(e);
+      } finally {
+        busy = false;
       }
     }
 
@@ -285,6 +291,11 @@ public class RestClient implements EdgeService {
     }
 
     return change;
+  }
+
+  @Override
+  public long currentInterval() {
+    return pollingInterval;
   }
 
   public long getWhenPollingCacheExpires() {

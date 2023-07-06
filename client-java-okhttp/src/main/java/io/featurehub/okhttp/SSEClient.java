@@ -59,6 +59,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     return CompletableFuture.completedFuture(repository.getReadiness());
   }
 
+  @Override
+  public long currentInterval() {
+    return 0;
+  }
+
   private boolean connectionSaidBye;
 
   private void initEventSource() {

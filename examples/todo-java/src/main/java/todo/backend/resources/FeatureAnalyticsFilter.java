@@ -7,7 +7,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
-import todo.backend.AnalyticsRequestMeasurement;
+import todo.backend.UsageRequestMeasurement;
 
 import java.io.IOException;
 import java.util.List;
@@ -35,7 +35,7 @@ public class FeatureAnalyticsFilter implements ContainerRequestFilter, Container
 
     final List<String> matchedURIs = requestContext.getUriInfo().getMatchedURIs();
     if (matchedURIs.size() > 0) {
-      ThreadLocalContext.context().recordAnalyticsEvent(new AnalyticsRequestMeasurement(duration, matchedURIs.get(0)));
+      ThreadLocalContext.context().recordAnalyticsEvent(new UsageRequestMeasurement(duration, matchedURIs.get(0)));
     }
   }
 }

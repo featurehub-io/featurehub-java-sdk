@@ -17,9 +17,9 @@ public interface FeatureHubClientFactory {
 
   Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
                                        @Nullable InternalFeatureRepository repository,
-                                       int timeoutInSeconds);
+                                       int timeoutInSeconds, boolean amPollingDelegate);
 
-  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds);
+  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate);
 
   Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config);
 }

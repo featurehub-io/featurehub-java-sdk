@@ -45,6 +45,11 @@ class FeatureHubTestClientFactory implements FeatureHubClientFactory {
     Future<Readiness> poll() {
       return null
     }
+
+    @Override
+    long currentInterval() {
+      return 0
+    }
   }
 
   static FakeEdgeService fake
@@ -61,12 +66,12 @@ class FeatureHubTestClientFactory implements FeatureHubClientFactory {
   }
 
   @Override
-  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository, int timeoutInSeconds) {
+  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPolling) {
     return null
   }
 
   @Override
-  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds) {
+  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPolling) {
     return null
   }
 

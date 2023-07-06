@@ -1,4 +1,4 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -8,15 +8,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AnalyticsFeaturesCollectionContext extends AnalyticsFeaturesCollection {
+public class UsageFeaturesCollectionContext extends UsageFeaturesCollection {
   @NotNull
   Map<String, List<String>> attributes = new HashMap<>();
 
-  public AnalyticsFeaturesCollectionContext(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
+  public UsageFeaturesCollectionContext(@Nullable String userKey, @Nullable Map<String, Object> additionalParams) {
     super(userKey, additionalParams);
   }
 
-  public AnalyticsFeaturesCollectionContext() {
+  public UsageFeaturesCollectionContext() {
     super();
   }
 

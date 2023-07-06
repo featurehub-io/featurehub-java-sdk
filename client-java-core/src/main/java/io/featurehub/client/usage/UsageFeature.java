@@ -1,4 +1,4 @@
-package io.featurehub.client.analytics;
+package io.featurehub.client.usage;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -8,13 +8,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AnalyticsFeature extends AnalyticsEvent implements AnalyticsEventName {
+public class UsageFeature extends UsageEvent implements UsageEventName {
   @Nullable
   final Map<String, List<String>> attributes;
-  @NotNull final FeatureHubAnalyticsValue feature;
+  @NotNull final FeatureHubUsageValue feature;
 
-  public AnalyticsFeature(@NotNull FeatureHubAnalyticsValue feature, @Nullable Map<String, List<String>> attributes,
-                          @Nullable String userKey) {
+  public UsageFeature(@NotNull FeatureHubUsageValue feature, @Nullable Map<String, List<String>> attributes,
+                      @Nullable String userKey) {
     this.attributes = attributes;
     this.feature = feature;
   }
@@ -23,7 +23,7 @@ public class AnalyticsFeature extends AnalyticsEvent implements AnalyticsEventNa
     return attributes;
   }
 
-  @NotNull public FeatureHubAnalyticsValue getFeature() {
+  @NotNull public FeatureHubUsageValue getFeature() {
     return feature;
   }
 

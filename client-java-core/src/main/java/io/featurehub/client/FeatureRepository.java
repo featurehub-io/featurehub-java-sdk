@@ -1,8 +1,8 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.analytics.AnalyticsEvent;
-import io.featurehub.client.analytics.AnalyticsProvider;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageProvider;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -33,11 +33,11 @@ public interface FeatureRepository {
    * @return the instance of the repo for chaining
    */
   @NotNull FeatureRepository registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
-  void registerAnalyticsProvider(@NotNull AnalyticsProvider provider);
+  void registerAnalyticsProvider(@NotNull UsageProvider provider);
 
   @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(@NotNull Consumer<FeatureRepository> callback);
   @NotNull RepositoryEventHandler registerFeatureUpdateAvailable(@NotNull Consumer<FeatureState<?>> callback);
-  @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<AnalyticsEvent> callback);
+  @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<UsageEvent> callback);
 
   @NotNull Readiness getReadiness();
 
