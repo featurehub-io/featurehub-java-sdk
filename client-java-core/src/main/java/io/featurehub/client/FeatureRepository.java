@@ -33,11 +33,11 @@ public interface FeatureRepository {
    * @return the instance of the repo for chaining
    */
   @NotNull FeatureRepository registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
-  void registerAnalyticsProvider(@NotNull UsageProvider provider);
+  void registerUsageProvider(@NotNull UsageProvider provider);
 
   @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(@NotNull Consumer<FeatureRepository> callback);
   @NotNull RepositoryEventHandler registerFeatureUpdateAvailable(@NotNull Consumer<FeatureState<?>> callback);
-  @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<UsageEvent> callback);
+  @NotNull RepositoryEventHandler registerUsageStream(@NotNull Consumer<UsageEvent> callback);
 
   @NotNull Readiness getReadiness();
 

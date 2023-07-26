@@ -212,7 +212,7 @@ class RepositorySpec extends Specification {
         def listener = Mock(FeatureListener)
         updateListener.add(listener)
         feature.addListener(listener)
-        emptyFeatures.add(feature.analyticsCopy())
+        emptyFeatures.add(feature.usageCopy())
       }
       def featureCountAfterRequestingEmptyFeatures = repo.allFeatures.size()
     when: "i fill in the repo"

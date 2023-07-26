@@ -65,11 +65,11 @@ public interface FeatureHubConfig {
   void registerValueInterceptor(boolean allowLockOverride, FeatureValueInterceptor interceptor);
 
   /**
-   * Allows the user to register a new analytics provider that determines what internal classes are
+   * Allows the user to register a new usage provider that determines what internal classes are
    * created on analytical events
    * @param provider
    */
-  void registerAnalyticsProvider(@NotNull UsageProvider provider);
+  void registerUsageProvider(@NotNull UsageProvider provider);
 
   /**
    * Allows you to query the state of the repository's readyness - such as in a heartbeat API

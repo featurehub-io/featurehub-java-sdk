@@ -65,7 +65,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
   @NotNull FeatureStateBase<?> getFeat(@NotNull Feature key);
   @NotNull <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz);
 
-  void recordAnalyticsEvent(@NotNull UsageEvent event);
+  void recordUsageEvent(@NotNull UsageEvent event);
 
   /**
    * Repository is empty, there are no features but repository is ready.
@@ -74,7 +74,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
 
   void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType, @Nullable Object value,
             @Nullable Map<String, List<String>> attributes,
-            @Nullable String analyticsUserKey);
+            @Nullable String usageUserKey);
 
-  @NotNull UsageProvider getAnalyticsProvider();
+  @NotNull UsageProvider getUsageProvider();
 }

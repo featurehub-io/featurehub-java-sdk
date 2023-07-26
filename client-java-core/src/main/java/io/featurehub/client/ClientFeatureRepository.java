@@ -57,7 +57,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<FeatureRepository>> newStateAvailableHandlers = new ArrayList<>();
   private final List<Callback<FeatureState<?>>> featureUpdateHandlers = new ArrayList<>();
   private final List<FeatureValueInterceptorHolder> featureValueInterceptors = new ArrayList<>();
-  private final List<Callback<UsageEvent>> analyticsHandlers = new ArrayList<>();
+  private final List<Callback<UsageEvent>> usageHandlers = new ArrayList<>();
   private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
 
   private ObjectMapper jsonConfigObjectMapper;
@@ -123,7 +123,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void registerAnalyticsProvider(@NotNull UsageProvider provider) {
+  public void registerUsageProvider(@NotNull UsageProvider provider) {
     this.usageProvider = provider;
   }
 
@@ -138,8 +138,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull RepositoryEventHandler registerAnalyticsStream(@NotNull Consumer<UsageEvent> callback) {
-    return new Callback<>(analyticsHandlers, callback);
+  public @NotNull RepositoryEventHandler registerUsageStream(@NotNull Consumer<UsageEvent> callback) {
+    return new Callback<>(usageHandlers, callback);
   }
 
   @Override
@@ -331,8 +331,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void recordAnalyticsEvent(@NotNull UsageEvent event) {
-    analyticsHandlers.forEach(handler -> execute(() -> handler.callback.accept(event)));
+  public void recordUsageEvent(@NotNull UsageEvent event) {
+    usageHandlers.forEach(handler -> execute(() -> handler.callback.accept(event)));
   }
 
   @Override
@@ -344,10 +344,10 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   @Override
   public void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType,
                    @Nullable Object value, @Nullable Map<String, List<String>> attributes,
-                   String analyticsUserKey) {
-    recordAnalyticsEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
+                   String usageUserKey) {
+    recordUsageEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
       value, valueType
-      ), attributes, analyticsUserKey));
+      ), attributes, usageUserKey));
   }
 
   @Override
@@ -369,7 +369,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull UsageProvider getAnalyticsProvider() {
+  public @NotNull UsageProvider getUsageProvider() {
     return usageProvider;
   }
 }
