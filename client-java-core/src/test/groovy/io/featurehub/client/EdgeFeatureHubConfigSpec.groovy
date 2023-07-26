@@ -54,12 +54,12 @@ class EdgeFeatureHubConfigSpec extends Specification {
       config.setJsonConfigObjectMapper(om)
       config.addReadinessListener(readynessListener)
       config.registerValueInterceptor(false, featureValueOverride)
-      config.registerAnalyticsProvider(analyticsProvider)
+      config.registerUsageProvider(analyticsProvider)
     then:
       1 * repo.registerValueInterceptor(false, featureValueOverride)
       1 * repo.addReadinessListener(readynessListener) >> Mock(RepositoryEventHandler)
       1 * repo.setJsonConfigObjectMapper(om)
-      1 * repo.registerAnalyticsProvider(analyticsProvider)
+      1 * repo.registerUsageProvider(analyticsProvider)
       0 * _  // nothing else
   }
 

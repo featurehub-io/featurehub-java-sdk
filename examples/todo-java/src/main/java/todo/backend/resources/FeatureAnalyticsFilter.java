@@ -35,7 +35,7 @@ public class FeatureAnalyticsFilter implements ContainerRequestFilter, Container
 
     final List<String> matchedURIs = requestContext.getUriInfo().getMatchedURIs();
     if (matchedURIs.size() > 0) {
-      ThreadLocalContext.context().recordAnalyticsEvent(new UsageRequestMeasurement(duration, matchedURIs.get(0)));
+      ThreadLocalContext.context().recordUsageEvent(new UsageRequestMeasurement(duration, matchedURIs.get(0)));
     }
   }
 }

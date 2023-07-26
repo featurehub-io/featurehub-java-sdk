@@ -295,7 +295,7 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     return _copy();
   }
 
-  protected FeatureState<K> analyticsCopy() {
+  protected FeatureState<K> usageCopy() {
     return new FeatureStateBase<K>(repository, feature.key, feature.fs);
   }
 

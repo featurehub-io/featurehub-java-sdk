@@ -115,7 +115,7 @@ class BaseClientContext implements InternalContext {
 
     repository.execute(() -> {
       try {
-        repository.used(key, id, valueType, val, attributes, analyticsUserKey());
+        repository.used(key, id, valueType, val, attributes, usageUserKey());
         edgeService.poll().get();
       } catch (Exception e) {
         log.error("Failed to poll", e);
@@ -123,23 +123,23 @@ class BaseClientContext implements InternalContext {
     });
   }
 
-  @Nullable String analyticsUserKey() {
+  @Nullable String usageUserKey() {
     return getAttr("session", getAttr("userkey"));
   }
 
 
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordAnalyticsEvent(new UsageFeature(
+    repository.recordUsageEvent(new UsageFeature(
       new FeatureHubUsageValue(feature.withContext(this)), attributes,
-      analyticsUserKey()));
+      usageUserKey()));
   }
 
   protected void recordRelativeValuesForUser() {
-    repository.recordAnalyticsEvent(fillAnalyticsCollection(repository.getAnalyticsProvider().createUsageCollectionEvent()));
+    repository.recordUsageEvent(fillUsageCollection(repository.getUsageProvider().createUsageCollectionEvent()));
   }
 
-  protected UsageEvent fillAnalyticsCollection(UsageEvent event) {
-    event.setUserKey(analyticsUserKey());
+  protected UsageEvent fillUsageCollection(UsageEvent event) {
+    event.setUserKey(usageUserKey());
 
     if (event instanceof UsageFeaturesCollection) {
       ((UsageFeaturesCollection)event).setFeatureValues(
@@ -155,8 +155,8 @@ class BaseClientContext implements InternalContext {
   }
 
   @Override
-  public void recordAnalyticsEvent(@NotNull UsageEvent event) {
-    repository.recordAnalyticsEvent(fillAnalyticsCollection(event));
+  public void recordUsageEvent(@NotNull UsageEvent event) {
+    repository.recordUsageEvent(fillUsageCollection(event));
   }
 
   @Override

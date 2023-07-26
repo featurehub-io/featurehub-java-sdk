@@ -13,7 +13,7 @@ public class UsageAdapter {
 
   public UsageAdapter(FeatureRepository repo) {
     this.repository = repo;
-    usageHandlerSub = repo.registerAnalyticsStream(this::process);
+    usageHandlerSub = repo.registerUsageStream(this::process);
   }
 
   public void close() {

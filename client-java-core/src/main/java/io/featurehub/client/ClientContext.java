@@ -64,11 +64,11 @@ public interface ClientContext {
   boolean exists(Feature key);
 
   /**
-   * If you have a custom analytics event you wish to record, add it here. It will capture any associated data from
+   * If you have a custom usage event you wish to record, add it here. It will capture any associated data from
    * the current context if possible and add it to the analytics event.
    * @param event
    */
-  void recordAnalyticsEvent(@NotNull UsageEvent event);
+  void recordUsageEvent(@NotNull UsageEvent event);
 
   void close();
 }

@@ -181,8 +181,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void registerAnalyticsProvider(@NotNull UsageProvider provider) {
-    getRepository().registerAnalyticsProvider(provider);
+  public void registerUsageProvider(@NotNull UsageProvider provider) {
+    getRepository().registerUsageProvider(provider);
   }
 
   @Override
