@@ -3,7 +3,9 @@ package io.featurehub.client;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +38,17 @@ public abstract class BaseClientContext implements ClientContext {
     }
 
     return defaultValue;
+  }
+
+  @Override
+  public @NotNull List<@NotNull String> getAttrs(String key, @NotNull String defaultValue) {
+    final List<String> attrs = clientContext.get(key);
+    return attrs == null ? Arrays.asList(defaultValue) : attrs;
+  }
+
+  @Override
+  public @NotNull List<@NotNull String> getAttrs(String key) {
+    return clientContext.get(key);
   }
 
   @Override

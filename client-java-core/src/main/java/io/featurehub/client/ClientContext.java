@@ -3,6 +3,8 @@ package io.featurehub.client;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -10,6 +12,8 @@ import java.util.concurrent.Future;
 
 public interface ClientContext {
   String get(String key, String defaultValue);
+  @NotNull List<@NotNull String> getAttrs(String key, @NotNull String defaultValue);
+  @Nullable List<@NotNull String> getAttrs(String key);
 
   ClientContext userKey(String userKey);
   ClientContext sessionKey(String sessionKey);

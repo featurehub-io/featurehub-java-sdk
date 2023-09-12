@@ -1,5 +1,8 @@
 === Changes
 
+=== 3.3
+- Support array values in client side evaluation. This was rolled out to the other SDKs but not Java. The SDK can now be given an array of attributes and compare them against an array of values in a Strategy.
+
 === 3.2
 - Percentage calculator was not consistent from run to run, meaning percentage values could be evaluated differently between runs.
 

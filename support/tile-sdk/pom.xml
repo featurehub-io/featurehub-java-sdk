@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk.tiles</groupId>
   <artifactId>tile-sdk</artifactId>
-  <version>1.2-SNAPSHOT</version>
+  <version>1.2</version>
   <packaging>tile</packaging>
   <name>tile-sdk</name>
 
