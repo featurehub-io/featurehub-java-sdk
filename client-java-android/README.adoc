@@ -9,7 +9,7 @@ This SDK is intended for client libraries, e.g.:
 
 The REST SDK *does not poll*. It allows the user of the SDK to create a polling mechanism which suites their application. 
 
-It fits into the FeatureHub Java SDK by providing a standard interface to make HTTP GET requests for the data  but sets a period for which it will hold off making new requests (a timeout, which you can set to 0 if you have your own timer), i.e. you can request data but it will ignore your request if it is within the timeout period. 
+The SDK provides a standard interface to make HTTP GET requests for the data  but sets a period for which it will hold off making new requests (a timeout, which you can set to 0 if you have your own timer).
 
 This will allow you to keep requesting updates but they will not actually issue calls unless the Client Context changes or the timeout has occurred.
 
