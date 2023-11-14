@@ -45,7 +45,6 @@ It is recommended that developers use this SDK directly if they wish to have ful
 allows you complete control over the OKHttpConfig object that is passed, being able to set connect and request
 timeouts, interceptors for adding any extra parameters and so forth.
 
-The direct mechanism is faily simple, assuming the `edgeUrl` and `apiKey` values from above.
 
 [source,java]
 ----
