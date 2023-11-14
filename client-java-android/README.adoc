@@ -1,22 +1,80 @@
-= FeatureHub SDK for Android/Polling
+= FeatureHub SDK for REST
 
 == Overview
-This SDK is intended for client libraries, particularly for Android as keeping the radio on would drain the battery
-quickly. It does this by making GET requests for the data  but sets a period for which it will hold off making new requests (a timeout, which you can set to 0 if you have your own timer). This will allow
-you to keep requesting updates but they will not actually issue calls unless the context changes
-or the timeout has occurred. 
+This SDK is intended for client libraries, e.g.:
 
-This library uses:
+- Android as keeping the radio on would drain the battery quickly
+- lambdas or cloud functions where control over the HTTP request object is desired and you only need to get the state once during the lifetime.
+- other situations where updating the state of the internal repository is intermittent or desired to be consistent 
 
-- OKHttp 4 (for http)
-- Jackson 2.11 (for json)
-- SLF4j (for logging)
+The REST SDK *does not poll*. It allows the user of the SDK to create a polling mechanism which suites their application. 
 
-If you need your Android client to use another technology, please let us know or feel free to contribute another version.
+It fits into the FeatureHub Java SDK by providing a standard interface to make HTTP GET requests for the data  but sets a period for which it will hold off making new requests (a timeout, which you can set to 0 if you have your own timer), i.e. you can request data but it will ignore your request if it is within the timeout period. 
+
+This will allow you to keep requesting updates but they will not actually issue calls unless the Client Context changes or the timeout has occurred.
 
 Visit our official web page for more information about the platform https://www.featurehub.io/[here]
 
-== Using on Android
+=== Dependencies
+This library uses:
+
+- OKHttp 4 (for http(s))
+- Jackson (for json)
+- SLF4j (for logging)
+
+=== Using
+
+When using the REST client, simply including it and following the standard pattern works and is generally
+recommended when you are happy with the OKHttpClient defaults. This pattern is as follows:
+
+[source,java]
+----
+String edgeUrl = "http://localhost:8085/";
+String apiKey = "71ed3c04-122b-4312-9ea8-06b2b8d6ceac/fsTmCrcZZoGyl56kPHxfKAkbHrJ7xZMKO3dlBiab5IqUXjgKvqpjxYdI8zdXiJqYCpv92Jrki0jY5taE";
+
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+fhConfig.init(); 
+----
+
+The `init` method creates the `FeatureHubClient` via the default method using Java services, and calls
+the initial `poll` method on it.
+
+==== Using directly
+
+It is recommended that developers use this SDK directly if they wish to have full control. Using it directly
+allows you complete control over the OKHttpConfig object that is passed, being able to set connect and request
+timeouts, interceptors for adding any extra parameters and so forth.
+
+The direct mechanism is faily simple, assuming the `edgeUrl` and `apiKey` values from above.
+
+[source,java]
+----
+// create the central config
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+
+// create and override the http client
+OkHttpClient httpClient = new OkHttpClient.Builder()
+  .connectTimeout(1, TimeUnit.SECONDS)
+  .readTimeout(1, TimeUnit.SECONDS).build();
+
+// construct the new client
+FeatureHubClient client = new FeatureHubClient(fhConfig.baseUrl(), Collections.singletonList(fhConfig.apiKey()config.getRepository(), httpClient, fhConfig));
+
+// tell the config to use this client in all its dealings
+fhConfig.setEdgeService(() -> client);
+----
+
+Because you have the REST client, you can how make arbitrary calls on it any time you wish. If you need
+to change it out part way through for any reason, just calling:
+
+[source,java]
+----
+fhConfig.setEdgeService(() -> client);
+----
+
+will let you replace the client.
+
+=== Using on Android
 
 As it requires internet access, you will need to add to your `AndroidManifest.xml` the usual:
 

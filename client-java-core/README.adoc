@@ -138,7 +138,7 @@ import io.featurehub.client.EdgeFeatureHubConfig;
 
 // typically you would get these from environment variables
 String edgeUrl = "http://localhost:8085/";
-String apiKey = "default/71ed3c04-122b-4312-9ea8-06b2b8d6ceac/fsTmCrcZZoGyl56kPHxfKAkbHrJ7xZMKO3dlBiab5IqUXjgKvqpjxYdI8zdXiJqYCpv92Jrki0jY5taE";
+String apiKey = "71ed3c04-122b-4312-9ea8-06b2b8d6ceac/fsTmCrcZZoGyl56kPHxfKAkbHrJ7xZMKO3dlBiab5IqUXjgKvqpjxYdI8zdXiJqYCpv92Jrki0jY5taE";
 
 FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
 ----
