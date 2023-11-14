@@ -63,7 +63,7 @@ FeatureHubClient client = new FeatureHubClient(fhConfig.baseUrl(), Collections.s
 fhConfig.setEdgeService(() -> client);
 ----
 
-Because you have the REST client, you can how make arbitrary calls on it any time you wish. If you need
+Because you have the REST client, you can make arbitrary calls on it any time. If you need
 to change it out part way through for any reason, just calling:
 
 [source,java]
