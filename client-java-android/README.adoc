@@ -3,7 +3,7 @@
 == Overview
 This SDK is intended for client libraries, e.g.:
 
-- Android as keeping the radio on would drain the battery quickly
+- Android - so you have control over how frequently feature updates are requested, making sure the battery would not drain quickly on the device
 - lambdas or cloud functions where control over the HTTP request object is desired and you only need to get the state once during the lifetime.
 - other situations where updating the state of the internal repository is intermittent or desired to be consistent 
 
