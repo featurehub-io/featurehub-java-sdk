@@ -28,6 +28,8 @@ public class FeatureHubSource implements FeatureHub {
   String analyticsCid = "";
   @ConfigKey("feature-service.sdk")
   String clientSdk = "jersey3";
+  @ConfigKey("feature-service.logs.error-if-key-not-defined")
+  boolean logErrorIfKeyNotDefined = true;
 
   private final FeatureRepositoryContext repository;
   private final EdgeFeatureHubConfig config;
@@ -39,7 +41,7 @@ public class FeatureHubSource implements FeatureHub {
 
     config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey);
 
-    repository = new ClientFeatureRepository(5);
+    repository = new ClientFeatureRepository(5, logErrorIfKeyNotDefined);
     repository.registerValueInterceptor(true, new SystemPropertyValueInterceptor());
 
     if (analyticsCid.length() > 0 && analyticsKey.length() > 0) {
