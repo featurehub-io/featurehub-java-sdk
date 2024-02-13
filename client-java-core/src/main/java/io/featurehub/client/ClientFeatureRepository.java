@@ -35,6 +35,7 @@ public class ClientFeatureRepository extends AbstractFeatureRepository
   private ObjectMapper jsonConfigObjectMapper;
   private final ApplyFeature applyFeature;
   private boolean serverEvaluation = false; // the client tells us, we pass it out to others
+  private boolean logErrorIfKeyNotDefined = true; // log message with level ERROR if key is not defined
 
   private final TypeReference<List<io.featurehub.sse.model.FeatureState>> FEATURE_LIST_TYPEDEF =
       new TypeReference<List<io.featurehub.sse.model.FeatureState>>() {};
@@ -54,6 +55,11 @@ public class ClientFeatureRepository extends AbstractFeatureRepository
 
   public ClientFeatureRepository(int threadPoolSize) {
     this(getExecutor(threadPoolSize), null);
+  }
+
+  public ClientFeatureRepository(int threadPoolSize, boolean logErrorIfKeyNotDefined) {
+    this(threadPoolSize);
+    this.logErrorIfKeyNotDefined = logErrorIfKeyNotDefined;
   }
 
   public ClientFeatureRepository() {
@@ -248,13 +254,11 @@ public class ClientFeatureRepository extends AbstractFeatureRepository
     return features.computeIfAbsent(
         key,
         key1 -> {
-          if (hasReceivedInitialState) {
-            log.error(
-                "FeatureHub error: application requesting use of invalid key after initialization: `{}`",
-                key1);
+          if (hasReceivedInitialState && logErrorIfKeyNotDefined) {
+            log.error("FeatureHub error: application is requesting to use not defined key after initialization: `{}`", key1);
           }
 
-          return new FeatureStateBase(null, this, key);
+          return new FeatureStateBase(null, this, key1);
         });
   }
 
