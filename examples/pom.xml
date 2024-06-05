@@ -36,5 +36,6 @@
   <modules>
     <module>todo-java</module>
     <module>migration-check</module>
+    <module>batch</module>
   </modules>
 </project>

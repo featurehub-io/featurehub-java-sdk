@@ -1,0 +1,11 @@
+= Batch client
+
+This is a simple batch client that uses only
+the REST api. It gets the state of the
+features and will continue to do so in the
+background once started, but the forced `get`
+when building the new context forces the
+client to go and get state.
+
+
+
