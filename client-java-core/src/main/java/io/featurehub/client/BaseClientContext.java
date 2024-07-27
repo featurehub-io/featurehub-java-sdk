@@ -1,7 +1,7 @@
 package io.featurehub.client;
 
 import io.featurehub.client.usage.UsageEvent;
-import io.featurehub.client.usage.UsageFeature;
+import io.featurehub.client.usage.UsageEventWithFeature;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
 import io.featurehub.client.usage.FeatureHubUsageValue;
@@ -14,12 +14,10 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 class BaseClientContext implements InternalContext {
@@ -112,10 +110,18 @@ class BaseClientContext implements InternalContext {
   @Override
   public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
                              @NotNull FeatureValueType valueType) {
+    final HashMap<String, List<String>> attrCopy = new HashMap<>(attributes);
+    final String userKey = usageUserKey();
+
+    log.trace("recording usage for key: {}, id: {}, value: {}, valueType: {}, userKey: {}, attributes: {}",
+      key, id, val, valueType, userKey, attrCopy);
 
     repository.execute(() -> {
       try {
-        repository.used(key, id, valueType, val, attributes, usageUserKey());
+        repository.used(key, id, valueType, val, attrCopy, userKey);
+
+        // a feature has been evaluated, so this allows us to trigger to see if the
+        // time limit has expired on checking for a state update.
         edgeService.poll().get();
       } catch (Exception e) {
         log.error("Failed to poll", e);
@@ -123,13 +129,19 @@ class BaseClientContext implements InternalContext {
     });
   }
 
+  /**
+   * This uniquely identifies the user of this SDK if the SDK user has chosen to do so. It can be completely opaque
+   * (e.g. sha of a user's email).
+   *
+   * @return null or unique identifier
+   */
   @Nullable String usageUserKey() {
     return getAttr("session", getAttr("userkey"));
   }
 
 
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordUsageEvent(new UsageFeature(
+    repository.recordUsageEvent(new UsageEventWithFeature(
       new FeatureHubUsageValue(feature.withContext(this)), attributes,
       usageUserKey()));
   }

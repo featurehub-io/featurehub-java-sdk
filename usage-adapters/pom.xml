@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub</groupId>
-  <artifactId>featurehub-java-sdk-reactor</artifactId>
+  <groupId>io.featurehub.sdk.java</groupId>
+  <artifactId>usage-adapter-reactor</artifactId>
   <version>1.1.1</version>
   <packaging>pom</packaging>
 
@@ -34,14 +34,6 @@
   </licenses>
 
   <modules>
-    <module>client-java-core</module>
-    <module>client-java-okhttp</module>
-    <module>client-java-android21</module>
-    <module>client-java-jersey</module>
-    <module>client-java-jersey3</module>
-    <module>client-java-api</module>
-    <module>support</module>
-    <module>examples</module>
-    <module>usage-adapters</module>
+    <module>featurehub-segment-adapter</module>
   </modules>
 </project>

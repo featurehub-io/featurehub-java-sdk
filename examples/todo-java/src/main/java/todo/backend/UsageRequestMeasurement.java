@@ -1,12 +1,13 @@
 package todo.backend;
 
+import io.featurehub.client.usage.UsageEventName;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class UsageRequestMeasurement extends UsageFeaturesCollection {
+public class UsageRequestMeasurement extends UsageFeaturesCollection implements UsageEventName {
   private final long duration;
   @NotNull
   private final String url;
@@ -18,10 +19,15 @@ public class UsageRequestMeasurement extends UsageFeaturesCollection {
   }
 
   @Override
-  protected @NotNull Map<String, Object> toMap() {
+  public @NotNull Map<String, Object> toMap() {
     final LinkedHashMap<String, Object> data = new LinkedHashMap<>(super.toMap());
     data.put("duration", duration);
     data.put("url", url);
     return data;
+  }
+
+  @Override
+  public @NotNull String getEventName() {
+    return "tracking";
   }
 }

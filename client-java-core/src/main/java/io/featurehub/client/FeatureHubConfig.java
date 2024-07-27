@@ -1,7 +1,8 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.usage.UsageProvider;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsagePlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -44,10 +45,11 @@ public interface FeatureHubConfig {
     return sdkKey.stream().anyMatch(key -> key.contains("*"));
   }
 
-  void setRepository(FeatureRepository repository);
+  FeatureHubConfig setRepository(FeatureRepository repository);
   @NotNull FeatureRepository getRepository();
+  @NotNull InternalFeatureRepository getInternalRepository();
 
-  void setEdgeService(Supplier<EdgeService> edgeService);
+  FeatureHubConfig setEdgeService(Supplier<EdgeService> edgeService);
   @NotNull Supplier<EdgeService> getEdgeService();
 
   /**
@@ -62,14 +64,9 @@ public interface FeatureHubConfig {
    * @param allowLockOverride
    * @param interceptor
    */
-  void registerValueInterceptor(boolean allowLockOverride, FeatureValueInterceptor interceptor);
+  FeatureHubConfig registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
 
-  /**
-   * Allows the user to register a new usage provider that determines what internal classes are
-   * created on analytical events
-   * @param provider
-   */
-  void registerUsageProvider(@NotNull UsageProvider provider);
+  FeatureHubConfig registerUsagePlugin(@NotNull UsagePlugin plugin);
 
   /**
    * Allows you to query the state of the repository's readyness - such as in a heartbeat API
@@ -82,7 +79,7 @@ public interface FeatureHubConfig {
    *
    * @param jsonConfigObjectMapper - a Jackson ObjectMapper
    */
-  void setJsonConfigObjectMapper(ObjectMapper jsonConfigObjectMapper);
+  FeatureHubConfig setJsonConfigObjectMapper(ObjectMapper jsonConfigObjectMapper);
 
   /**
    * You should use this close if you are using a client evaluated key and wish to close the connection to the remote
@@ -103,4 +100,6 @@ public interface FeatureHubConfig {
    * cache timeout defaults to 180 seconds
    */
   FeatureHubConfig rest();
+
+  FeatureHubConfig recordUsageEvent(UsageEvent event);
 }

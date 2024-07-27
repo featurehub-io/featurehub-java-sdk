@@ -8,15 +8,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class UsageFeature extends UsageEvent implements UsageEventName {
+public class UsageEventWithFeature extends UsageEvent implements UsageEventName {
   @Nullable
   final Map<String, List<String>> attributes;
   @NotNull final FeatureHubUsageValue feature;
 
-  public UsageFeature(@NotNull FeatureHubUsageValue feature, @Nullable Map<String, List<String>> attributes,
-                      @Nullable String userKey) {
+  public UsageEventWithFeature(@NotNull FeatureHubUsageValue feature, @Nullable Map<String, List<String>> attributes,
+                               @Nullable String userKey) {
     this.attributes = attributes;
     this.feature = feature;
+    setUserKey(userKey);
   }
 
   @Nullable public Map<String, List<String>> getAttributes() {
@@ -33,7 +34,7 @@ public class UsageFeature extends UsageEvent implements UsageEventName {
   }
 
   @Override
-  @NotNull protected Map<String, Object> toMap() {
+  @NotNull public Map<String, Object> toMap() {
     Map<String, Object> m = new HashMap<>(super.toMap());
 
     if (attributes != null) { // may not be from a context

@@ -14,7 +14,7 @@ import java.util.concurrent.Future;
 public interface ClientContext {
   String get(String key, String defaultValue);
   @NotNull List<@NotNull String> getAttrs(String key, @NotNull String defaultValue);
-  @Nullable List<@NotNull String> getAttrs(String key);
+  @Nullable List<String> getAttrs(@NotNull String name);
 
   ClientContext userKey(String userKey);
   ClientContext sessionKey(String sessionKey);
@@ -29,7 +29,6 @@ public interface ClientContext {
 
   @Nullable String getAttr(@NotNull String name);
   @Nullable  String getAttr(@NotNull String name, @Nullable  String defaultVal);
-  @Nullable List<String> getAttrs(@NotNull String name);
 
   /**
    * Triggers the build and setting of this context.

@@ -25,7 +25,7 @@ public class UsageFeaturesCollectionContext extends UsageFeaturesCollection {
   }
 
   @Override
-  @NotNull protected Map<String, Object> toMap() {
+  @NotNull public Map<String, Object> toMap() {
     Map<String, Object> m = new HashMap<>(super.toMap());
 
     m.putAll(attributes);

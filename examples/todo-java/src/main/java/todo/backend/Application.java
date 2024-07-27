@@ -4,9 +4,8 @@ import cd.connect.app.config.ConfigKey;
 import cd.connect.app.config.DeclaredConfigResolver;
 import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
-import io.featurehub.client.Readiness;
+import jakarta.inject.Singleton;
 import org.glassfish.grizzly.http.server.HttpServer;
-import org.glassfish.hk2.api.Immediate;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -16,8 +15,6 @@ import todo.backend.resources.FeatureAnalyticsFilter;
 import todo.backend.resources.HealthResource;
 import todo.backend.resources.TodoResource;
 
-import jakarta.inject.Singleton;
-import java.io.IOException;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +40,7 @@ public class Application {
       .register(new AbstractBinder() {
         @Override
         protected void configure() {
-          bind(FeatureHubSource.class).in(Immediate.class).to(FeatureHub.class);
+          bind(FeatureHubSource.class).in(Singleton.class).to(FeatureHub.class);
         }
       });
 

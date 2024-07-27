@@ -7,6 +7,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
+import todo.backend.FeatureHub;
 import todo.backend.UsageRequestMeasurement;
 
 import java.io.IOException;
@@ -14,8 +15,11 @@ import java.util.List;
 
 public class FeatureAnalyticsFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
+  private final FeatureHub config;
+
   @Inject
-  public FeatureAnalyticsFilter() {
+  public FeatureAnalyticsFilter(FeatureHub config) {
+    this.config = config;
     DeclaredConfigResolver.resolve(this);
   }
 
@@ -34,8 +38,8 @@ public class FeatureAnalyticsFilter implements ContainerRequestFilter, Container
     }
 
     final List<String> matchedURIs = requestContext.getUriInfo().getMatchedURIs();
-    if (matchedURIs.size() > 0) {
-      ThreadLocalContext.context().recordUsageEvent(new UsageRequestMeasurement(duration, matchedURIs.get(0)));
+    if (!matchedURIs.isEmpty()) {
+      config.getConfig().recordUsageEvent(new UsageRequestMeasurement(duration, matchedURIs.get(0)));
     }
   }
 }

@@ -5,11 +5,15 @@ import java.util.Map;
 
 abstract public class UsagePlugin {
   protected final Map<String, Object> defaultEventParams = new HashMap<>();
-  protected final boolean unnamedBecomeEventParameters;
+//  protected final boolean unnamedBecomeEventParameters;
+//
+//  public UsagePlugin(boolean unnamedBecomeEventParameters) {
+//    this.unnamedBecomeEventParameters = unnamedBecomeEventParameters;
+//  }
 
-  public UsagePlugin(boolean unnamedBecomeEventParameters) {
-    this.unnamedBecomeEventParameters = unnamedBecomeEventParameters;
+  public Map<String, Object> getDefaultEventParams() {
+    return defaultEventParams;
   }
 
-  abstract void send(UsageEvent event);
+  public abstract void send(UsageEvent event);
 }

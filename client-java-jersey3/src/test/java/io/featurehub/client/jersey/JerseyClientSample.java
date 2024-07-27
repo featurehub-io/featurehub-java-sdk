@@ -23,11 +23,9 @@ public class JerseyClientSample {
     final FeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8064/pistachio",
       "default/2f4de83c-e13e-459e-b272-63e4f8b34bad/ReQpGic7lOaZuQDkxe3WD40EbtVDN1*z5iXRNRROCW4Gy2peXsr");
 
-    FeatureRepository cfr = config.getRepository();
+    config.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
 
-    cfr.addReadinessListener((rl) -> System.out.println("Readyness is " + rl));
-
-    config.setEdgeService(() -> new JerseySSEClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
+    config.setEdgeService(() -> new JerseySSEClient(config.getInternalRepository(), config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()));
 
     config.init();
     final ClientContext ctx = config.newContext();
@@ -68,11 +66,12 @@ public class JerseyClientSample {
 
 //  @Test
   public void changeToggleTest() {
-    ClientFeatureRepository cfr = new ClientFeatureRepository(5);
-    final JerseyClient client =
-      new JerseyClient(new EdgeFeatureHubConfig("http://localhost:8553", changeToggleEnv), false,
-        cfr, null);
-
-    client.setFeatureState("NEW_BOAT", new FeatureStateUpdate().lock(false).value(Boolean.TRUE));
+//    ClientFeatureRepository cfr = new ClientFeatureRepository(5);
+//
+//    final JerseyClient client =
+//      new JerseyClient(new EdgeFeatureHubConfig("http://localhost:8553", changeToggleEnv), false,
+//        cfr, null);
+//
+//    client.setFeatureState("NEW_BOAT", new FeatureStateUpdate().lock(false).value(Boolean.TRUE));
   }
 }

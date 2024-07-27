@@ -147,20 +147,22 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   private Object internalGetValue(@Nullable FeatureValueType passedType, boolean triggerUsage) {
     boolean locked = feature.fs != null && Boolean.TRUE.equals(feature.fs.getL());
 
-    // unlike js, locking is registered on a per-interceptor basis
+    // the intercetor can trigger even on invalid feature keys, so we need to be able to track it
     FeatureValueInterceptor.ValueMatch vm = repository.findIntercept(locked, feature.key);
 
+    final FeatureValueType type = (passedType == null && feature.fs != null) ? feature.fs.getType() : passedType;
+
     if (vm != null) {
-      return vm.value;
+      return triggerUsage && feature.fs.getId() != null ?
+        used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type) :
+        vm.value;
     }
 
     if (feature.fs == null || ( passedType == null && feature.fs.getType() == null )) {
       return null;
     }
 
-    final FeatureValueType type = passedType == null ? feature.fs.getType() : passedType;
-
-    if (feature.fs.getType() != type) {
+    if (feature.fs.getType() != type || type == null) {
       return null;
     }
 

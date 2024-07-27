@@ -7,7 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 
 public class UsageAdapter {
-  private List<UsagePlugin> plugins = new LinkedList<>();
+  private final List<UsagePlugin> plugins = new LinkedList<>();
   final FeatureRepository repository;
   final RepositoryEventHandler usageHandlerSub;
 
@@ -22,5 +22,9 @@ public class UsageAdapter {
 
   public void process(UsageEvent event) {
     plugins.forEach((p) -> p.send(event));
+  }
+
+  public void registerPlugin(UsagePlugin plugin) {
+    plugins.add(plugin);
   }
 }

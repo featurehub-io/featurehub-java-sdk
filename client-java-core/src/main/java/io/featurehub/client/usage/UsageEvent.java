@@ -7,8 +7,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class UsageEvent {
+  /**
+   * This is the unique identifying key of the user for this event (if any)
+   */
   @Nullable
   private String userKey;
+  /**
+   * This is the set of any additional parameters that a user wishes to collect over and above the context attributes
+   */
   @NotNull
   private Map<String, Object> additionalParams = new HashMap<>();
 
@@ -35,7 +41,11 @@ public class UsageEvent {
   }
 
   @NotNull
-  protected Map<String, Object> toMap() {
+  public Map<String, Object> toMap() {
     return additionalParams;
+  }
+
+  @Nullable public String getUserKey() {
+    return userKey;
   }
 }

@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 
 public interface UsageProvider {
-  default UsageFeature createUsageFeature(@NotNull FeatureHubUsageValue feature,
-                                          @NotNull Map<String, List<String>> attributes) {
-    return new UsageFeature(feature, attributes, null);
+  default UsageEventWithFeature createUsageFeature(@NotNull FeatureHubUsageValue feature,
+                                                   @NotNull Map<String, List<String>> attributes) {
+    return new UsageEventWithFeature(feature, attributes, null);
   }
 
-  default UsageFeature createUsageFeature(@NotNull FeatureHubUsageValue feature,
-                                          @Nullable Map<String, List<String>> attributes,
-                                          @Nullable String userKey) {
-    return new UsageFeature(feature, attributes, userKey);
+  default UsageEventWithFeature createUsageFeature(@NotNull FeatureHubUsageValue feature,
+                                                   @Nullable Map<String, List<String>> attributes,
+                                                   @Nullable String userKey) {
+    return new UsageEventWithFeature(feature, attributes, userKey);
   }
 
   default UsageFeaturesCollection createUsageCollectionEvent() {

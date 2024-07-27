@@ -9,6 +9,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import todo.api.TodoService;
+import todo.backend.FeatureHub;
 import todo.model.Todo;
 
 import java.util.List;
@@ -20,10 +21,12 @@ import java.util.stream.Collectors;
 
 public class TodoResource implements TodoService {
   private static final Logger log = LoggerFactory.getLogger(TodoResource.class);
+  private final FeatureHub config;
   Map<String, Map<String, Todo>> todos = new ConcurrentHashMap<>();
 
   @Inject
-  public TodoResource() {
+  public TodoResource(FeatureHub config) {
+    this.config = config;
     log.info("created");
   }
 
@@ -75,16 +78,16 @@ public class TodoResource implements TodoService {
 
   @NotNull private ClientContext fhClient(String user) {
     try {
-      return ThreadLocalContext.getContext().userKey(user).build().get();
+      return config.getConfig().newContext().userKey(user).build().get();
     } catch (Exception e) {
-      log.error("Unable to get context!");
+      log.error("Unable to get context!", e);
       throw new WebApplicationException(e);
     }
   }
 
   @Override
   public List<Todo> addTodo(@NotNull String user, Todo body) {
-    if (body.getId().length() == 0) {
+    if (body.getId().isEmpty()) {
       body.id(UUID.randomUUID().toString());
     }
 

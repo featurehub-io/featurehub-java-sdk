@@ -1,7 +1,9 @@
 package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.featurehub.client.usage.UsageProvider;
+import io.featurehub.client.usage.UsageAdapter;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsagePlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -37,6 +39,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Nullable TestApi testApi;
 
+  @NotNull private final UsageAdapter usageAdapter;
+
   private EdgeType edgeType = EdgeType.REST_TIMEOUT;
   private int timeout;
 
@@ -64,6 +68,14 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     this.edgeUrl = String.format("%s", edgeUrl);
 
     realtimeUrl = String.format("%s/features/%s", edgeUrl, apiKeys.get(0));
+
+    usageAdapter = new UsageAdapter(repository);
+  }
+
+  @Override
+  public FeatureHubConfig registerUsagePlugin(@NotNull UsagePlugin plugin) {
+    usageAdapter.registerPlugin(plugin);
+    return this;
   }
 
   @Override
@@ -149,8 +161,9 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void setRepository(@NotNull FeatureRepository repository) {
+  public FeatureHubConfig setRepository(@NotNull FeatureRepository repository) {
     this.repository = (InternalFeatureRepository) repository;
+    return this;
   }
 
   @Override
@@ -160,8 +173,14 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void setEdgeService(@NotNull Supplier<EdgeService> edgeService) {
+  public @NotNull InternalFeatureRepository getInternalRepository() {
+    return repository;
+  }
+
+  @Override
+  public FeatureHubConfig setEdgeService(@NotNull Supplier<EdgeService> edgeService) {
     this.edgeServiceSupplier = edgeService;
+    return this;
   }
 
   @Override
@@ -176,13 +195,16 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor) {
+  public FeatureHubConfig registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor) {
     getRepository().registerValueInterceptor(allowLockOverride, interceptor);
+    return this;
   }
 
+
   @Override
-  public void registerUsageProvider(@NotNull UsageProvider provider) {
-    getRepository().registerUsageProvider(provider);
+  public FeatureHubConfig recordUsageEvent(UsageEvent event) {
+    getInternalRepository().recordUsageEvent(event);
+    return this;
   }
 
   @Override
@@ -192,8 +214,9 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
+  public FeatureHubConfig setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
     getRepository().setJsonConfigObjectMapper(jsonConfigObjectMapper);
+    return this;
   }
 
   @Override
