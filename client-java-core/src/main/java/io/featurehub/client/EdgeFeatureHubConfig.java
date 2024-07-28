@@ -57,6 +57,13 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
     serverEvaluation = !FeatureHubConfig.sdkKeyIsClientSideEvaluated(apiKeys);
 
+    // set defaults
+    if (serverEvaluation) {
+      rest();
+    } else {
+      streaming();
+    }
+
     if (edgeUrl.endsWith("/")) {
       edgeUrl = edgeUrl.substring(0, edgeUrl.length()-1);
     }
@@ -102,7 +109,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   /**
-   * This is only intended to be used for client evaluated contexts, do not use it for server evaluated ones
+   * This provides an async wait to trigger off the client.
    */
   @Override
   public Future<ClientContext> init() {

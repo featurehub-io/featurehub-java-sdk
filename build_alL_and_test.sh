@@ -1,3 +1,4 @@
 #!/bin/sh
-cd support && mvn -f pom-tiles.xml install && mvn install && cd .. && mvn -T4C clean install
+MAVEN_OPTS=${MVN_OPTS:-"-T4C"}
+cd support && mvn -f pom-tiles.xml install && mvn install && cd .. && mvn $MAVEN_OPTS clean install
 

@@ -67,7 +67,16 @@ public interface ClientContext {
    * the current context if possible and add it to the analytics event.
    * @param event
    */
-  void recordUsageEvent(@NotNull UsageEvent event);
+  <T extends UsageEvent> void recordUsageEvent(@NotNull T event);
+
+  /**
+   * Use this method to set all the fields of your UsageEvent. It will add the user key in,
+   * collect all feature values (if a UsageFeaturesCollection) and add in the context attributes (if a UsageFeaturesCollectionContext)
+   * @param event -  the vent to fill in
+   * @return the filled in collection
+   * @param <T> a type that extends UsageEvent
+   */
+  @NotNull <T extends UsageEvent> T fillUsageCollection(@NotNull T event);
 
   void close();
 }

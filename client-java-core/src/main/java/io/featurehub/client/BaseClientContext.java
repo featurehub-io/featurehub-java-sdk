@@ -150,7 +150,7 @@ class BaseClientContext implements InternalContext {
     repository.recordUsageEvent(fillUsageCollection(repository.getUsageProvider().createUsageCollectionEvent()));
   }
 
-  protected UsageEvent fillUsageCollection(UsageEvent event) {
+  public <T extends UsageEvent> @NotNull T fillUsageCollection(@NotNull T event) {
     event.setUserKey(usageUserKey());
 
     if (event instanceof UsageFeaturesCollection) {
@@ -167,7 +167,7 @@ class BaseClientContext implements InternalContext {
   }
 
   @Override
-  public void recordUsageEvent(@NotNull UsageEvent event) {
+  public <T extends UsageEvent> void recordUsageEvent(@NotNull T event) {
     repository.recordUsageEvent(fillUsageCollection(event));
   }
 

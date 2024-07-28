@@ -317,7 +317,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
       key,
       key1 -> {
         if (hasReceivedInitialState) {
-          log.error(
+          log.warn(
             "FeatureHub error: application requesting use of invalid key after initialization: `{}`",
             key1);
         }

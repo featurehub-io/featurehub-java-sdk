@@ -7,11 +7,29 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface FeatureHubConfig {
+
+  /**
+   * Use environment variables to create a system config.
+   * @return system config
+   */
+  default FeatureHubConfig envConfig() {
+    return new EdgeFeatureHubConfig(System.getenv("FEATUREHUB_EDGE_URL"), System.getenv("FEATUREHUB_API_KEY"));
+  }
+
+  /**
+   * Use system properties to create a system config.
+   * @return system config
+   */
+  default FeatureHubConfig systemPropertyConfig() {
+    return new EdgeFeatureHubConfig(System.getProperty("featurehub.edge-url"), System.getProperty("featurehub.api-key"));
+  }
+
   /**
    * What is the fully deconstructed URL for the server?
    */
