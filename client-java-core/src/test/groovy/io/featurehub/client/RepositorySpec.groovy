@@ -36,7 +36,7 @@ class RepositorySpec extends Specification {
     given: "we have features"
       def features = [
         new FeatureState().id(UUID.randomUUID()).key('banana').version(1L).value(false).type(FeatureValueType.BOOLEAN),
-        new FeatureState().id(UUID.randomUUID()).key('peach').version(1L).value("orange").type(FeatureValueType.STRING),
+        new FeatureState().id(UUID.randomUUID()).key('peach').version(1L).value("orange").type(FeatureValueType.STRING).featureProperties(Map.of("pork", "dumplings")),
         new FeatureState().id(UUID.randomUUID()).key('peach_quantity').version(1L).value(17).type(FeatureValueType.NUMBER),
         new FeatureState().id(UUID.randomUUID()).key('peach_config').version(1L).value("{}").type(FeatureValueType.JSON),
       ]
@@ -53,6 +53,7 @@ class RepositorySpec extends Specification {
       !repo.getFeat('banana').flag
       repo.getFeat('banana').key == 'banana'
       repo.getFeat('banana').exists()
+      repo.getFeat('banana').featureProperties().isEmpty()
       repo.getFeat(Fruit.banana).exists()
       !repo.getFeat('dragonfruit').exists()
       !repo.getFeat(Fruit.dragonfruit).exists()
@@ -64,12 +65,14 @@ class RepositorySpec extends Specification {
       !repo.getFeat('banana').enabled
       repo.getFeat('peach').string == 'orange'
       repo.getFeat('peach').exists()
+      repo.getFeat('peach').featureProperties() == ['pork': 'dumplings']
       repo.getFeat(Fruit.peach).exists()
       repo.getFeat('peach').key == 'peach'
       repo.getFeat('peach').number == null
       repo.getFeat('peach').rawJson == null
       repo.getFeat('peach').flag == null
       repo.getFeat('peach_quantity').number == 17
+      repo.getFeat('peach_quantity').featureProperties().isEmpty()
       repo.getFeat('peach_quantity').rawJson == null
       repo.getFeat('peach_quantity').flag == null
       repo.getFeat('peach_quantity').string == null
@@ -79,6 +82,7 @@ class RepositorySpec extends Specification {
       repo.getFeat('peach_config').number == null
       repo.getFeat('peach_config').flag == null
       repo.getFeat('peach_config').key == 'peach_config'
+      repo.getFeat('peach_config').featureProperties().isEmpty()
       repo.getAllFeatures().size() == 5
   }
 

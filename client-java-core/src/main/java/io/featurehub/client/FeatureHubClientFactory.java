@@ -11,15 +11,15 @@ import java.util.function.Supplier;
  */
 public interface FeatureHubClientFactory {
 
-  Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository);
+  @NotNull Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository);
 
-  Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config);
+  @NotNull Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config);
 
-  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
+  @NotNull Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
                                        @Nullable InternalFeatureRepository repository,
                                        int timeoutInSeconds, boolean amPollingDelegate);
 
-  Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate);
+  @NotNull Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate);
 
-  Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config);
+  @NotNull Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config);
 }

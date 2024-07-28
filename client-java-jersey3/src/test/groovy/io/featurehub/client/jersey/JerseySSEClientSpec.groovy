@@ -24,6 +24,7 @@ class JerseySSEClientSpec extends Specification {
 
   def setup() {
     mapper = new ObjectMapper()
+    System.setProperty("jersey.config.test.container.port", (10000 + new Random().nextInt(1000)).toString())
     harness = new SSETestHarness()
     harness.setUp()
     config = harness.getConfig(["123/345*675"], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
@@ -43,7 +44,7 @@ class JerseySSEClientSpec extends Specification {
 
 
   def cleanup() {
-    harness.tearDown()
+    harness?.tearDown()
   }
 
   def "A basic client connect works as expected"() {

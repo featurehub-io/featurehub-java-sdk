@@ -23,7 +23,7 @@ class RestClientSpec extends Specification {
     repo = Mock()
     config = Mock()
     config.isServerEvaluation() >> true
-    client = new RestClient(repo, featureService, config, 0)
+    client = new RestClient(repo, featureService, config, 0, false)
   }
 
   ApiResponse<List<FeatureEnvironmentCollection>> build(int statusCode = 200, List<FeatureEnvironmentCollection> data = [], Map<String, String> headers = [:]) {
@@ -132,7 +132,7 @@ class RestClientSpec extends Specification {
   def "change the polling interval to 180 seconds and a second poll won't poll"() {
     given:
       def response = build()
-      client = new RestClient(repo, featureService, config, 180)
+      client = new RestClient(repo, featureService, config, 180, false)
     when:
       def result = client.poll().get()
       def result2 = client.poll().get()
@@ -140,6 +140,21 @@ class RestClientSpec extends Specification {
       1 * repo.updateFeatures([])
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
+      2 * repo.readiness >> Readiness.Ready
+      0 * _
+  }
+
+  def "change the polling interval to 180 seconds and force cache breaking"() {
+    given:
+      def response = build()
+      client = new RestClient(repo, featureService, config, 180, true)
+    when:
+      def result = client.poll().get()
+      def result2 = client.poll().get()
+    then:
+      2 * repo.updateFeatures([])
+      2 * config.apiKeys() >> apiKeys
+      2 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       2 * repo.readiness >> Readiness.Ready
       0 * _
   }

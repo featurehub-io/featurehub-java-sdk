@@ -30,7 +30,7 @@ public class JerseyClientSample {
     config.init();
     final ClientContext ctx = config.newContext();
 
-    final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();
+    final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").isEnabled();
 
     System.out.println("Wait for readyness or hit enter if server eval key");
 

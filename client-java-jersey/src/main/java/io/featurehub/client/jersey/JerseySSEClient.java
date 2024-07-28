@@ -271,6 +271,11 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
+  public long currentInterval() {
+    return 0;
+  }
+
+  @Override
   public void reconnect() {
     poll();
   }

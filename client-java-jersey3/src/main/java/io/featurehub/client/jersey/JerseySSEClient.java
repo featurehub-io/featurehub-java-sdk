@@ -44,7 +44,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   public JerseySSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                          @NotNull EdgeRetryService retryer) {
-    this.repository = repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
+    this.repository = repository == null ? config.getInternalRepository() : repository;
     this.config = config;
     this.retryer = retryer;
 

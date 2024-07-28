@@ -44,7 +44,7 @@ public class RestClient implements EdgeService {
 
   private long whenPollingCacheExpires;
   private final boolean clientSideEvaluation;
-  private final boolean amPollingDelegate;
+  private final boolean breakCacheOnEveryCheck;
   @NotNull private final FeatureHubConfig config;
 
   /**
@@ -58,12 +58,12 @@ public class RestClient implements EdgeService {
   public RestClient(@Nullable InternalFeatureRepository repository,
                     @Nullable FeatureService client,
                     @NotNull FeatureHubConfig config,
-                    int timeoutInSeconds, boolean amPollingDelegate) {
+                    int timeoutInSeconds, boolean breakCacheOnEveryCheck) {
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
 
-    this.amPollingDelegate = amPollingDelegate;
+    this.breakCacheOnEveryCheck = breakCacheOnEveryCheck;
     this.repository = repository;
     this.client = client == null ? makeClient(config) : client;
     this.config = config;
@@ -96,7 +96,7 @@ public class RestClient implements EdgeService {
 
   public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
     final boolean breakCache =
-      amPollingDelegate || pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
+      breakCacheOnEveryCheck || pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
     final boolean ask = !busy && !stopped && breakCache;
 
     headerChanged = false;

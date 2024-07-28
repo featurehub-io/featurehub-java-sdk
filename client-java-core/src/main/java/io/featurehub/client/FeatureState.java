@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 public interface FeatureState<K> {
   /**
@@ -65,4 +66,6 @@ public interface FeatureState<K> {
   void addListener(@NotNull FeatureListener listener);
 
   @Nullable FeatureValueType getType();
+
+  @NotNull Map<String,String> featureProperties();
 }

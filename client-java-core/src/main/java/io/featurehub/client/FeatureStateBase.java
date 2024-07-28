@@ -8,9 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * This class is just the base class to avoid a lot of duplication effort and to ensure the
@@ -135,6 +133,15 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     return (feature.fs == null) ? null : feature.fs.getType();
   }
 
+  @Override
+  public @NotNull Map<String, String> featureProperties() {
+    final TopFeatureState topFeature = top().feature;
+
+    if (topFeature == null || topFeature.fs == null) return new LinkedHashMap<>();
+
+    return (topFeature.fs.getFeatureProperties() == null) ? new LinkedHashMap<>() : topFeature.fs.getFeatureProperties();
+  }
+
   public Object getUsageFreeValue() {
     return internalGetValue(null, false);
   }
@@ -152,8 +159,9 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
     final FeatureValueType type = (passedType == null && feature.fs != null) ? feature.fs.getType() : passedType;
 
+    // was there an overridden value?
     if (vm != null) {
-      return triggerUsage && feature.fs.getId() != null ?
+      return triggerUsage && feature.fs != null && feature.fs.getId() != null ?
         used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type) :
         vm.value;
     }

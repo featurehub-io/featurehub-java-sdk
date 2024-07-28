@@ -16,7 +16,7 @@ import jakarta.ws.rs.Produces
 import jakarta.ws.rs.QueryParam
 import jakarta.ws.rs.core.Application
 
-@Singleton
+//@Singleton
 @Path("features/{environmentId}/{apiKey}")
 class SSETestHarness extends JerseyTest {
   static Closure<EventOutput> backhaul

@@ -1,5 +1,6 @@
 package io.featurehub.client
 
+import io.featurehub.sse.model.FeatureStateUpdate
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
 
@@ -52,31 +53,58 @@ class FeatureHubTestClientFactory implements FeatureHubClientFactory {
     }
   }
 
+  class FakeTestApi implements TestApi {
+
+    @Override
+    TestApiResult setFeatureState(String apiKey, @NotNull String featureKey, @NotNull FeatureStateUpdate featureStateUpdate) {
+      return null
+    }
+
+    @Override
+    TestApiResult setFeatureState(@NotNull String featureKey, @NotNull FeatureStateUpdate featureStateUpdate) {
+      return null
+    }
+
+    @Override
+    void close() {
+
+    }
+  }
+
   static FakeEdgeService fake
+  static FakeTestApi fakeTestApi
 
   @Override
+  @NotNull
   Supplier<EdgeService> createSSEEdge(FeatureHubConfig config, InternalFeatureRepository repository) {
     fake = new FakeEdgeService(repository, config)
     return { -> fake }
   }
 
   @Override
+  @NotNull
   Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config) {
     return createSSEEdge(config, null)
   }
 
   @Override
+  @NotNull
   Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPolling) {
-    return null
+    fake = new FakeEdgeService(repository, config)
+    return { -> fake }
   }
 
   @Override
+  @NotNull
   Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPolling) {
-    return null
+    fake = new FakeEdgeService(config.getInternalRepository(), config)
+    return { -> fake }
   }
 
   @Override
+  @NotNull
   Supplier<TestApi> createTestApi(@NotNull FeatureHubConfig config) {
-    return null
+    fakeTestApi = new FakeTestApi()
+    return { -> fakeTestApi }
   }
 }
