@@ -1,5 +1,6 @@
 package io.featurehub.client.usage;
 
+import io.featurehub.client.ClientContext;
 import io.featurehub.client.FeatureRepository;
 import io.featurehub.client.RepositoryEventHandler;
 

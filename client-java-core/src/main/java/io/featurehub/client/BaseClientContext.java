@@ -108,6 +108,21 @@ class BaseClientContext implements InternalContext {
   }
 
   @Override
+  public ClientContext attrs(Map<String, List<String>> values) {
+    attributes.clear();
+    attributes.putAll(values);
+
+    return this;
+  }
+
+  @Override
+  public ClientContext attrsMerge(Map<String, List<String>> values) {
+    attributes.putAll(values);
+
+    return this;
+  }
+
+  @Override
   public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
                              @NotNull FeatureValueType valueType) {
     final HashMap<String, List<String>> attrCopy = new HashMap<>(attributes);

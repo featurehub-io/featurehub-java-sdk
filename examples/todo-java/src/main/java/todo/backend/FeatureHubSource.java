@@ -4,13 +4,20 @@ import cd.connect.app.config.ConfigKey;
 import cd.connect.app.config.DeclaredConfigResolver;
 import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
+import com.segment.analytics.messages.Message;
 import io.featurehub.client.*;
 import io.featurehub.okhttp.RestClient;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor;
 import io.featurehub.client.jersey.JerseySSEClient;
 import io.featurehub.okhttp.SSEClient;
-import io.featurehub.sdk.usageadapter.segment.SegmentUsageAdapter;
+import io.featurehub.sdk.usageadapter.opentelemetry.OpenTelemetryUsagePlugin;
+import io.featurehub.sdk.usageadapter.segment.SegmentAnalyticsSource;
+import io.featurehub.sdk.usageadapter.segment.SegmentMessageTransformer;
+import io.featurehub.sdk.usageadapter.segment.SegmentUsagePlugin;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.host")
@@ -26,6 +33,8 @@ public class FeatureHubSource implements FeatureHub {
   @ConfigKey("feature-service.poll-interval")
   Integer pollInterval = 1000; // in milliseconds
 
+  @Nullable SegmentAnalyticsSource segmentAnalyticsSource;
+
   private final FeatureHubConfig config;
 
   public FeatureHubSource() {
@@ -35,8 +44,15 @@ public class FeatureHubSource implements FeatureHub {
       .registerValueInterceptor(true, new SystemPropertyValueInterceptor());
 
     if (!segmentWriteKey.isEmpty()) {
-      config.registerUsagePlugin(new SegmentUsageAdapter(segmentWriteKey));
+      final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey,
+        List.of(new SegmentMessageTransformer(Message.Type.values(),
+          FeatureHubClientContextThreadLocal::get, false, true)));
+      config.registerUsagePlugin(segmentUsagePlugin);
+      segmentAnalyticsSource = segmentUsagePlugin;
     }
+
+    // this won't do anything if otel isn't found or configured
+    config.registerUsagePlugin(new OpenTelemetryUsagePlugin());
 
     // Do this if you wish to force the connection to stay open.
     if (clientSdk.equals("jersey3")) {
@@ -66,6 +82,11 @@ public class FeatureHubSource implements FeatureHub {
   @Override
   public FeatureHubConfig getConfig() {
     return config;
+  }
+
+  @Override
+  public SegmentAnalyticsSource segmentAnalytics() {
+    return segmentAnalyticsSource;
   }
 
   public void close() {

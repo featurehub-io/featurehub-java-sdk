@@ -41,7 +41,7 @@ public class UsageEvent {
   }
 
   @NotNull
-  public Map<String, Object> toMap() {
+  public Map<String, ?> toMap() {
     return additionalParams;
   }
 

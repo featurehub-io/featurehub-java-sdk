@@ -25,7 +25,7 @@ public class UsageFeaturesCollection extends UsageEvent {
   void ready() {}
 
   @Override
-  @NotNull public Map<String, Object> toMap() {
+  @NotNull public Map<String, ?> toMap() {
     Map<String, Object> m = new HashMap<>(super.toMap());
     featureValues.forEach((fv) -> m.put(fv.key, fv.value));
 

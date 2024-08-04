@@ -1,0 +1,19 @@
+== FeatureHub Opentelemetry Usage Plugin for Java
+
+The purpose of this usage plugin is to allow Usage tracking events to be attached as Span events in OpenTelemetry. 
+
+This allows you to view spans in your OpenTelemetry system and see what features were evaluated, and what their values were. 
+
+If you record a custom FeatureHub Usage event, it will be translated as long as it implements the `UsageEventName` interface. All attributes are logged with a prefix, which defaults to `featurehub.` - but this can be changed on construction.
+
+The plugin does not specify a version of the OpenTelemetry libraries to use,
+it expects your application will include and configure all of these.
+
+A simple configuration, it can be used as:
+
+[source,java]
+----
+config.registerUsagePlugin(new OpenTelemetryUsagePlugin());
+----
+
+It is safe to include even if OpenTelemetry is not enabled on your system because it will check it has a valid setup before attempting to log to your OpenTelemetry system.

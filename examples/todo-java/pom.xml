@@ -45,7 +45,32 @@
     <dependency>
       <groupId>io.featurehub.sdk.java</groupId>
       <artifactId>segment-usageadapter</artifactId>
-      <version>1.1-SNAPSHOT</version>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+      <version>1.40.0</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>io.opentelemetry.javaagent.instrumentation</groupId>
+      <artifactId>opentelemetry-javaagent-jaxrs-3.0-jersey-3.0</artifactId>
+      <version>2.6.0-alpha</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.opentelemetry.javaagent.instrumentation</groupId>
+      <artifactId>opentelemetry-javaagent-grizzly-2.3</artifactId>
+      <version>2.6.0-alpha</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.java</groupId>
+      <artifactId>opentelemetry-usageadapter</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
     </dependency>
 
     <dependency>
@@ -188,7 +213,7 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

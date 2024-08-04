@@ -35,5 +35,6 @@
 
   <modules>
     <module>featurehub-segment-adapter</module>
+    <module>featurehub-opentelemetry-adapter</module>
   </modules>
 </project>

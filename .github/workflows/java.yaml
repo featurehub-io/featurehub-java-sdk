@@ -14,5 +14,9 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
           cache: maven
-      - name: Build with Maven
-        run: MVN_OPTS="--batch-mode --quiet" sh ./build_all_and_test.sh
+      - name: Install tiles
+        run: cd support && mvn -f pom-tiles.xml install
+      - name: Install support composites
+        run: cd support && mvn install
+      - name: All other things
+        run: mvn install

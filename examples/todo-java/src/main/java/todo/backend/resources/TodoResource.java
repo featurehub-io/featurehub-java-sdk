@@ -1,7 +1,6 @@
 package todo.backend.resources;
 
 import io.featurehub.client.ClientContext;
-import io.featurehub.client.ThreadLocalContext;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.WebApplicationException;
@@ -10,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import todo.api.TodoService;
 import todo.backend.FeatureHub;
+import todo.backend.FeatureHubClientContextThreadLocal;
+import com.segment.analytics.messages.IdentifyMessage;
 import todo.model.Todo;
 
 import java.util.List;
@@ -21,12 +22,12 @@ import java.util.stream.Collectors;
 
 public class TodoResource implements TodoService {
   private static final Logger log = LoggerFactory.getLogger(TodoResource.class);
-  private final FeatureHub config;
+  private final FeatureHub featureHub;
   Map<String, Map<String, Todo>> todos = new ConcurrentHashMap<>();
 
   @Inject
   public TodoResource(FeatureHub config) {
-    this.config = config;
+    this.featureHub = config;
     log.info("created");
   }
 
@@ -78,7 +79,21 @@ public class TodoResource implements TodoService {
 
   @NotNull private ClientContext fhClient(String user) {
     try {
-      return config.getConfig().newContext().userKey(user).build().get();
+      final ClientContext context = featureHub.getConfig().newContext()
+        .userKey(user)
+        .attrs("mine", List.of("yours", "his"))
+        .build().get();
+
+      FeatureHubClientContextThreadLocal.set(context);
+
+      if (featureHub.segmentAnalytics() != null) {
+        // this should have the current user's details augmented into it
+        featureHub.segmentAnalytics().getAnalytics().enqueue(IdentifyMessage.builder().userId(user));
+      }
+
+      context.feature("SUBMIT_COLOR_BUTTON").isSet();
+
+      return context;
     } catch (Exception e) {
       log.error("Unable to get context!", e);
       throw new WebApplicationException(e);

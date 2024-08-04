@@ -25,6 +25,9 @@ public interface ClientContext {
   ClientContext attr(String name, String value);
   ClientContext attrs(String name, List<String> values);
 
+  ClientContext attrs(Map<String, List<String>> values);
+  ClientContext attrsMerge(Map<String, List<String>> values);
+
   ClientContext clear();
 
   @Nullable String getAttr(@NotNull String name);

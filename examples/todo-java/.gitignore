@@ -60,3 +60,4 @@ fabric.properties
 /swagger-backend/app/app.js.map
 /swagger-backend/app/generated-interface.js
 /swagger-backend/app/generated-interface.js.map
+/opentelemetry-javaagent.jar

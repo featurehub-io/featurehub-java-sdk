@@ -11,6 +11,7 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import todo.backend.FeatureHub;
+import todo.backend.FeatureHubClientContextThreadLocal;
 import todo.backend.UsageRequestMeasurement;
 
 import java.io.IOException;
@@ -46,6 +47,8 @@ public class FeatureAnalyticsFilter implements ContainerRequestFilter, Container
   public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException {
     Long start = (Long) requestContext.getProperty("startTime");
     ClientContext context = (ClientContext) requestContext.getProperty("context");
+
+    FeatureHubClientContextThreadLocal.clear();
 
     if (start != null && context != null) {
       long duration = System.currentTimeMillis() - start;

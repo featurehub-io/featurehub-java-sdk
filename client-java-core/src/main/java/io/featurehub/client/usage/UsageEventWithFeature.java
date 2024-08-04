@@ -41,7 +41,7 @@ public class UsageEventWithFeature extends UsageEvent implements UsageEventName 
       m.putAll(attributes);
     }
     m.put("feature", feature.key);
-    m.put("value", feature.id);
+    m.put("value", feature.value);
     m.put("id", feature.id);
 
     return Collections.unmodifiableMap(m);
