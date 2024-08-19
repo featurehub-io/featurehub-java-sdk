@@ -14,8 +14,8 @@
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-okhttp</artifactId>
-      <version>[3.1-SNAPSHOT, 4)</version>
+      <artifactId>java-client-core</artifactId>
+      <version>[4.1-SNAPSHOT, 5)</version>
     </dependency>
 
     <!-- it is assumed that users of this library will provide the otel stack -->

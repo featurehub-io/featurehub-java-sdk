@@ -19,6 +19,7 @@ public class OpenTelemetryUsagePlugin extends UsagePlugin {
   private static final Logger log = LoggerFactory.getLogger(OpenTelemetryUsagePlugin.class);
 
   private final String prefix;
+  private final boolean attachAsSpanEvents = "true".equals(System.getenv("FEATUREHUB_OTEL_SPAN_AS_EVENTS"));
 
   public OpenTelemetryUsagePlugin(String prefix) {
     this.prefix = prefix;
@@ -41,10 +42,17 @@ public class OpenTelemetryUsagePlugin extends UsagePlugin {
       if (!usageAttributes.isEmpty()) {
         final AttributesBuilder builder = Attributes.builder();
 
-        defaultEventParams.forEach((k, v) -> putMe(k, v, builder));
-        usageAttributes.forEach((k, v) -> putMe(k, v, builder));
+        if (attachAsSpanEvents) {
+          defaultEventParams.forEach((k, v) -> putMe(k, v, builder));
+          usageAttributes.forEach((k, v) -> putMe(k, v, builder));
 
-        current.addEvent(prefix(name), builder.build(), Instant.now());
+          current.addEvent(prefix(name), builder.build(), Instant.now());
+        } else {
+          defaultEventParams.forEach((k, v) -> putMe(prefix(k), v, builder));
+          usageAttributes.forEach((k, v) -> putMe(prefix(k), v, builder));
+
+          current.setAllAttributes(builder.build());
+        }
       }
     }
   }

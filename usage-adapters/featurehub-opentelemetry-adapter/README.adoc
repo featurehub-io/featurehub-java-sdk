@@ -1,10 +1,14 @@
 == FeatureHub Opentelemetry Usage Plugin for Java
 
-The purpose of this usage plugin is to allow Usage tracking events to be attached as Span events in OpenTelemetry. 
+The purpose of this usage plugin is to allow Usage tracking events to be attached as Span events in OpenTelemetry. FeatureHub uses https://www.honeycomb.io/[HoneyComb for testing].
+
 
 This allows you to view spans in your OpenTelemetry system and see what features were evaluated, and what their values were. 
 
-If you record a custom FeatureHub Usage event, it will be translated as long as it implements the `UsageEventName` interface. All attributes are logged with a prefix, which defaults to `featurehub.` - but this can be changed on construction.
+The features can be attached as Span Attributes (which usually means they don't have any extra cost, but you cannot see multiple evaluations in a single span) or as events (which
+typically cost money but let you see multiple evaluations). This is controlled by the environment variable `FEATUREHUB_OTEL_SPAN_AS_EVENTS` which is `false` by default. Set it to `true` to attach as events.
+
+If you record a custom FeatureHub Usage event (not to be confused with an OpenTelemetry span event), it will be translated as long as it implements the `UsageEventName` interface. All attributes are logged with a prefix, which defaults to `featurehub.` - but this can be changed on construction.
 
 The plugin does not specify a version of the OpenTelemetry libraries to use,
 it expects your application will include and configure all of these.

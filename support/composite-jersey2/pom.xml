@@ -63,6 +63,12 @@
       <version>${jersey.version}</version>
     </dependency>
 
+    <dependency>
+      <groupId>org.glassfish.jersey.inject</groupId>
+      <artifactId>jersey-hk2</artifactId>
+      <version>${jersey.version}</version>
+    </dependency>
+
     <!-- required by the FeatureRequired annotation listener -->
     <dependency>
       <groupId>org.glassfish.jersey.core</groupId>

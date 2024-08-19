@@ -34,14 +34,14 @@
   </licenses>
 
   <modules>
-    <module>client-java-core</module>
-    <module>client-java-okhttp</module>
-    <module>client-java-android21</module>
-    <module>client-java-jersey</module>
-    <module>client-java-jersey3</module>
-    <module>client-java-api</module>
+    <module>core/client-java-core</module>
+    <module>core/client-java-api</module>
+    <module>client-implementations/java-client-okhttp</module>
+    <module>client-implementations/java-client-jersey2</module>
+    <module>client-implementations/java-client-jersey3</module>
     <module>support</module>
     <module>examples</module>
     <module>usage-adapters</module>
+    <module>unmaintained/client-java-android21</module>
   </modules>
 </project>
