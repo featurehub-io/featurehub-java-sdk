@@ -56,7 +56,7 @@ public class EdgeRetryer implements EdgeRetryService {
     new TypeReference<List<io.featurehub.sse.model.FeatureState>>() {};
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
-                        int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTmeoutMs) {
+                        int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {
     this.serverReadTimeoutMs = serverReadTimeoutMs;
     this.serverDisconnectRetryMs = serverDisconnectRetryMs;
     this.serverByeReconnectMs = serverByeReconnectMs;
@@ -64,7 +64,7 @@ public class EdgeRetryer implements EdgeRetryService {
     this.maximumBackoffTimeMs = maximumBackoffTimeMs;
 
     currentBackoffMultiplier = backoffMultiplier;
-    this.connectionFailureBackoffTimeMs = serverConnectTmeoutMs;
+    this.connectionFailureBackoffTimeMs = serverConnectTimeoutMs;
 
     executorService = makeExecutorService();
   }

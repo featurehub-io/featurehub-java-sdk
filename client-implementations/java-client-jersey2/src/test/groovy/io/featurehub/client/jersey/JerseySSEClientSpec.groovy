@@ -32,7 +32,7 @@ class JerseySSEClientSpec extends Specification {
       return output
     })
 
-    edge = new JerseySSEClient(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()) {
+    edge = new JerseySSEClient(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()) {
       @Override
       void reconnect() {
         close();
@@ -44,7 +44,7 @@ class JerseySSEClientSpec extends Specification {
 
 
   def cleanup() {
-    harness.tearDown()
+    harness?.tearDown()
   }
 
   def "A basic client connect works as expected"() {

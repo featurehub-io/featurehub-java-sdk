@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub</groupId>
-  <artifactId>featurehub-java-sdk-reactor</artifactId>
+  <groupId>io.featurehub.sdk.java</groupId>
+  <artifactId>core-reactor</artifactId>
   <version>1.1.1</version>
   <packaging>pom</packaging>
 
@@ -34,11 +34,7 @@
   </licenses>
 
   <modules>
-    <module>core</module>
-    <module>client-implementations</module>
-    <module>support</module>
-    <module>examples</module>
-    <module>usage-adapters</module>
-    <module>unmaintained</module>
+    <module>client-java-api</module>
+    <module>client-java-core</module>
   </modules>
 </project>

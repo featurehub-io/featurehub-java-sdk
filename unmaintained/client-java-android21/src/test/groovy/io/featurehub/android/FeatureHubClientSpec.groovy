@@ -15,7 +15,7 @@ class FeatureHubClientSpec extends Specification {
   def "a null sdk url will never trigger a call"() {
     when: "i initialize the client"
       call = Mock(Call)
-      def fhc = new FeatureHubClient(null, null, null, client, Mock(FeatureHubConfig))
+      def fhc = new FeatureHubClient(null, null, null, client, Mock(FeatureHubConfig), 0)
     and: "check for updates"
       fhc.checkForUpdates()
     then:

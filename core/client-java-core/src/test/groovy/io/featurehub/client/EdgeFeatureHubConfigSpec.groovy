@@ -5,6 +5,7 @@ import io.featurehub.client.usage.UsageProvider
 import spock.lang.Specification
 
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutorService
 import java.util.function.Consumer
 
 class EdgeFeatureHubConfigSpec extends Specification {
@@ -116,6 +117,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
   def "i can pre-replace the repository and edge supplier and the context gets created as expected"() {
     given: "i have mocked the edge supplier"
       def mockRepo = Mock(InternalFeatureRepository)
+      def executor = Mock(ExecutorService)
       config.setRepository(mockRepo)
     when:
       def ctx  = config.init().get() as BaseClientContext
@@ -123,6 +125,8 @@ class EdgeFeatureHubConfigSpec extends Specification {
       ctx.edgeService == edgeClient
       ctx.repository == mockRepo
       1 * edgeClient.contextChange(null, '0') >> CompletableFuture.completedFuture(Readiness.Ready)
+      1 * mockRepo.getExecutor() >> executor
+      1 * executor.execute { Runnable r -> r.run() }
       0 * _
   }
 }

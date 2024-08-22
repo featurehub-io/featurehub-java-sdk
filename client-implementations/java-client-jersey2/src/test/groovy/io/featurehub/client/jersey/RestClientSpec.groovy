@@ -4,6 +4,7 @@ import cd.connect.openapi.support.ApiResponse
 import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.client.Readiness
+import io.featurehub.client.edge.EdgeRetryService
 import io.featurehub.sse.model.FeatureEnvironmentCollection
 import io.featurehub.sse.model.SSEResultState
 import spock.lang.Specification
@@ -16,14 +17,16 @@ class RestClientSpec extends Specification {
   InternalFeatureRepository repo
   FeatureHubConfig config
   List<String> apiKeys
+  EdgeRetryService retryer
 
   def setup() {
     apiKeys = ["123"]
     featureService = Mock()
     repo = Mock()
     config = Mock()
+    retryer = Mock()
     config.isServerEvaluation() >> true
-    client = new RestClient(repo, featureService, config, 0, false)
+    client = new RestClient(repo, featureService, config, retryer, 0, false)
   }
 
   ApiResponse<List<FeatureEnvironmentCollection>> build(int statusCode = 200, List<FeatureEnvironmentCollection> data = [], Map<String, String> headers = [:]) {
@@ -132,7 +135,7 @@ class RestClientSpec extends Specification {
   def "change the polling interval to 180 seconds and a second poll won't poll"() {
     given:
       def response = build()
-      client = new RestClient(repo, featureService, config, 180, false)
+      client = new RestClient(repo, featureService, config, retryer, 180, false)
     when:
       def result = client.poll().get()
       def result2 = client.poll().get()
@@ -144,13 +147,13 @@ class RestClientSpec extends Specification {
       0 * _
   }
 
-  def "change the polling interval to 180 seconds and force cache breaking"() {
+  def "change polling interval to 180 seconds and force breaking cache on every check"() {
     given:
       def response = build()
-      client = new RestClient(repo, featureService, config, 180, true)
+      client = new RestClient(repo, featureService, config, retryer, 180, true)
     when:
-      def result = client.poll().get()
-      def result2 = client.poll().get()
+      client.poll().get()
+      client.poll().get()
     then:
       2 * repo.updateFeatures([])
       2 * config.apiKeys() >> apiKeys

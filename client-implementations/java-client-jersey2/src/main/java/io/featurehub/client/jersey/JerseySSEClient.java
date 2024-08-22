@@ -150,7 +150,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     boolean interrupted = false;
 
-    while (!eventSource.isClosed() && !interrupted) {
+    while (!eventSource.isClosed() && !retryer.isStopped() && !interrupted) {
       if (notify != null) { // this is for testing
         notify.accept(null);
       }
@@ -207,29 +207,31 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     try {
       final SSEResultState state = retryer.fromValue(event.getName());
 
+      if (log.isTraceEnabled()) {
+        log.trace("[featurehub-sdk] decode packet (state {}) {}:{}", state, event.getName(), data);
+      }
+
       if (state == null) { // unknown state
         return connectionSaidBye;
       }
-
-      log.trace("[featurehub-sdk] decode packet {}:{}", event.getName(), data);
 
       if (state == SSEResultState.CONFIG) {
         retryer.edgeConfigInfo(data);
       } else {
         retryer.convertSSEState(state, data, repository);
-      }
 
-      // reset the timer
-      if (state == SSEResultState.FEATURES) {
-        retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
-      }
+        // reset the timer
+        if (state == SSEResultState.FEATURES) {
+          retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
+        }
 
-      if (state == SSEResultState.BYE) {
-        connectionSaidBye = true;
-      }
+        if (state == SSEResultState.BYE) {
+          connectionSaidBye = true;
+        }
 
-      if (state == SSEResultState.FAILURE) {
-        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+        if (state == SSEResultState.FAILURE) {
+          retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+        }
       }
 
       // tell any waiting clients we are now ready
@@ -244,7 +246,6 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private void notifyWaitingClients() {
-    log.trace("notifying {} waiting clients", waitingClients.size());
     waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
   }
 

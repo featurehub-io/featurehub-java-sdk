@@ -239,7 +239,6 @@ public class RestClient implements EdgeService {
   private void completeReadiness() {
     List<CompletableFuture<Readiness>> current = waitingClients;
     waitingClients = new ArrayList<>();
-    log.trace("notifying {} clients", current.size());
     current.forEach(c -> {
       try {
         c.complete(repository.getReadiness());

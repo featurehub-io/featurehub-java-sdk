@@ -14,7 +14,7 @@ class EdgeRetryerSpec extends Specification {
   def setup() {
     mockExecutor = Mock(ExecutorService)
     reconnector = Mock(EdgeReconnector)
-    retryer = new EdgeRetryer(100, 100, 100, 10, 100) {
+    retryer = new EdgeRetryer(100, 100, 100, 10, 100, 100) {
       @Override
       protected ExecutorService makeExecutorService() {
         return mockExecutor

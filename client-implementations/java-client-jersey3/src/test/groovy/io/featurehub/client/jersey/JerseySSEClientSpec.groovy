@@ -32,7 +32,7 @@ class JerseySSEClientSpec extends Specification {
       return output
     })
 
-    edge = new JerseySSEClient(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().build()) {
+    edge = new JerseySSEClient(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()) {
       @Override
       void reconnect() {
         close();
