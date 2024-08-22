@@ -26,8 +26,9 @@ public class OkHttpFeatureHubFactory implements FeatureHubClientFactory {
 
   @Override
   @NotNull
-  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config, @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPollingDelegate) {
-    return () -> new RestClient(repository, config, timeoutInSeconds, amPollingDelegate);
+  public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
+                                              @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPollingDelegate) {
+    return () -> new RestClient(repository, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), timeoutInSeconds, amPollingDelegate);
   }
 
   @Override

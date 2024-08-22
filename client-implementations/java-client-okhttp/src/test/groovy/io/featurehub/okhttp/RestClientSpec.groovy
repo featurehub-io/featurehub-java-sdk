@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.client.Readiness
+import io.featurehub.client.edge.EdgeRetryer
 import io.featurehub.sse.model.FeatureEnvironmentCollection
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -27,7 +28,7 @@ class RestClientSpec extends Specification {
     config.baseUrl() >> url.substring(0, url.length() - 1)
     config.apiKeys() >> ["one", "two"]
     config.serverEvaluation >> true
-    client = new RestClient(config, 0)
+    client = new RestClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), 0)
     mockWebServer.url("/features")
   }
 

@@ -20,6 +20,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -138,11 +140,18 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       @Override
       public void onFailure(@NotNull EventSource eventSource, @Nullable Throwable t, @Nullable Response response) {
         log.trace("[featurehub-sdk] failed to connect to {} - {}", config.baseUrl(), response, t);
+
         if (repository.getReadiness() == Readiness.NotReady) {
           repository.notify(SSEResultState.FAILURE);
         }
 
-        retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
+        if (t instanceof java.net.ConnectException) {
+          retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
+        } else if (t instanceof SocketTimeoutException) { // shouldn't happen if long enough
+          retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, connector);
+        } else {
+          retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
+        }
       }
 
       @Override
@@ -156,7 +165,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     if (eventSourceFactory == null) {
       client =
           new OkHttpClient.Builder()
-              .readTimeout(0, TimeUnit.MILLISECONDS)
+              .readTimeout(retryer.getServerReadTimeoutMs(), TimeUnit.MILLISECONDS)
+              .connectTimeout(Duration.ofMillis(retryer.getServerConnectTimeoutMs()))
               .build();
 
       eventSourceFactory = EventSources.createFactory(client);

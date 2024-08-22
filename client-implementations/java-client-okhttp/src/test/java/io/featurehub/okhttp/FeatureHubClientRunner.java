@@ -1,4 +1,4 @@
-package io.featurehub.android;
+package io.featurehub.okhttp;
 
 import io.featurehub.client.ClientContext;
 import io.featurehub.client.EdgeFeatureHubConfig;
@@ -16,7 +16,7 @@ public class FeatureHubClientRunner {
     FeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8064",
       "default/82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN");
 
-    final ClientContext ctx = config.newContext();
+    final ClientContext ctx = config.newContext().build().get();
     ctx.getRepository().addReadinessListener(rl -> System.out.println("readyness " + rl.toString()));
 
     final Supplier<Boolean> val = () -> ctx.feature("FEATURE_TITLE_TO_UPPERCASE").getBoolean();

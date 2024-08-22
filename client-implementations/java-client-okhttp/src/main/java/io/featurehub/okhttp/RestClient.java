@@ -6,6 +6,8 @@ import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
+import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
@@ -22,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -36,6 +39,7 @@ public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
   @NotNull private final InternalFeatureRepository repository;
   @NotNull private final OkHttpClient client;
+  private final EdgeRetryService edgeRetryService;
   private boolean makeRequests;
   @NotNull private final String url;
   private final ObjectMapper mapper = new ObjectMapper();
@@ -56,14 +60,22 @@ public class RestClient implements EdgeService {
   @NotNull private final ExecutorService executorService;
 
   public RestClient(@Nullable InternalFeatureRepository repository,
-                    @NotNull FeatureHubConfig config, int timeoutInSeconds, boolean amPollingDelegate) {
+                    @NotNull FeatureHubConfig config, @NotNull EdgeRetryService edgeRetryService, int timeoutInSeconds, boolean amPollingDelegate) {
+
+    this.edgeRetryService = edgeRetryService;
+
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
 
     this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
-    this.client = new OkHttpClient();
+
+    this.client = new OkHttpClient.Builder()
+      .connectTimeout(Duration.ofMillis(edgeRetryService.getServerConnectTimeoutMs()))
+      .readTimeout(Duration.ofMillis(edgeRetryService.getServerReadTimeoutMs()))
+      .build();
+
     this.config = config;
     this.pollingInterval = timeoutInSeconds;
 
@@ -86,12 +98,12 @@ public class RestClient implements EdgeService {
   }
 
   public RestClient(@NotNull FeatureHubConfig config,
-                    int timeoutInSeconds) {
-    this(null, config, timeoutInSeconds, false);
+        @NotNull EdgeRetryService edgeRetryService, int timeoutInSeconds) {
+    this(null, config, edgeRetryService, timeoutInSeconds, false);
   }
 
   public RestClient(@NotNull FeatureHubConfig config) {
-    this(null, config, 180, false);
+    this(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), 180, false);
   }
 
   private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
