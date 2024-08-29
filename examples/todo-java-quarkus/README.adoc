@@ -1,0 +1,45 @@
+= The Simple Quarkus Example
+
+This  example simply follows the basics of how a Quarkus
+application could be wired for in Java. Java server applications
+recommend that you expose a health check endpoint, and if you wish
+to have your server not get traffic routed to it by your Application
+Load Balancer (or whatever your Cloud provider uses), then simply
+fail the health check when FeatureHub is not "ready".
+
+NOTE: With Quarkus, the version of OkHttp conflicts as FeatureHub is more modern. This
+isn't a problem but does require some additional dependency additions to ensure the
+right version is forced in. See the `pom.xml` for more details.
+
+This example is primarily here to provide documentation for the SDK,
+but it operates on its own. You must modify the application.properties file for your instance
+of FeatureHub
+
+[source,properties]
+----
+feature-hub.api-key=default/82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN
+feature-hub.url=http://localhost:8903
+----
+
+It recognizes a "Authorization" header (via the AuthFilter) which contains the value it will
+directly put into the userKey for simplicity to allow you to try out
+percentage rollouts and tagging feature values to users.
+
+The urls are:
+
+-  / - it print Hello World and the value of the SUBMIT_COLOR_BUTTON
+- /health/liveness - whether the application is ready to receive traffic
+
+----
+curl  -H 'Authorization: richard'  http://localhost:8080
+Hello World green1
+
+curl  -H 'Authorization: irina'  http://localhost:8080
+Hello World blue
+----
+
+You can start the app with: 
+
+ $ mvn compile quarkus:dev
+
+You m

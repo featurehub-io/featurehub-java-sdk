@@ -37,6 +37,7 @@
     <module>todo-java-shared</module>
     <module>todo-java-jersey2</module>
     <module>todo-java-jersey3</module>
+    <module>todo-java-quarkus</module>
     <module>migration-check</module>
   </modules>
 </project>

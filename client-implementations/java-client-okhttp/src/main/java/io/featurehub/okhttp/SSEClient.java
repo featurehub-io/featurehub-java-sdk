@@ -9,9 +9,7 @@ import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.SSEResultState;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import okhttp3.*;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 import okhttp3.sse.EventSources;
@@ -20,6 +18,9 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -39,16 +40,17 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private final EdgeRetryService retryer;
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
-
-  public SSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
-                   @NotNull EdgeRetryService retryer) {
-    this.repository = repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
+  public SSEClient(
+      @Nullable InternalFeatureRepository repository,
+      @NotNull FeatureHubConfig config,
+      @NotNull EdgeRetryService retryer) {
+    this.repository =
+        repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
   }
 
-  public SSEClient(@NotNull FeatureHubConfig config,
-                   @NotNull EdgeRetryService retryer) {
+  public SSEClient(@NotNull FeatureHubConfig config, @NotNull EdgeRetryService retryer) {
     this(null, config, retryer);
   }
 
@@ -69,104 +71,151 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private boolean connectionSaidBye;
 
   private void initEventSource() {
-    Request.Builder reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
+    try {
+      Request.Builder reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
 
-    if (xFeaturehubHeader != null) {
-      reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
+      if (xFeaturehubHeader != null) {
+        reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
+      }
+
+      reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
+
+      Request request = reqBuilder.build();
+
+      // we need to know if the connection already said "bye" so as to pass the right reconnection
+      // event
+      connectionSaidBye = false;
+      final EdgeReconnector connector = this;
+
+      eventSource =
+          makeEventSource(
+              request,
+              new EventSourceListener() {
+                @Override
+                public void onClosed(@NotNull EventSource eventSource) {
+                  log.trace("[featurehub-sdk] closed");
+
+                  if (repository.getReadiness() == Readiness.NotReady) {
+                    repository.notify(SSEResultState.FAILURE);
+                  }
+
+                  // send this once we are actually disconnected and not before
+                  retryer.edgeResult(
+                      connectionSaidBye
+                          ? EdgeConnectionState.SERVER_SAID_BYE
+                          : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
+                      connector);
+                }
+
+                @Override
+                public void onEvent(
+                    @NotNull EventSource eventSource,
+                    @Nullable String id,
+                    @Nullable String type,
+                    @Nullable String data) {
+                  try {
+                    final SSEResultState state = retryer.fromValue(type);
+
+                    if (state == null) { // unknown state
+                      return;
+                    }
+
+                    log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
+
+                    if (state == SSEResultState.CONFIG) {
+                      retryer.edgeConfigInfo(data);
+                    } else if (data != null) {
+                      retryer.convertSSEState(state, data, repository);
+                    }
+
+                    // reset the timer
+                    if (state == SSEResultState.FEATURES) {
+                      retryer.edgeResult(EdgeConnectionState.SUCCESS, connector);
+                    }
+
+                    if (state == SSEResultState.BYE) {
+                      connectionSaidBye = true;
+                    }
+
+                    if (state == SSEResultState.FAILURE) {
+                      retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
+                    }
+
+                    // tell any waiting clients we are now ready
+                    if (!waitingClients.isEmpty()
+                        && (state != SSEResultState.ACK && state != SSEResultState.CONFIG)) {
+                      waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
+                    }
+                  } catch (Exception e) {
+                    log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
+                  }
+                }
+
+                @Override
+                public void onFailure(
+                    @NotNull EventSource eventSource,
+                    @Nullable Throwable t,
+                    @Nullable Response response) {
+                  if (repository.getReadiness() == Readiness.NotReady) {
+                    log.trace(
+                      "[featurehub-sdk] failed to connect to {} - {}",
+                      config.baseUrl(),
+                      response,
+                      t);
+                    repository.notify(SSEResultState.FAILURE);
+                  }
+
+                  if (t instanceof java.net.ConnectException) {
+                    retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
+                  } else if (repository.getReadiness() == Readiness.Failed && t
+                      instanceof SocketTimeoutException) {
+                    // if it connects yet times out while still failed, lets back off
+                    retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, connector);
+                  } else {
+                    retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
+                  }
+                }
+
+                @Override
+                public void onOpen(@NotNull EventSource eventSource, @NotNull Response response) {
+                  log.trace("[featurehub-sdk] connected to {}", config.baseUrl());
+                }
+              });
+
+    } catch (NoClassDefFoundError|NoSuchFieldError noClassDefFoundError) {
+      log.error(
+          "You appear to have the wrong version of OKHttp in your classpath or a conflicting version and FeatureHub cannot start",
+          noClassDefFoundError);
+    } catch (Throwable e) {
+      log.error("failed", e);
     }
 
-    reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
-
-    Request request = reqBuilder.build();
-
-    // we need to know if the connection already said "bye" so as to pass the right reconnection event
-    connectionSaidBye = false;
-    final EdgeReconnector connector = this;
-
-    eventSource = makeEventSource(request, new EventSourceListener() {
-      @Override
-      public void onClosed(@NotNull EventSource eventSource) {
-        log.trace("[featurehub-sdk] closed");
-
-        if (repository.getReadiness() == Readiness.NotReady) {
-          repository.notify(SSEResultState.FAILURE);
-        }
-
-        // send this once we are actually disconnected and not before
-        retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
-          EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
-      }
-
-      @Override
-      public void onEvent(@NotNull EventSource eventSource, @Nullable String id, @Nullable String type,
-                          @Nullable String data) {
-        try {
-          final SSEResultState state = retryer.fromValue(type);
-
-          if (state == null) { // unknown state
-            return;
-          }
-
-          log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
-
-          if (state == SSEResultState.CONFIG) {
-            retryer.edgeConfigInfo(data);
-          } else if (data != null) {
-            retryer.convertSSEState(state, data, repository);
-          }
-
-          // reset the timer
-          if (state == SSEResultState.FEATURES) {
-            retryer.edgeResult(EdgeConnectionState.SUCCESS, connector);
-          }
-
-          if (state == SSEResultState.BYE) {
-            connectionSaidBye = true;
-          }
-
-          if (state == SSEResultState.FAILURE) {
-            retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-          }
-
-          // tell any waiting clients we are now ready
-          if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG) ) {
-            waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
-          }
-        } catch (Exception e) {
-          log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
-        }
-      }
-
-      @Override
-      public void onFailure(@NotNull EventSource eventSource, @Nullable Throwable t, @Nullable Response response) {
-        log.trace("[featurehub-sdk] failed to connect to {} - {}", config.baseUrl(), response, t);
-
-        if (repository.getReadiness() == Readiness.NotReady) {
-          repository.notify(SSEResultState.FAILURE);
-        }
-
-        if (t instanceof java.net.ConnectException) {
-          retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
-        } else if (t instanceof SocketTimeoutException) { // shouldn't happen if long enough
-          retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, connector);
-        } else {
-          retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
-        }
-      }
-
-      @Override
-      public void onOpen(@NotNull EventSource eventSource, @NotNull Response response) {
-        log.trace("[featurehub-sdk] connected to {}", config.baseUrl());
-      }
-    });
+    if (eventSource == null) {
+      log.error("Unable to connect to {}", this.config.getRealtimeUrl());
+    }
   }
 
   protected EventSource makeEventSource(Request request, EventSourceListener listener) {
     if (eventSourceFactory == null) {
       client =
           new OkHttpClient.Builder()
-              .readTimeout(retryer.getServerReadTimeoutMs(), TimeUnit.MILLISECONDS)
-              .connectTimeout(Duration.ofMillis(retryer.getServerConnectTimeoutMs()))
+              .eventListener(
+                  new EventListener() {
+                    @Override
+                    public void connectFailed(
+                        @NotNull Call call,
+                        @NotNull InetSocketAddress inetSocketAddress,
+                        @NotNull Proxy proxy,
+                        @Nullable Protocol protocol,
+                        @NotNull IOException ioe) {
+                      super.connectFailed(call, inetSocketAddress, proxy, protocol, ioe);
+
+                      log.error("connected failed");
+                    }
+                  })
+              //              .readTimeout(retryer.getServerReadTimeoutMs(), TimeUnit.MILLISECONDS)
+              //
+              // .connectTimeout(Duration.ofMillis(retryer.getServerConnectTimeoutMs()))
               .build();
 
       eventSourceFactory = EventSources.createFactory(client);
@@ -175,18 +224,16 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     return eventSourceFactory.newEventSource(request, listener);
   }
 
-
   @Override
   public @NotNull Future<Readiness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-    if (config.isServerEvaluation() &&
-      (
-        (newHeader != null && !newHeader.equals(xFeaturehubHeader)) ||
-        (xFeaturehubHeader != null && !xFeaturehubHeader.equals(newHeader))
-      ) ) {
+    if (config.isServerEvaluation()
+        && ((newHeader != null && !newHeader.equals(xFeaturehubHeader))
+            || (xFeaturehubHeader != null && !xFeaturehubHeader.equals(newHeader)))) {
 
-      log.warn("[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
+      log.warn(
+          "[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
 
       xFeaturehubHeader = newHeader;
 

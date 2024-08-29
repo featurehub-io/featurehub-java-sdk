@@ -14,8 +14,8 @@ public class FeatureHubClientRunner {
 
   public static void main(String[] args) throws Exception {
     FeatureHubConfig config = new EdgeFeatureHubConfig("http://localhost:8064",
-      "default/82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN");
-
+      "82afd7ae-e7de-4567-817b-dd684315adf7/SHxmTA83AJupii4TsIciWvhaQYBIq2*JxIKxiUoswZPmLQAIIWN");
+    config.streaming();
     final ClientContext ctx = config.newContext().build().get();
     ctx.getRepository().addReadinessListener(rl -> System.out.println("readyness " + rl.toString()));
 

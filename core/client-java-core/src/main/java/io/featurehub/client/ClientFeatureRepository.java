@@ -23,10 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 public class ClientFeatureRepository implements InternalFeatureRepository {
@@ -97,7 +94,10 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   protected static ExecutorService getExecutor(int threadPoolSize) {
-    return Executors.newFixedThreadPool(Math.max(threadPoolSize, 10));
+    int maxThreads = Math.max(threadPoolSize, 10);
+    return new ThreadPoolExecutor(3, maxThreads,
+      0L, TimeUnit.MILLISECONDS,
+      new LinkedBlockingQueue<>(), new FeatureHubThreadFactory());
   }
 
   public void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {

@@ -3,11 +3,13 @@ package todo.backend.resources;
 
 import io.featurehub.client.Readiness;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;
 import todo.backend.FeatureHub;
 
+@Singleton
 @Path("/health")
 public class HealthResource {
   private final FeatureHub featureHub;

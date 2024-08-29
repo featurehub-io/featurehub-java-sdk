@@ -45,6 +45,7 @@
 
   <properties>
     <ok.http.version>4.12.0</ok.http.version>
+    <ok.io.version>3.6.0</ok.io.version>
   </properties>
 
 
@@ -55,16 +56,26 @@
       <version>[4, 5)</version>
     </dependency>
 
+    <!-- these should be copied into your dependencies so you control the versions -->
     <dependency>
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>okhttp</artifactId>
       <version>${ok.http.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>com.squareup.okio</groupId>
+      <artifactId>okio</artifactId>
+      <version>${ok.io.version}</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
       <groupId>com.squareup.okhttp3</groupId>
       <artifactId>okhttp-sse</artifactId>
       <version>${ok.http.version}</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>

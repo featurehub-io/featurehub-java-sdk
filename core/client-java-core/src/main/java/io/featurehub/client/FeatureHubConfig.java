@@ -59,7 +59,7 @@ public interface FeatureHubConfig {
   @NotNull ClientContext newContext();
 
   static boolean sdkKeyIsClientSideEvaluated(Collection<String> sdkKey) {
-    return sdkKey.stream().anyMatch(key -> key.contains("*"));
+    return sdkKey.stream().anyMatch(key -> key != null && key.contains("*"));
   }
 
   FeatureHubConfig setRepository(FeatureRepository repository);
