@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ServiceLoader;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {
@@ -76,6 +77,16 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     try {
       final Future<ClientContext> futureContext = newContext().build();
       futureContext.get();
+    } catch (Exception e) {
+      log.error("Failed to initialize FeatureHub client", e);
+    }
+  }
+
+  @Override
+  public void init(long timeout, TimeUnit unit) {
+    try {
+      final Future<ClientContext> futureContext = newContext().build();
+      futureContext.get(timeout, unit);
     } catch (Exception e) {
       log.error("Failed to initialize FeatureHub client", e);
     }

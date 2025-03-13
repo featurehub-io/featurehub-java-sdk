@@ -2,6 +2,7 @@ package io.featurehub.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 public interface FeatureHubConfig {
@@ -20,6 +21,13 @@ public interface FeatureHubConfig {
    * to re-request data from the server each time you change your context.
    */
   void init();
+
+  /**
+   * If you are using a client evaluated feature context, this will initialise the service and block until
+   * the provided timeout or until you have received your first set of features. Server Evaluated contexts
+   * should not use it because it needs to re-request data from the server each time you change your context.
+   */
+  void init(long timeout, TimeUnit unit);
 
   /**
    * The API Key indicates this is going to be server based evaluation
