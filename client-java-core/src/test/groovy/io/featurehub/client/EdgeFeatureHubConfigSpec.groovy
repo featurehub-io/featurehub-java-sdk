@@ -143,4 +143,41 @@ class EdgeFeatureHubConfigSpec extends Specification {
       1 * mockRequest.get() >> Readyness.Ready
       0 * _
   }
+
+  def "init completes successfully if future resolves within the given time"() {
+    given: "A client eval feature config"
+      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
+    and: "A mock future that completes successfully"
+      def futureContext = Mock(Future<ClientContext>)
+      def mockContext = Mock(ClientContext)
+    and: "I mock the context and future"
+      def clientContext = Mock(ClientContext)
+      clientContext.build() >> futureContext
+      config = Spy(config) {
+        newContext() >> clientContext
+      }
+    when: "init is called with a reasonable timeout"
+      config.init(100, TimeUnit.MILLISECONDS)
+    then: "The get method on the future should be called with timeout"
+      1 * futureContext.get(100, TimeUnit.MILLISECONDS) >> mockContext
+      0 * _
+  }
+
+  def "init should timeout if future does not complete within the given time"() {
+    given: "A client eval feature config"
+      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
+    and: "A mock future that does not complete in time"
+      def futureContext = Mock(Future<ClientContext>)
+    and: "I mock the context and future"
+      def clientContext = Mock(ClientContext)
+      clientContext.build() >> futureContext
+      config = Spy(config) {
+        newContext() >> clientContext
+      }
+    when: "init is called with a very short timeout"
+      config.init(1, TimeUnit.MILLISECONDS)
+    then: "The get method on the future should be called with timeout"
+      1 * futureContext.get(1, TimeUnit.MILLISECONDS) >> { throw new java.util.concurrent.TimeoutException() }
+      0 * _
+  }
 }
