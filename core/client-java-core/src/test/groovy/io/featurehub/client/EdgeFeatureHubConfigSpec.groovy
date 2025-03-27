@@ -6,6 +6,9 @@ import spock.lang.Specification
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.Future
+import java.util.concurrent.TimeoutException
 import java.util.function.Consumer
 
 class EdgeFeatureHubConfigSpec extends Specification {
@@ -127,6 +130,50 @@ class EdgeFeatureHubConfigSpec extends Specification {
       1 * edgeClient.contextChange(null, '0') >> CompletableFuture.completedFuture(Readiness.Ready)
       1 * mockRepo.getExecutor() >> executor
       1 * executor.execute { Runnable r -> r.run() }
+      0 * _
+  }
+
+  def "init completes successfully if future resolves within the given time"() {
+    given: "A mock future that completes successfully"
+      def futureContext = Mock(Future<ClientContext>)
+      def mockContext = Mock(ClientContext)
+    and: "I mock the context and future"
+      def clientContext = Mock(ClientContext)
+
+    and: "A client eval feature config"
+      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+        @Override
+        ClientContext newContext() {
+          return clientContext
+        }
+      }
+    when: "init is called with a reasonable timeout"
+      config.init(100, TimeUnit.MILLISECONDS)
+    then: "The get method on the future should be called with timeout"
+      1 * futureContext.get(100, TimeUnit.MILLISECONDS) >> mockContext
+      1 * clientContext.build() >> futureContext
+      0 * _
+  }
+
+  def "init should timeout if future does not complete within the given time"() {
+    given: "A mock future that completes successfully"
+    def futureContext = Mock(Future<ClientContext>)
+    def mockContext = Mock(ClientContext)
+    and: "I mock the context and future"
+    def clientContext = Mock(ClientContext)
+
+    and: "A client eval feature config"
+    def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+      @Override
+      ClientContext newContext() {
+        return clientContext
+      }
+    }
+    when: "init is called with a very short timeout"
+      config.init(1, TimeUnit.MILLISECONDS)
+    then: "The get method on the future should be called with timeout"
+      1 * futureContext.get(1, TimeUnit.MILLISECONDS) >> { throw new TimeoutException() }
+      1 * clientContext.build() >> futureContext
       0 * _
   }
 }

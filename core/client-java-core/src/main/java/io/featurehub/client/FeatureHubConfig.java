@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -38,6 +39,13 @@ public interface FeatureHubConfig {
   @NotNull List<@NotNull String> apiKeys();
 
   @NotNull String baseUrl();
+
+  /**
+   * If you are using a client evaluated feature context, this will initialise the service and block until
+   * the provided timeout or until you have received your first set of features. Server Evaluated contexts
+   * should not use it because it needs to re-request data from the server each time you change your context.
+   */
+  void init(long timeout, TimeUnit unit);
 
   /**
    * If you are using a client evaluated feature context, this will initialise the service and block until

@@ -201,7 +201,6 @@ public class FeatureHubClient implements EdgeService {
         });
 
         repository.notify(states);
-        completeReadiness();
 
         if (response.code() == 236) {
           this.stopped = true; // prevent any further requests
@@ -215,9 +214,10 @@ public class FeatureHubClient implements EdgeService {
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE, null);
-        completeReadiness();
       }
     }
+
+    completeReadiness();
   }
 
   boolean canMakeRequests() {

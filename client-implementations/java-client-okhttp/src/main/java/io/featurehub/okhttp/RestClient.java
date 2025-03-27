@@ -239,7 +239,6 @@ public class RestClient implements EdgeService {
         log.trace("updating feature repository: {}", states);
 
         repository.updateFeatures(states);
-        completeReadiness();
 
         if (response.code() == 236) {
           this.stopped = true; // prevent any further requests
@@ -249,17 +248,18 @@ public class RestClient implements EdgeService {
         if (pollingInterval > 0) {
           whenPollingCacheExpires = now() + (pollingInterval * 1000);
         }
-      } else if (response.code() == 400 || response.code() == 404) {
+      } else if (response.code() == 400 || response.code() == 404 || response.code() == 401 || response.code() == 403) {
+        // 401 and 403 are possible because of misconfiguration
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE);
-        completeReadiness();
-      } else if (response.code() >= 500) {
-        completeReadiness(); // we haven't changed anything, but we have to unblock clients as we can't just hang
       }
+      // could be a 304 or 5xx as expected possible results
     } catch (Exception e) {
       log.error("Failed to parse response {}", response.code(), e);
     }
+
+    completeReadiness(); // under all circumstances, unblock clients
   }
 
   boolean canMakeRequests() {

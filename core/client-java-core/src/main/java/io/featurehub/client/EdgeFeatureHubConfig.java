@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.ServiceLoader;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -114,6 +115,16 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   public Future<ClientContext> init() {
     return newContext().build();
+  }
+
+  @Override
+  public void init(long timeout, TimeUnit unit) {
+    try {
+      final Future<ClientContext> futureContext = newContext().build();
+      futureContext.get(timeout, unit);
+    } catch (Exception e) {
+      log.warn("Failed to initialize FeatureHub client", e);
+    }
   }
 
   @Override
