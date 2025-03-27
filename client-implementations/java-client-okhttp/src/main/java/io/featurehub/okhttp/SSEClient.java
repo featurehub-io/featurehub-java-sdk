@@ -80,7 +80,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
       reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
 
-      Request request = reqBuilder.build();
+      Request request = buildRequest(reqBuilder);
 
       // we need to know if the connection already said "bye" so as to pass the right reconnection
       // event
@@ -195,10 +195,20 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
   }
 
+  /**
+   * Override this method if you wish to add extra things
+   *
+   * @param requestBuilder
+   * @return a Request object ready for use
+   */
+  protected Request buildRequest(Request.Builder requestBuilder) {
+    return requestBuilder.build();
+  }
+
   protected EventSource makeEventSource(Request request, EventSourceListener listener) {
     if (eventSourceFactory == null) {
       client =
-          new OkHttpClient.Builder()
+        buildOkHttpClientBuilder(retryer)
               .eventListener(
                   new EventListener() {
                     @Override
@@ -222,6 +232,17 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
 
     return eventSourceFactory.newEventSource(request, listener);
+  }
+
+  /**
+   * This is overrideable so you can make it do what you wish if you wish.
+   *
+   * @param edgeRetryService
+   * @return - new builder
+   */
+  @NotNull
+  protected OkHttpClient.Builder buildOkHttpClientBuilder(@NotNull EdgeRetryService edgeRetryService) {
+    return new OkHttpClient.Builder();
   }
 
   @Override

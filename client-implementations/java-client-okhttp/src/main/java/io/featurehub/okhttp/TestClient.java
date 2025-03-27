@@ -5,6 +5,7 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.TestApi;
 import io.featurehub.client.TestApiResult;
+import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import okhttp3.MediaType;
@@ -17,14 +18,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
 
 public class TestClient implements TestApi {
   private static final Logger log = LoggerFactory.getLogger(TestClient.class);
   private final FeatureHubConfig config;
-  private final OkHttpClient client = new OkHttpClient();
+  private final OkHttpClient client;
 
   public TestClient(FeatureHubConfig config) {
     this.config = config;
+    this.client = buildOkHttpClient();
   }
 
   @Override
@@ -53,6 +56,23 @@ public class TestClient implements TestApi {
     } catch (IOException e) {
       return new TestApiResult(500);
     }
+  }
+
+  /**
+   * This is overrideable so you can create your own requestbuilder.
+   */
+
+  protected Request.Builder createRequestBuilder() {
+    return new Request.Builder();
+  }
+
+  /**
+   * This is overrideable so you can create your own okhttpclient.
+   */
+  @NotNull
+  protected OkHttpClient buildOkHttpClient() {
+    return new OkHttpClient.Builder()
+      .build();
   }
 
   @Override

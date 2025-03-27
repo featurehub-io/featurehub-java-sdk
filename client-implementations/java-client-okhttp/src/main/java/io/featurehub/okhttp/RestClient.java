@@ -71,10 +71,7 @@ public class RestClient implements EdgeService {
     this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
 
-    this.client = new OkHttpClient.Builder()
-      .connectTimeout(Duration.ofMillis(edgeRetryService.getServerConnectTimeoutMs()))
-      .readTimeout(Duration.ofMillis(edgeRetryService.getServerReadTimeoutMs()))
-      .build();
+    this.client = buildOkHttpClient(edgeRetryService);
 
     this.config = config;
     this.pollingInterval = timeoutInSeconds;
@@ -91,6 +88,20 @@ public class RestClient implements EdgeService {
     if (clientSideEvaluation) {
       checkForUpdates(null);
     }
+  }
+
+  /**
+   * This is overrideable so you can make it do what you wish if you wish.
+   *
+   * @param edgeRetryService
+   * @return
+   */
+  @NotNull
+  protected OkHttpClient buildOkHttpClient(@NotNull EdgeRetryService edgeRetryService) {
+    return new OkHttpClient.Builder()
+      .connectTimeout(Duration.ofMillis(edgeRetryService.getServerConnectTimeoutMs()))
+      .readTimeout(Duration.ofMillis(edgeRetryService.getServerReadTimeoutMs()))
+      .build();
   }
 
   protected ExecutorService makeExecutorService() {
@@ -161,6 +172,16 @@ public class RestClient implements EdgeService {
     }
 
     return ask;
+  }
+
+  /**
+   * Override this method if you wish to add extra things
+   *
+   * @param requestBuilder
+   * @return a Request object ready for use
+   */
+  protected Request buildRequest(Request.Builder requestBuilder) {
+    return requestBuilder.build();
   }
 
   protected @Nullable String getEtag() {

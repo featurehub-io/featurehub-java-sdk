@@ -113,7 +113,7 @@ class SSEClientSpec extends Specification {
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
       1 * config.baseUrl() >> "http://localhost" // used by trace log
-      2 * repository.getReadiness() >> Readiness.NotReady
+      3 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
       0 * _
