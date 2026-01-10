@@ -3,6 +3,8 @@ package io.featurehub.okhttp
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
+import io.featurehub.javascript.Jackson2ObjectMapper
+import io.featurehub.javascript.JavascriptObjectMapper
 import io.featurehub.sse.model.FeatureStateUpdate
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -14,11 +16,11 @@ class TestClientSpec extends Specification {
   MockWebServer mockWebServer
   FeatureHubConfig config
   InternalFeatureRepository repo
-  ObjectMapper mapper
+  JavascriptObjectMapper mapper
   TestClient client
 
   def setup() {
-    mapper = new ObjectMapper()
+    mapper = new Jackson2ObjectMapper()
     config = Mock()
     repo = Mock()
     repo.getJsonObjectMapper() >> mapper
@@ -29,6 +31,7 @@ class TestClientSpec extends Specification {
     config.baseUrl() >> url.substring(0, url.length())
     config.apiKey() >> "one"
     config.serverEvaluation >> true
+    config.internalRepository >> repo
     client = new TestClient(config)
   }
 
@@ -41,7 +44,7 @@ class TestClientSpec extends Specification {
     given:
       def update = new FeatureStateUpdate().value(20).lock(false).updateValue(true)
       client.setFeatureState('key', update)
-      def updateAsString = mapper.writeValueAsString(update)
+      def updateAsString = mapper.featureStateUpdateToString(update)
     when:
       def req = mockWebServer.takeRequest(100, TimeUnit.MILLISECONDS)
       mockWebServer.enqueue(new MockResponse().setResponseCode(200))

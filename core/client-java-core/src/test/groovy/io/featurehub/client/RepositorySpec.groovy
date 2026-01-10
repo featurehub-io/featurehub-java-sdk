@@ -1,6 +1,7 @@
 package io.featurehub.client
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.featurehub.javascript.Jackson2ObjectMapper
 import io.featurehub.sse.model.FeatureState
 import io.featurehub.sse.model.FeatureValueType
 import io.featurehub.sse.model.SSEResultState
@@ -154,7 +155,7 @@ class RepositorySpec extends Specification {
         new FeatureState().id(UUID.randomUUID()).key('banana').version(1L).value('{"sample":12}').type(FeatureValueType.JSON),
       ]
     and: "i register an alternate object mapper"
-      repo.setJsonConfigObjectMapper(new ObjectMapper())
+      repo.setJsonConfigObjectMapper(new Jackson2ObjectMapper())
     when: "i notify of features"
       repo.updateFeatures(features)
     then: 'the json object is there and deserialises'

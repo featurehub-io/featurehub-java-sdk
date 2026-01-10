@@ -1,20 +1,18 @@
 package io.featurehub.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsageProvider;
+import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface InternalFeatureRepository extends FeatureRepository {
 
@@ -51,7 +49,7 @@ public interface InternalFeatureRepository extends FeatureRepository {
   void execute(@NotNull Runnable command);
   ExecutorService getExecutor();
 
-  @NotNull ObjectMapper getJsonObjectMapper();
+  @NotNull JavascriptObjectMapper getJsonObjectMapper();
 
   /**
    * Tell the repository that its features are not in a valid state. Only called by server eval context.

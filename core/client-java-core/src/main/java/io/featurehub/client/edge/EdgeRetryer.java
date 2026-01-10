@@ -1,9 +1,8 @@
 package io.featurehub.client.edge;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.javascript.JavascriptObjectMapper;
+import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import org.jetbrains.annotations.NotNull;
@@ -11,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -45,15 +45,12 @@ public class EdgeRetryer implements EdgeRetryService {
    * if the connectionk attempt to connect fails, how long do we wait before attempting to reconnect
    */
   private final int connectionFailureBackoffTimeMs;
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final JavascriptObjectMapper mapper = JavascriptServiceLoader.load();
 
   // if this is set, then we stop recognizing any further requests from the connection,
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
   private boolean notFoundState = false;
   private boolean stopped = false;
-
-  private final TypeReference<List<FeatureState>> FEATURE_LIST_TYPEDEF =
-    new TypeReference<List<io.featurehub.sse.model.FeatureState>>() {};
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {
@@ -119,17 +116,15 @@ public class EdgeRetryer implements EdgeRetryService {
     }
   }
 
-  private static final TypeReference<Map<String, Object>> mapConfig = new TypeReference<Map<String, Object>>() {};
-
   @Override
   public void edgeConfigInfo(String config) {
     try {
-      Map<String, Object> data = mapper.readValue(config, mapConfig);
+      Map<String, Object> data = mapper.readMapValue(config);
 
       if (data.containsKey("edge.stale")) {
         stopped = true; // force us to stop trying for this connection
       }
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       // ignored
     }
 
@@ -151,7 +146,7 @@ public class EdgeRetryer implements EdgeRetryService {
       if (data != null) {
         if (state == SSEResultState.FEATURES) {
           List<FeatureState> features =
-            repository.getJsonObjectMapper().readValue(data, FEATURE_LIST_TYPEDEF);
+            repository.getJsonObjectMapper().readFeatureStates(data);
           repository.updateFeatures(features);
         } else if (state == SSEResultState.FEATURE) {
           repository.updateFeature(repository.getJsonObjectMapper().readValue(data,
@@ -165,7 +160,7 @@ public class EdgeRetryer implements EdgeRetryService {
       if (state == SSEResultState.FAILURE) {
         repository.notify(state);
       }
-    } catch (JsonProcessingException jpe) {
+    } catch (IOException jpe) {
       throw new RuntimeException("JSON failed", jpe);
     }
   }
@@ -257,7 +252,7 @@ public class EdgeRetryer implements EdgeRetryService {
     return backoff;
   }
 
-  private static enum EdgeRetryerClientType {
+  private enum EdgeRetryerClientType {
     NONE, SSE, REST
   }
 

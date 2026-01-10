@@ -1,8 +1,8 @@
 package io.featurehub.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsagePlugin;
+import io.featurehub.javascript.JavascriptObjectMapper;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -104,7 +104,7 @@ public interface FeatureHubConfig {
    *
    * @param jsonConfigObjectMapper - a Jackson ObjectMapper
    */
-  FeatureHubConfig setJsonConfigObjectMapper(ObjectMapper jsonConfigObjectMapper);
+  FeatureHubConfig setJsonConfigObjectMapper(JavascriptObjectMapper jsonConfigObjectMapper);
 
   /**
    * You should use this close if you are using a client evaluated key and wish to close the connection to the remote

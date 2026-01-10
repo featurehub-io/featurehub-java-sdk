@@ -2,6 +2,7 @@ package io.featurehub.client
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.usage.UsageProvider
+import io.featurehub.javascript.JavascriptObjectMapper
 import spock.lang.Specification
 
 import java.util.concurrent.CompletableFuture
@@ -50,7 +51,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def repo = Mock(InternalFeatureRepository)
       config.setRepository(repo)
     and: "I have some values ready to set"
-      def om = new ObjectMapper()
+      def om = Mock(JavascriptObjectMapper)
       Consumer<Readiness> readynessListener = Mock(Consumer<Readiness>)
       def featureValueOverride = Mock(FeatureValueInterceptor)
       def analyticsProvider = Mock(UsageProvider)

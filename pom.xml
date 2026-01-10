@@ -37,8 +37,8 @@
     <module>core</module>
     <module>client-implementations</module>
     <module>support</module>
-    <module>examples</module>
+<!--    <module>examples</module>-->
     <module>usage-adapters</module>
-    <module>unmaintained</module>
+<!--    <module>unmaintained</module>-->
   </modules>
 </project>

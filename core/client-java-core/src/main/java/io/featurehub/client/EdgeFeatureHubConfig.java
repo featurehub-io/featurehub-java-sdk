@@ -1,9 +1,9 @@
 package io.featurehub.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.usage.UsageAdapter;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsagePlugin;
+import io.featurehub.javascript.JavascriptObjectMapper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -232,7 +232,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
-  public FeatureHubConfig setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
+  public FeatureHubConfig setJsonConfigObjectMapper(@NotNull JavascriptObjectMapper jsonConfigObjectMapper) {
     getRepository().setJsonConfigObjectMapper(jsonConfigObjectMapper);
     return this;
   }

@@ -1,13 +1,12 @@
 package io.featurehub.okhttp;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import io.featurehub.client.FeatureHubConfig;
-import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.TestApi;
 import io.featurehub.client.TestApiResult;
-import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.utils.SdkVersion;
+import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.sse.model.FeatureStateUpdate;
+import java.io.IOException;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -17,17 +16,16 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.time.Duration;
-
 public class TestClient implements TestApi {
   private static final Logger log = LoggerFactory.getLogger(TestClient.class);
   private final FeatureHubConfig config;
   private final OkHttpClient client;
+  private final JavascriptObjectMapper mapper;
 
   public TestClient(FeatureHubConfig config) {
     this.config = config;
     this.client = buildOkHttpClient();
+    this.mapper = config.getInternalRepository().getJsonObjectMapper();
   }
 
   @Override
@@ -35,9 +33,8 @@ public class TestClient implements TestApi {
     String data;
 
     try {
-      data =
-        ((InternalFeatureRepository)config.getRepository()).getJsonObjectMapper().writeValueAsString(featureStateUpdate);
-    } catch (JsonProcessingException e) {
+      data = mapper.featureStateUpdateToString(featureStateUpdate);
+    } catch (IOException e) {
       return new TestApiResult(500);
     }
 

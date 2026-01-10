@@ -1,13 +1,12 @@
 package io.featurehub.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsageProvider;
-import org.jetbrains.annotations.NotNull;
-
+import io.featurehub.javascript.JavascriptObjectMapper;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.jetbrains.annotations.NotNull;
 
 public interface FeatureRepository {
   /**
@@ -47,7 +46,7 @@ public interface FeatureRepository {
    * @param jsonConfigObjectMapper - an ObjectMapper configured for client use. This defaults to the same one
    *                               used to deserialize
    */
-  void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper);
+  void setJsonConfigObjectMapper(@NotNull JavascriptObjectMapper jsonConfigObjectMapper);
 
   void close();
 }

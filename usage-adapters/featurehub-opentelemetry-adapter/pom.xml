@@ -15,7 +15,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-core</artifactId>
-      <version>[4.1-SNAPSHOT, 5)</version>
+      <version>[4, 5)</version>
     </dependency>
 
     <!-- it is assumed that users of this library will provide the otel stack -->
@@ -30,6 +30,7 @@
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-logging</artifactId>
       <version>[1.1, 2)</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 

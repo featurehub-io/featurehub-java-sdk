@@ -2,14 +2,13 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub.sdk.composites</groupId>
-  <artifactId>sdk-composite-logging-api</artifactId>
-  <version>1.2-SNAPSHOT</version>
-  <name>sdk-composite-logging-api</name>
+  <groupId>io.featurehub.sdk.common</groupId>
+  <artifactId>common-jacksonv2</artifactId>
+  <version>1.1-SNAPSHOT</version>
+  <name>common-jacksonv2</name>
 
   <description>
-    composite logging api - gathering all the logging api dependencies. We separate api
-    from impl so sdks don't require our own impls.
+    Shared core of featurehub client.
   </description>
 
   <url>https://featurehub.io</url>
@@ -32,7 +31,8 @@
   <licenses>
     <license>
       <name>MIT</name>
-      <url>https://github.com/featurehub-io/featurehub/blob/master/LICENSE.txt</url>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
     </license>
   </licenses>
 
@@ -44,24 +44,44 @@
   </scm>
 
   <properties>
-    <slfj4.version>1.7.32</slfj4.version>
+    <jackson.version>2.20.0</jackson.version>
+    <jackson.databind.version>2.20.1</jackson.databind.version>
   </properties>
 
   <dependencies>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jul-to-slf4j</artifactId>
-      <version>[${slfj4.version}]</version>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jackson</artifactId>
+      <version>[1.1-SNAPSHOT, 2]</version>
     </dependency>
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>[${slfj4.version}]</version>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>[${jackson.version}]</version>
     </dependency>
+
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>jcl-over-slf4j</artifactId>
-      <version>[${slfj4.version}]</version>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>[${jackson.databind.version}]</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>[${jackson.version}]</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.jaxrs</groupId>
+      <artifactId>jackson-jaxrs-base</artifactId>
+      <version>[${jackson.version}]</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-logging-api</artifactId>
+      <version>[1.1, 2)</version>
     </dependency>
   </dependencies>
 
@@ -75,12 +95,11 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>
     </plugins>
   </build>
-
 </project>

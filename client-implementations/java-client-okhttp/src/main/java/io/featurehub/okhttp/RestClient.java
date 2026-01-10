@@ -1,7 +1,5 @@
 package io.featurehub.okhttp;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
@@ -9,6 +7,7 @@ import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.utils.SdkVersion;
+import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
@@ -39,10 +38,9 @@ public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
   @NotNull private final InternalFeatureRepository repository;
   @NotNull private final OkHttpClient client;
-  private final EdgeRetryService edgeRetryService;
   private boolean makeRequests;
   @NotNull private final String url;
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final JavascriptObjectMapper mapper;
   @Nullable
   private String xFeaturehubHeader;
   // used for breaking the cache
@@ -62,11 +60,11 @@ public class RestClient implements EdgeService {
   public RestClient(@Nullable InternalFeatureRepository repository,
                     @NotNull FeatureHubConfig config, @NotNull EdgeRetryService edgeRetryService, int timeoutInSeconds, boolean amPollingDelegate) {
 
-    this.edgeRetryService = edgeRetryService;
-
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
+
+    this.mapper = repository.getJsonObjectMapper();
 
     this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
@@ -117,7 +115,6 @@ public class RestClient implements EdgeService {
     this(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), 180, false);
   }
 
-  private final static TypeReference<List<FeatureEnvironmentCollection>> ref = new TypeReference<List<FeatureEnvironmentCollection>>(){};
   private boolean busy = false;
   private boolean headerChanged = false;
   private List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
@@ -242,7 +239,7 @@ public class RestClient implements EdgeService {
         List<FeatureEnvironmentCollection> environments;
 
         try {
-          environments = mapper.readValue(body.bytes(), ref);
+          environments = mapper.readFeatureCollection(new String(body.bytes()));
         } catch (Exception e) {
           log.error("Failed to process successful response from FH Edge server", e);
           processFailure(new IOException(e));

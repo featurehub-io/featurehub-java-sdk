@@ -1,12 +1,10 @@
 package io.featurehub.client;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.client.usage.FeatureHubUsageValue;
+import io.featurehub.javascript.JavascriptObjectMapper;
+import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
@@ -57,11 +55,11 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<UsageEvent>> usageHandlers = new ArrayList<>();
   private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
 
-  private ObjectMapper jsonConfigObjectMapper;
+  private JavascriptObjectMapper jsonConfigObjectMapper;
   private final ApplyFeature applyFeature;
 
   public ClientFeatureRepository(ExecutorService executor, ApplyFeature applyFeature) {
-    jsonConfigObjectMapper = initializeMapper();
+    jsonConfigObjectMapper = JavascriptServiceLoader.load();
 
     this.executor = executor;
 
@@ -83,16 +81,6 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     this(executor == null ? getExecutor(1) : executor, null);
   }
 
-  protected ObjectMapper initializeMapper() {
-    ObjectMapper mapper = new ObjectMapper();
-    mapper.registerModule(new JavaTimeModule());
-    mapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
-    mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-    mapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
-
-    return mapper;
-  }
-
   protected static ExecutorService getExecutor(int threadPoolSize) {
     int maxThreads = Math.max(threadPoolSize, 10);
     return new ThreadPoolExecutor(3, maxThreads,
@@ -100,7 +88,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
       new LinkedBlockingQueue<>(), new FeatureHubThreadFactory());
   }
 
-  public void setJsonConfigObjectMapper(@NotNull ObjectMapper jsonConfigObjectMapper) {
+  public void setJsonConfigObjectMapper(@NotNull JavascriptObjectMapper jsonConfigObjectMapper) {
     this.jsonConfigObjectMapper = jsonConfigObjectMapper;
   }
 
@@ -199,7 +187,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull ObjectMapper getJsonObjectMapper() {
+  public @NotNull JavascriptObjectMapper getJsonObjectMapper() {
     return jsonConfigObjectMapper;
   }
 

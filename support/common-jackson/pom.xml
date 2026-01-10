@@ -2,15 +2,13 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub.sdk.tiles</groupId>
-  <artifactId>tile-sdk</artifactId>
-  <version>1.2</version>
-  <packaging>tile</packaging>
-  <name>tile-sdk</name>
+  <groupId>io.featurehub.sdk.common</groupId>
+  <artifactId>common-jackson</artifactId>
+  <version>1.1-SNAPSHOT</version>
+  <name>common-jackson</name>
 
   <description>
-    common plugins across specific clients, not common libraries they all use. Should be used in jersey, jersey2,
-    android, android21, and okhttp-sse
+    Holds the APIs required to be implemented by a version of Jackson (2 or 3)
   </description>
 
   <url>https://featurehub.io</url>
@@ -33,7 +31,8 @@
   <licenses>
     <license>
       <name>MIT</name>
-      <url>https://github.com/featurehub-io/featurehub/blob/master/LICENSE.txt</url>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
     </license>
   </licenses>
 
@@ -43,6 +42,28 @@
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
     <tag>HEAD</tag>
   </scm>
+
+
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations</artifactId>
+      <version>23.0.0</version>
+    </dependency>
+
+    <!--
+    we need to depend on the client api because we need to support complex API data types for deserialisation
+    on the JavascriptObjectMapper as we cannot use the TypeReference class pattern as this is different between
+    Jackson 2 and 3.
+    -->
+
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-api</artifactId>
+      <version>[3.2,4)</version>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
@@ -54,12 +75,11 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
+            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>
     </plugins>
   </build>
-
-
 </project>

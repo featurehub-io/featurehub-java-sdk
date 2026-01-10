@@ -5,6 +5,8 @@ import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.client.Readiness
 import io.featurehub.client.edge.EdgeRetryer
+import io.featurehub.javascript.Jackson2ObjectMapper
+import io.featurehub.javascript.JavascriptObjectMapper
 import io.featurehub.sse.model.FeatureEnvironmentCollection
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -16,11 +18,14 @@ class RestClientSpec extends Specification {
   FeatureHubConfig config
   InternalFeatureRepository repo
   ObjectMapper mapper
+  JavascriptObjectMapper fhMapper
 
   def setup() {
     mapper = new ObjectMapper()
+    fhMapper = new Jackson2ObjectMapper()
     config = Mock()
     repo = Mock()
+    repo.getJsonObjectMapper() >> fhMapper
     config.repository >> repo
     mockWebServer = new MockWebServer()
 
