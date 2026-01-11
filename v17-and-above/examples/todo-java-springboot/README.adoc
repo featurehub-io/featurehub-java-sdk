@@ -1,0 +1,37 @@
+= A FeatureHub SpringBoot Template
+
+This  example simply follows the basics of how a Spring or SpringBoot
+application would be provided for in Java. Java server applications
+recommend that you expose a health check endpoint, and if you wish
+to have your server not get traffic routed to it by your Application
+Load Balanccer (or whatever your Cloud provider uses), then simply
+fail the health check when FeatureHub is not "ready".
+
+This example is primarily here to provide documentation for the SDK,
+but it operates on its own. You must provide two environment variables
+for it to start.
+
+[source,bash]
+----
+export FEATUREHUB_EDGE_URL=http://localhost:8903/
+export FEATUREHUB_API_KEY=default/3f7a1a34-642b-4054-a82f-1ca2d14633ed/aH0l9TDXzauYq6rKQzVUPwbzmzGRqe*oPqyYqhUlVC50RxAzSmx
+
+mvn spring-boot:run
+----
+
+It recognizes a "Authorization" header which contains the value it will
+directly put into the userKey for simplicity to allow you to try out
+percentage rollouts and tagging feature values to users.
+
+The urls are:
+
+-  / - it print Hello World and the value of the SUBMIT_COLOR_BUTTON
+- /health/liveness - whether the application is ready to receive traffic
+
+----
+curl  -H 'Authorization: richard'  http://localhost:8080
+Hello World green1
+
+curl  -H 'Authorization: irina'  http://localhost:8080
+Hello World blue
+----
