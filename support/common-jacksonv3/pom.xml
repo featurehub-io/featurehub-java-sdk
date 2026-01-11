@@ -2,13 +2,13 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub.sdk</groupId>
-  <artifactId>java-client-okhttp</artifactId>
-  <version>3.1-SNAPSHOT</version>
-  <name>java-client-okhttp</name>
+  <groupId>io.featurehub.sdk.common</groupId>
+  <artifactId>common-jacksonv3</artifactId>
+  <version>1.1-SNAPSHOT</version>
+  <name>common-jacksonv3</name>
 
   <description>
-    The OKHttp client for Java. Supports all three (streaming, polling, interval)
+    implementation for jacksonv3
   </description>
 
   <url>https://featurehub.io</url>
@@ -44,50 +44,38 @@
   </scm>
 
   <properties>
-    <!-- only used for testing -->
-    <ok.http.version>4.12.0</ok.http.version>
+    <jackson.version>3.0.3</jackson.version>
+    <jackson.databind.version>3.0.3</jackson.databind.version>
+    <java.version>21</java.version>
   </properties>
 
   <dependencies>
     <dependency>
-      <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-core</artifactId>
-      <version>[4, 5)</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>composite-okhttp</artifactId>
-      <version>[1,2)</version>
-      <scope>provided</scope>
-    </dependency>
-
-    <dependency>
       <groupId>io.featurehub.sdk.common</groupId>
-      <artifactId>common-jacksonv2</artifactId>
+      <artifactId>common-jackson</artifactId>
       <version>[1.1-SNAPSHOT, 2]</version>
-      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>[${jackson.databind.version}]</version>
+<!--      <scope>provided</scope>-->
+    </dependency>
+
+    <dependency>
+      <groupId>tools.jackson.jaxrs</groupId>
+      <artifactId>jackson-jaxrs-base</artifactId>
+      <version>[${jackson.version}]</version>
+<!--      <scope>provided</scope>-->
     </dependency>
 
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>sdk-composite-test</artifactId>
+      <artifactId>sdk-composite-logging-api</artifactId>
       <version>[1.1, 2)</version>
-      <scope>test</scope>
+<!--      <scope>provided</scope>-->
     </dependency>
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>mockwebserver</artifactId>
-      <version>${ok.http.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>sdk-composite-logging</artifactId>
-      <version>[1.1, 2)</version>
-      <scope>test</scope>
-    </dependency>
-
   </dependencies>
 
   <build>
@@ -100,9 +88,8 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java21:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
-            <tile>io.featurehub.sdk.tiles:tile-sdk:[1.1-SNAPSHOT,2)</tile>
           </tiles>
         </configuration>
       </plugin>

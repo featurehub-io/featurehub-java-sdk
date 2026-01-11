@@ -69,6 +69,12 @@
     </dependency>
 
     <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
+    </dependency>
+
+    <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-test</artifactId>
       <version>[1.1, 2)</version>

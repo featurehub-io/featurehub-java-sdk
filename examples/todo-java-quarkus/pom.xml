@@ -14,10 +14,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <!-- last java 11 version -->
-    <quarkus-plugin.version>3.6.4</quarkus-plugin.version>
+    <quarkus-plugin.version>3.27.1</quarkus-plugin.version>
     <quarkus.platform.artifact-id>quarkus-universe-bom</quarkus.platform.artifact-id>
     <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
-    <quarkus.platform.version>3.6.4</quarkus.platform.version>
+    <quarkus.platform.version>3.27.1</quarkus.platform.version>
     <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
     <ok.http.version>4.12.0</ok.http.version>
   </properties>
@@ -63,7 +63,13 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-okhttp</artifactId>
-      <version>3.1-SNAPSHOT</version>
+      <version>[3,4)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
     </dependency>
 
     <!-- optional normally -->

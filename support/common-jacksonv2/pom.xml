@@ -8,7 +8,7 @@
   <name>common-jacksonv2</name>
 
   <description>
-    Shared core of featurehub client.
+    implementation for jackson v2
   </description>
 
   <url>https://featurehub.io</url>

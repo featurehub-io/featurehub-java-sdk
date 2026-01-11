@@ -36,6 +36,7 @@
   <modules>
     <module>tile-java8</module>
     <module>tile-java11</module>
+    <module>tile-java21</module>
     <module>tile-sdk</module>
     <module>tile-release</module>
   </modules>

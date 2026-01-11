@@ -28,14 +28,8 @@
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-okhttp</artifactId>
-      <version>[3.1-SNAPSHOT, 4)</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>sdk-composite-logging</artifactId>
-      <version>[1.1, 2)</version>
+      <artifactId>featurehub-okhttp3-jackson2</artifactId>
+      <version>[3, 4)</version>
     </dependency>
   </dependencies>
 
@@ -57,7 +51,7 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java21:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

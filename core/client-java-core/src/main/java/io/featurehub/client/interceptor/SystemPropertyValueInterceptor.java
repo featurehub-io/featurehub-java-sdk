@@ -19,7 +19,7 @@ public class SystemPropertyValueInterceptor implements FeatureValueInterceptor {
       if (System.getProperties().containsKey(k)) {
         matched = true;
         value = System.getProperty(k);
-        if (value != null && value.trim().length() == 0) {
+        if (value != null && value.trim().isEmpty()) {
           value = null;
         }
       }

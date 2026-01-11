@@ -3,7 +3,9 @@ package io.featurehub.examples.quarkus;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.Readiness;
 
+import io.quarkus.runtime.Startup;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;

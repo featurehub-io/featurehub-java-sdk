@@ -17,30 +17,24 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 public class FeatureHubSource implements FeatureHub {
-  @ConfigKey("feature-service.host")
-  String featureHubUrl;
-  @ConfigKey("feature-service.api-key")
-  String sdkKey;
-  @ConfigKey("segment.write-key")
-  String segmentWriteKey = "";
-  @ConfigKey("feature-service.client")
-  String client = "sse"; // sse, rest, rest-poll
-  @ConfigKey("feature-service.opentelemetry.enabled")
-  Boolean openTelemetryEnabled = false;
-  @ConfigKey("feature-service.poll-interval-seconds")
-  Integer pollInterval = 1; // in seconds
+  String featureHubUrl = FeatureHubConfig.getRequiredConfig("feature-service.host");
+  String sdkKey = FeatureHubConfig.getRequiredConfig("feature-service.api-key");
+  String segmentWriteKey = FeatureHubConfig.getConfig("segment.write-key");
+  String client = FeatureHubConfig.getConfig("feature-service.client", "sse"); // sse, rest, rest-poll
+  @ConfigKey()
+  Boolean openTelemetryEnabled = Boolean.parseBoolean(FeatureHubConfig.getConfig("feature-service.opentelemetry.enabled", "false"));
+  @ConfigKey()
+  Integer pollInterval = Integer.parseInt(FeatureHubConfig.getConfig("feature-service.poll-interval-seconds", "1")); // in seconds
 
   @Nullable SegmentAnalyticsSource segmentAnalyticsSource;
 
   private final FeatureHubConfig config;
 
   public FeatureHubSource() {
-    DeclaredConfigResolver.resolve(this);
-
     config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey)
       .registerValueInterceptor(true, new SystemPropertyValueInterceptor());
 
-    if (!segmentWriteKey.isEmpty()) {
+    if (segmentWriteKey != null) {
       final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey,
         List.of(new SegmentMessageTransformer(Message.Type.values(),
           FeatureHubClientContextThreadLocal::get, false, true)));

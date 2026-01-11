@@ -1,0 +1,18 @@
+= ToDo Jersey3 Example
+
+This is an example of wiring up using Jersey3 instead of Jersey2. The same
+settings apply.
+
+It is expected that this is run in the IDE by default as it is not packaged. The
+test will load system properties.
+
+== System Properties
+
+The system properties it honours are:
+
+- `feature-service.host` - the http/https location of your featurehub server minus the `/features` part.
+- `feature-service.api-key` - the client eval key, do not use a server eval key for web servers.
+- `segment.write-key` - a segment key if you have one
+- `feature-service.client`, defaultValue = `sse` - valid values are sse, rest (passive poll, poll only if features are evaluated and polling interval has expired) and rest-poll (continuous poll).
+- `feature-service.opentelemetry.enabled`, defaultValue = `false` - you have an otel server and have set the env vars it requires, this turns instrumentation on.
+- `feature-service.poll-interval-seconds`, defaultValue = `1` - how many seconds should expire between polls (or poll expiry interval for passive polls).

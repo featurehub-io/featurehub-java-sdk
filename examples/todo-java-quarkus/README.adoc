@@ -38,8 +38,23 @@ curl  -H 'Authorization: irina'  http://localhost:8080
 Hello World blue
 ----
 
-You can start the app with: 
+== System Properties
+
+The system properties it honours are:
+
+- `feature-service.host` - the http/https location of your featurehub server minus the `/features` part.
+- `feature-service.api-key` - the client eval key, do not use a server eval key for web servers.
+- `segment.write-key` - a segment key if you have one
+- `feature-service.client`, defaultValue = `sse` - valid values are sse, rest (passive poll, poll only if features are evaluated and polling interval has expired) and rest-poll (continuous poll).  
+- `feature-service.opentelemetry.enabled`, defaultValue = `false` - you have an otel server and have set the env vars it requires, this turns instrumentation on.
+- `feature-service.poll-interval-seconds`, defaultValue = `1` - how many seconds should expire between polls (or poll expiry interval for passive polls).
+
+You can start the app with:
 
  $ mvn compile quarkus:dev
+
+If you have a file of these configs elsewhere:
+
+ $ mvn -Dquarkus.config.locations=$HOME/.featurehub/example-java.properties compile quarkus:dev
 
 You m

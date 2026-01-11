@@ -3,12 +3,13 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.featurehub.sdk</groupId>
-  <artifactId>java-client-okhttp</artifactId>
+  <artifactId>featurehub-okhttp3-jackson2</artifactId>
   <version>3.1-SNAPSHOT</version>
-  <name>java-client-okhttp</name>
+  <name>featurehub-okhttp3-jackson2</name>
 
   <description>
-    The OKHttp client for Java. Supports all three (streaming, polling, interval)
+    The OKHttp client for Java. Supports all three (streaming, polling, interval). It includes all
+    necessary dependencies to run the stack which is an unusual choice.
   </description>
 
   <url>https://featurehub.io</url>
@@ -44,48 +45,46 @@
   </scm>
 
   <properties>
-    <!-- only used for testing -->
     <ok.http.version>4.12.0</ok.http.version>
+    <ok.io.version>3.6.0</ok.io.version>
   </properties>
 
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
-      <artifactId>java-client-core</artifactId>
-      <version>[4, 5)</version>
+      <artifactId>java-client-okhttp</artifactId>
+      <version>[3, 4)</version>
+    </dependency>
+
+    <!-- these should be copied into your dependencies so you control the versions -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>${ok.http.version}</version>
     </dependency>
 
     <dependency>
-      <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>composite-okhttp</artifactId>
-      <version>[1,2)</version>
-      <scope>provided</scope>
+      <groupId>com.squareup.okio</groupId>
+      <artifactId>okio</artifactId>
+      <version>${ok.io.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp-sse</artifactId>
+      <version>${ok.http.version}</version>
     </dependency>
 
     <dependency>
       <groupId>io.featurehub.sdk.common</groupId>
       <artifactId>common-jacksonv2</artifactId>
-      <version>[1.1-SNAPSHOT, 2]</version>
-      <scope>test</scope>
+      <version>[1, 2]</version>
     </dependency>
 
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
-      <artifactId>sdk-composite-test</artifactId>
-      <version>[1.1, 2)</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>mockwebserver</artifactId>
-      <version>${ok.http.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-logging</artifactId>
       <version>[1.1, 2)</version>
-      <scope>test</scope>
     </dependency>
 
   </dependencies>

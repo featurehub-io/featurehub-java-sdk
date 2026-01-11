@@ -4,6 +4,7 @@ import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsagePlugin;
 import io.featurehub.javascript.JavascriptObjectMapper;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
@@ -14,20 +15,36 @@ import java.util.function.Supplier;
 
 public interface FeatureHubConfig {
 
-  /**
-   * Use environment variables to create a system config.
-   * @return system config
-   */
-  default FeatureHubConfig envConfig() {
-    return new EdgeFeatureHubConfig(System.getenv("FEATUREHUB_EDGE_URL"), System.getenv("FEATUREHUB_API_KEY"));
+  static @Nullable String getConfig(@NotNull String name)  {
+    String val = System.getenv(name);
+    if (val == null) {
+      val = System.getProperty(name);
+
+      if (val == null) {
+        val = System.getenv(name.toUpperCase());
+        if (val == null) {
+          val = System.getenv(name.toUpperCase().replace('.', '_').replace('-', '_'));
+        }
+      }
+    }
+
+    return val;
   }
 
-  /**
-   * Use system properties to create a system config.
-   * @return system config
-   */
-  default FeatureHubConfig systemPropertyConfig() {
-    return new EdgeFeatureHubConfig(System.getProperty("featurehub.edge-url"), System.getProperty("featurehub.api-key"));
+  static String getRequiredConfig(@NotNull String name) {
+    String val = getConfig(name);
+
+    if (val == null) {
+      throw new RuntimeException(String.format("Required configuration `%s` is missing!", name));
+    }
+
+    return val;
+  }
+
+  static @NotNull String getConfig(@NotNull String name, @NotNull String defaultVal) {
+    String val = getConfig(name);
+
+    return val == null ? defaultVal : val;
   }
 
   /**

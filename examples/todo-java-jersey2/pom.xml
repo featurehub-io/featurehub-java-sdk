@@ -48,6 +48,12 @@
       <version>[1.1-SNAPSHOT, 2)</version>
     </dependency>
 
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
+    </dependency>
+
     <!-- version of grizzly we use for jersey3 -->
     <dependency>
       <groupId>org.glassfish.jersey.containers</groupId>
@@ -111,7 +117,7 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java21:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

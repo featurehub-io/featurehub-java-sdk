@@ -30,10 +30,7 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.11.0</version>
         <configuration>
-          <release>11</release>
-          <source>11</source>
-          <target>11</target>
-          <executable>javac11</executable>
+          <release>21</release>
           <useIncrementalCompilation>false</useIncrementalCompilation>
         </configuration>
         <executions>
@@ -92,24 +89,6 @@
             </goals>
           </execution>
         </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.codehaus.gmavenplus</groupId>
-        <artifactId>gmavenplus-plugin</artifactId>
-        <version>4.1.1</version>
-        <executions>
-          <execution>
-            <goals>
-              <goal>addTestSources</goal>
-              <goal>generateTestStubs</goal>
-              <goal>compileTests</goal>
-              <goal>removeTestStubs</goal>
-            </goals>
-          </execution>
-        </executions>
-        <configuration>
-          <invokeDynamic>true</invokeDynamic>
-        </configuration>
       </plugin>
     </plugins>
   </build>

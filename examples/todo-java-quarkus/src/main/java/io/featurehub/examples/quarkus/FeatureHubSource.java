@@ -50,6 +50,7 @@ public class FeatureHubSource {
 
   @Produces
   @ApplicationScoped
+  @Startup
   public FeatureHubConfig getConfig() {
     if (featureHubUrl == null || sdkKey == null) {
       throw new RuntimeException("URL and Key must not be null");

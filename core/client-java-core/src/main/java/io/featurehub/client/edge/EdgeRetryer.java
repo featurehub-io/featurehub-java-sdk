@@ -1,5 +1,6 @@
 package io.featurehub.client.edge;
 
+import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.javascript.JavascriptServiceLoader;
@@ -283,18 +284,8 @@ public class EdgeRetryer implements EdgeRetryService {
       maximumBackoffTimeMs = propertyOrEnv("featurehub.edge.maximum-backoff-ms", "30000");
     }
 
-    private int propertyOrEnv(String name, String defaultVal) {
-      String val = System.getenv(name);
-
-      if (val == null) {
-        val = System.getenv(name.replace(".", "_").replace("-", "_"));
-      }
-
-      if (val == null) {
-        val = System.getProperty(name, defaultVal);
-      }
-
-      return Integer.parseInt(val);
+    private int propertyOrEnv(@NotNull String name, String defaultVal) {
+      return Integer.parseInt(FeatureHubConfig.getConfig(name, defaultVal));
     }
 
     public static EdgeRetryerBuilder anEdgeRetrier() {
