@@ -16,8 +16,6 @@ jobs:
       - name: Install tiles
         run: cd support && mvn -f pom-tiles.xml install
       - name: Install support composites
-        run: cd support && mvn install
-      - name: All other things except examples
         run: mvn install
   build-java21:
     runs-on: ubuntu-latest
@@ -31,11 +29,9 @@ jobs:
           cache: maven
       - name: Install tiles
         run: cd support && mvn -f pom-tiles.xml install
-      - name: Install support composites
-        run: cd support && mvn install
-      - name: All other things except examples
+      - name: All other things
         run: mvn install
-      - name: Examples
-        working-directory: examples
-        run: mvn package
+      - name: java17+ only
+        working-directory: v17-and-above
+        run: mvn install
 

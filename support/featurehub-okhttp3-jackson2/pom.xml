@@ -44,11 +44,6 @@
     <tag>HEAD</tag>
   </scm>
 
-  <properties>
-    <ok.http.version>4.12.0</ok.http.version>
-    <ok.io.version>3.6.0</ok.io.version>
-  </properties>
-
   <dependencies>
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
@@ -56,23 +51,10 @@
       <version>[3, 4)</version>
     </dependency>
 
-    <!-- these should be copied into your dependencies so you control the versions -->
     <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp</artifactId>
-      <version>${ok.http.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.squareup.okio</groupId>
-      <artifactId>okio</artifactId>
-      <version>${ok.io.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp-sse</artifactId>
-      <version>${ok.http.version}</version>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>composite-okhttp</artifactId>
+      <version>[1,2)</version>
     </dependency>
 
     <dependency>

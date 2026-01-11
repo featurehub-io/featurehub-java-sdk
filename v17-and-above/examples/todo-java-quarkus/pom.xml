@@ -140,7 +140,7 @@
               <output>${project.basedir}/target/generated-sources/api</output>
               <apiPackage>todo.api</apiPackage>
               <modelPackage>todo.model</modelPackage>
-              <inputSpec>${project.basedir}/../todo-java-shared/todo-api.yaml</inputSpec>
+              <inputSpec>${project.basedir}/../../../examples/todo-java-shared/todo-api.yaml</inputSpec>
               <generatorName>jaxrs-spec</generatorName>
 
               <additionalProperties>interfaceOnly=true,useSwaggerAnnotations=false,openApiNullable=false</additionalProperties>

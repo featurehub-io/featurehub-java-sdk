@@ -36,7 +36,7 @@
   <modules>
     <module>common-jackson</module>
     <module>common-jacksonv2</module>
-    <module>common-jacksonv3</module>
+<!--    <module>common-jacksonv3</module>-->
     <module>composite-jersey2</module>
     <module>composite-jersey3</module>
     <module>composite-okhttp</module>

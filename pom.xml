@@ -35,6 +35,7 @@
 
   <modules>
     <module>core</module>
+    <module>examples</module>
     <module>client-implementations</module>
     <module>support</module>
     <module>usage-adapters</module>

@@ -5,9 +5,13 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>io.featurehub.java</groupId>
-  <artifactId>featurehub-sdk-example-reactor</artifactId>
+  <artifactId>featurehub-sdk-v17-example-reactor</artifactId>
   <version>1.1.1</version>
   <packaging>pom</packaging>
+
+  <description>
+    Holds examples that require v17+ of Java. We usually use v21 or 23.
+  </description>
 
   <url>https://featurehub.io</url>
   <developers>
@@ -34,11 +38,7 @@
   </licenses>
 
   <modules>
-    <module>todo-java-shared</module>
-    <module>todo-java-jersey2</module>
-    <module>todo-java-jersey3</module>
-<!--    <module>todo-java-quarkus</module>-->
-<!--    <module>todo-java-springboot</module>-->
-    <module>migration-check</module>
+    <module>todo-java-quarkus</module>
+    <module>todo-java-springboot</module>
   </modules>
 </project>
