@@ -37,7 +37,7 @@ public class FeatureHubSource {
   @ConfigProperty(name = "segment.write-key")
   Optional<String> segmentWriteKey;
   @ConfigProperty(name = "feature-service.client", defaultValue = "sse")
-  String client; // sse, rest, rest-poll
+  String client; // sse, rest-active, rest-passive
   @ConfigProperty(name = "feature-service.opentelemetry.enabled", defaultValue = "false")
   Boolean openTelemetryEnabled;
   @ConfigProperty(name = "feature-service.poll-interval-seconds", defaultValue = "1")
@@ -77,9 +77,9 @@ public class FeatureHubSource {
     // Do this if you wish to force the connection to stay open.
     if (client.equals("sse")) {
       config.streaming();
-    } else if (client.equals("rest")) {
+    } else if (client.equals("rest-passive")) {
       config.restPassive(pollInterval);
-    } else if (client.equals("rest-poll")) {
+    } else if (client.equals("rest-active")) {
       config.restActive(pollInterval);
     } else {
       throw new RuntimeException("Unknown featurehub client");

@@ -18,7 +18,6 @@ public class Application {
     SpringApplication.run(Application.class, args);
   }
 
-
   @Bean
   public FeatureHubConfig featureHubConfig() {
     FeatureHubConfig config = new EdgeFeatureHubConfig(edgeUrl, apiKey);

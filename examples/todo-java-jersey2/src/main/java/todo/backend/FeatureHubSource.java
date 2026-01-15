@@ -50,9 +50,9 @@ public class FeatureHubSource implements FeatureHub {
     // Do this if you wish to force the connection to stay open.
     if (client.equals("sse")) {
       config.streaming();
-    } else if (client.equals("rest")) {
+    } else if (client.equals("rest") || client.equals("rest-passive")) {
       config.restPassive(pollInterval);
-    } else if (client.equals("rest-poll")) {
+    } else if (client.equals("rest-poll") || client.equals("rest-active")) {
       config.restActive(pollInterval);
     } else {
       throw new RuntimeException("Unknown featurehub client");
