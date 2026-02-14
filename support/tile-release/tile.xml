@@ -90,22 +90,13 @@
             </configuration>
           </plugin>
           <plugin>
-            <groupId>org.sonatype.plugins</groupId>
-            <artifactId>nexus-staging-maven-plugin</artifactId>
-            <version>1.6.7</version>
-            <executions>
-              <execution>
-                <id>deploy</id>
-                <goals>
-                  <goal>deploy</goal>
-                </goals>
-                <phase>deploy</phase>
-              </execution>
-            </executions>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.8.0</version>
+            <extensions>true</extensions>
             <configuration>
-              <serverId>sonatype-staging</serverId>
-              <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-              <autoReleaseAfterClose>true</autoReleaseAfterClose>
+              <publishingServerId>sonatype-staging</publishingServerId>
+              <autoPublish>true</autoPublish>
             </configuration>
           </plugin>
         </plugins>
@@ -119,11 +110,6 @@
         <groupId>net.stickycode.plugins</groupId>
         <artifactId>bounds-maven-plugin</artifactId>
         <version>2.7</version>
-      </plugin>
-      <plugin>
-        <groupId>com.bluetrainsoftware.maven</groupId>
-        <artifactId>release-pom</artifactId>
-        <version>1.6</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -152,9 +138,8 @@
         <version>2.5.3</version>
         <configuration>
           <mavenExecutorId>forked-path</mavenExecutorId>
-          <arguments>-Dconnect.release</arguments>
           <preparationGoals>clean enforcer:enforce verify</preparationGoals>
-          <goals>bounds:update release-pom:release-pom enforcer:enforce deploy</goals>
+          <goals>bounds:update enforcer:enforce deploy</goals>
           <tagBase>${project.groupId}/</tagBase>
           <pushChanges>false</pushChanges>
           <localCheckout>true</localCheckout>
@@ -178,7 +163,7 @@
         <artifactId>maven-javadoc-plugin</artifactId>
         <version>3.2.0</version>
         <configuration>
-          <source>8</source>
+          <source>11</source>
           <detectJavaApiLink>false</detectJavaApiLink>
         </configuration>
       </plugin>

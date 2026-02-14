@@ -5,6 +5,10 @@
 
   <properties>
     <kotlin.compiler.incremental>true</kotlin.compiler.incremental>
+    <!-- i know this doesn't make sense but it is what it is -->
+    <java.release>17</java.release>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
   </properties>
 
   <build>

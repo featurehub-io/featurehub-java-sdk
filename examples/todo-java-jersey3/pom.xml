@@ -131,7 +131,7 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java11-no-spock:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>

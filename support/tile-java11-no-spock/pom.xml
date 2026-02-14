@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.featurehub.sdk.composites</groupId>
-  <artifactId>composite-okhttp</artifactId>
-  <version>1.1-SNAPSHOT</version>
-  <name>composite-okhttp</name>
+  <groupId>io.featurehub.sdk.tiles</groupId>
+  <artifactId>tile-java11-no-spock</artifactId>
+  <version>1.1</version>
+  <packaging>tile</packaging>
+  <name>tile-java11-no-spock</name>
 
   <description>
-    Provides a complete list of required OKHttp dependencies that can be used while testing or as provided
-    in SDK.
+    tile java contains plugins required for java application creation. It is focused on Java 11 and is designed
+    to allow us to side-load plugins in a consistent fashion across the java-sdk without repeating ourselves.
+
+    It removes Groovy when there is no Spock support and is primarily used in composites. The Groovy plugin checks
+    to see if Groovy is available BEFORE it checks if there are any sources.
   </description>
 
   <url>https://featurehub.io</url>
@@ -43,34 +47,6 @@
     <tag>HEAD</tag>
   </scm>
 
-  <properties>
-    <ok.http.version>4.12.0</ok.http.version>
-    <ok.io.version>3.6.0</ok.io.version>
-  </properties>
-
-
-  <dependencies>
-
-    <!-- these should be copied into your dependencies so you control the versions -->
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp</artifactId>
-      <version>${ok.http.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.squareup.okio</groupId>
-      <artifactId>okio</artifactId>
-      <version>${ok.io.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.squareup.okhttp3</groupId>
-      <artifactId>okhttp-sse</artifactId>
-      <version>${ok.http.version}</version>
-    </dependency>
-  </dependencies>
-
   <build>
     <plugins>
       <plugin>
@@ -81,12 +57,12 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java11-no-spock:[1.1,2)</tile>
             <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>
     </plugins>
   </build>
+
 
 </project>
