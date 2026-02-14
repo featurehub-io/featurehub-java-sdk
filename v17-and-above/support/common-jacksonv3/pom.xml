@@ -46,7 +46,7 @@
   <properties>
     <jackson.version>3.0.3</jackson.version>
     <jackson.databind.version>3.0.3</jackson.databind.version>
-    <java.version>21</java.version>
+    <java.version>17</java.version>
   </properties>
 
   <dependencies>

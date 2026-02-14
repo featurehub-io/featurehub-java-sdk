@@ -10,7 +10,7 @@
   <packaging>pom</packaging>
 
   <description>
-    Holds examples that require v17+ of Java. We usually use v21 or 23.
+    Holds examples that require v17+ of Java. We usually use v21 or 25.
   </description>
 
   <url>https://featurehub.io</url>

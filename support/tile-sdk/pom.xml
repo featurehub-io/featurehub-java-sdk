@@ -10,7 +10,7 @@
 
   <description>
     common plugins across specific clients, not common libraries they all use. Should be used in jersey, jersey2,
-    android, android21, and okhttp-sse
+    etc
   </description>
 
   <url>https://featurehub.io</url>
