@@ -1,0 +1,41 @@
+= FeatureHub Segment(TM) Usage Plugin
+
+https://segment.com[Segment] is as described on their website. This plugin expects the use of the Segment Java SDK and a Segment write key or a preconfigured Analytics object to be provided.
+
+It can be used in either or both ways:
+
+- to Augment existing Segment messages but adding Feature information for the current user (`context`) whenever a message is tracked
+- to allow specific recording of Feature evaluation events and allow you to record your own Usage events via the FeatureHub Java SDK.
+
+== Augmenting Segment messages
+
+This Plugin provides a `SegmentMessageTransformer` class that should be given to your Analytics object when building it. 
+
+[source,java]
+----
+public SegmentMessageTransformer(Message.Type[] augmentTypes,
+                                 Supplier<@Nullable ClientContext> contextSource,
+                                 boolean useAnonymousUser, boolean setUserOnMessage);
+----
+
+You must specify an array of message types you wish to augment, how the transformer gets the current context when logging, whether or not to always use an anonymous user, and whether to set the user on the message at all.
+
+NOTE: Unfortunately at the time of writing, there is no way to detect if the Message currently being built already has context or user data and therefore not overwrite it, so this class will overwrite any existing Context information. 
+
+This class is called synchronously by the Segment SDK when building the message in your class, so if you are - for example - in a thread when you construct your message, you could store the `ClientContext` in that thread. The Java `todo` example
+does this to make sure the context is available to the message transformer.
+
+== Tracking Feature usage
+
+The Usage plgin is `SegmentUsagePlugin` and needs to be registered with the FeatureHub config. e.g.
+
+[source,java]
+----
+config.registerUsagePlugin(new SegmentUsagePlugin(segmentWriteKey));
+----
+
+If you have set an environment variable `FEATUREHUB_USAGE_SEGMENT_WRITE_KEY` or a system property `featurehub.usage.segment-write-key`.
+
+There are several ways to create the SegmentUsagePlugin class, please take a look at the class for the various options.
+
+NOTE: All copyrights to Segment belong to them. 

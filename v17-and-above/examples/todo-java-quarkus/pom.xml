@@ -1,0 +1,177 @@
+<?xml version="1.0"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.featurehub.sdk.examples</groupId>
+  <artifactId>todo-java-quarkus</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <properties>
+    <compiler-plugin.version>3.13.0</compiler-plugin.version>
+    <maven.compiler.parameters>true</maven.compiler.parameters>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- last java 11 version -->
+    <quarkus-plugin.version>3.27.1</quarkus-plugin.version>
+    <quarkus.platform.artifact-id>quarkus-universe-bom</quarkus.platform.artifact-id>
+    <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
+    <quarkus.platform.version>3.27.1</quarkus.platform.version>
+    <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
+    <ok.http.version>4.12.0</ok.http.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>${quarkus.platform.group-id}</groupId>
+        <artifactId>${quarkus.platform.artifact-id}</artifactId>
+        <version>${quarkus.platform.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jackson</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-arc</artifactId>
+    </dependency>
+
+    <!-- segment using an old okhttp is causing weirdness -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>[${ok.http.version}]</version>
+    </dependency>
+    <dependency>
+      <groupId>com.squareup.okio</groupId>
+      <artifactId>okio</artifactId>
+      <version>3.6.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp-sse</artifactId>
+      <version>[${ok.http.version}]</version>
+    </dependency>
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-okhttp</artifactId>
+      <version>[3,4)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
+    </dependency>
+
+    <!-- optional normally -->
+    <dependency>
+      <groupId>io.featurehub.sdk.java</groupId>
+      <artifactId>segment-usageadapter</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+      <exclusions>
+        <!-- exclude okhttp as it is the wrong version -->
+        <exclusion>
+          <groupId>com.squareup.okhttp3</groupId>
+          <artifactId>okhttp</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.squareup.okhttp3</groupId>
+          <artifactId>logging-interceptor</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+      <version>1.40.0</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.java</groupId>
+      <artifactId>opentelemetry-usageadapter</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.quarkus</groupId>
+        <artifactId>quarkus-maven-plugin</artifactId>
+        <version>${quarkus-plugin.version}</version>
+        <extensions>true</extensions>
+        <executions>
+          <execution>
+            <goals>
+              <goal>build</goal>
+              <goal>generate-code</goal>
+              <goal>generate-code-tests</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${compiler-plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>7.0.1</version>
+        <executions>
+          <execution>
+            <id>featurehub-api</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <output>${project.basedir}/target/generated-sources/api</output>
+              <apiPackage>todo.api</apiPackage>
+              <modelPackage>todo.model</modelPackage>
+              <inputSpec>${project.basedir}/../../../examples/todo-java-shared/todo-api.yaml</inputSpec>
+              <generatorName>jaxrs-spec</generatorName>
+
+              <additionalProperties>interfaceOnly=true,useSwaggerAnnotations=false,openApiNullable=false</additionalProperties>
+
+              <configOptions>
+                <useJakartaEe>true</useJakartaEe>
+                <useBeanValidation>true</useBeanValidation>
+              </configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-generated-source</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/api/src/gen/java</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

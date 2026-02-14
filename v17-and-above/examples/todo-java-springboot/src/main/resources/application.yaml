@@ -1,0 +1,6 @@
+server:
+  port: 8099
+
+featurehub:
+  url: ${FEATUREHUB_EDGE_URL:http://localhost:8903}
+  apiKey: ${FEATUREHUB_CLIENT_API_KEY:9db9f611-f5c9-4b09-bac5-ccf5a5b989c9/ACyrjuIjugghPI2J6XxHybSXKoC28Z*Ld6f2H8drfzP1raWgK8D}

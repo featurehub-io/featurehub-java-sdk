@@ -1,44 +1,366 @@
-= Java Libraries
+= FeatureHub SDK for Java (v3)
+ifdef::env-github,env-browser[:outfilesuffix: .adoc]
 
-This is the set of libraries currently supporting the Java programming language and its JDK based cousins. It currently consists
-of two libraries:
+Welcome to the Java SDK implementation for https://featurehub.io[FeatureHub.io] - Open source Feature flags management,
+A/B testing and remote configuration platform.
 
-- link:client-java-core/README.adoc[Core] - this reflects the core repository and all listeners that notify about feature changes.
+This is the version 3 of the SDKs for OKHTTP, Jersey 2, and Jersey 3. It is a departure from the Version 2 libraries
+because all possible clients are collected together (SSO, Passive Rest, Active Rest).
 
-You primarily use this SDK by choosing a transport mechanism which includes the core library above. The transport
-mechanism will automatically configure itself using Java Services, so when you create a new client, you do not have
-to worry about the details of each implementation.
+The minimum version of Java supported is Java 11. Some libraries support only Java 17+ because of their dependencies.
 
-- link:client-java-android/README.adoc[Android/GET Client] - This is a GET implementation of the client. It does not have inbuilt polling, it is intended for use by clients who do not want or need near realtime updates (which is typical of Mobile
-devices - as realtime updates keep the radio on), or if you
-were using server side evaluation. It uses OKHttp. To
-refresh the client you simply use the "poll" function of your provider as detailed in the Core SDK. It is specific to Java 8+
-and thus supports Android 7+.
-- link:client-java-sse/README.adoc[SSE Client] - This allows you to use near realtime events using the
-SSE implementation in OKHttp. It is what you would use if you were not using Jersey. 
-- link:client-java-jersey/README.adoc[Jersey Client] - this reflects the Jersey Eventsource client for Java. It also includes
-the Jersey implementation of the Google Analytics provider. It is designed for Jersey 2 and the `javax` annotations.  
-- link:client-java-jersey3/README.adoc[Jersey Client] - this reflects the Jersey 3 Eventsource client for Java (along with the new Jakarta APIs). It also includes the Jersey implementation of the Google Analytics provider. It is designed for Jersey 3 and the `jakarta` annotations.
+It is generally recommended that you should use the `OKHttp` version (`io.featurehub.sdk:java-client-okhttp:3+`) of the libary by preference unless you
+are already using a Jersey 2 or Jersey 3 stack.
 
-If you are using Spring or Quarkus on your server, we recommend you use the `client-java-sse` library as it is the lowest
-footprint and doesn't bring in another REST framework (i.e. Jersey). 
+NOTE: We are using Gradle standard for referring to version ranges, so `3+` means
+`[3,4)` in Maven.
 
-This build working depends on featurehub being checked out as a pair directory for the time
-being as the API for the Edge is documented there.
+== Setting up your dependencies
+
+You can look at the examples to see what we have done for each stack we have examples for (Quarkus, Spring 7, Jersey 2 and Jersey 3) as a starter.
+
+The base libraries do not include dependencies on Jackson (which they need) or a logging
+framework (which they also need). A basic OKHttp client will usually require:
+
+- `io.featurehub.sdk:java-client-okhttp:3+` - the basic OKHttp library + shared SDK libraries
+- all of the necessary okhttp components - you can find this in `io.featurehub.sdk.composites:composite-okhttp` located in link:support/composite-okhttp/pom.xml
+- a _jackson_ adapter depending on which version of Jackson (2 or 3) you are using - so `io.featurehub.sdk.common:common-jacksonv2:1+` or `io.featurehub.sdk.common:common-jacksonv3:1+`.
+- an SLF4j implementation - we use `io.featurehub.sdk.composites:sdk-composite-logging:1+` ( link:support/composite-logging/pom.xml )  in this SDK but it is only the API that is a required dependency and we expect you to provide one. 
+
+Jersey 2 and Jersey 3 have equivalent dependencies in `io.featurehub.sdk:java-client-jersey2:3+` and `io.featurehub.sdk:java-client-jersey3:3+` respectively. We also do not include the foundation libraries for these
+in our dependencies as we assume you have them in your stack already, which is why you are choosing those
+implementations. 
+
+We generally recommend using OKHttp if you do not already have Jersey. 
+
+== Initializing your client
+
+It is expected that you will first create a FeatureHub config instance.
+
+[source,java]
+----
+import io.featurehub.client.EdgeFeatureHubConfig;
+
+// typically you would get these from environment variables
+String edgeUrl = "http://localhost:8085/";
+String apiKey = "71ed3c04-122b-4312-9ea8-06b2b8d6ceac/fsTmCrcZZoGyl56kPHxfKAkbHrJ7xZMKO3dlBiab5IqUXjgKvqpjxYdI8zdXiJqYCpv92Jrki0jY5taE";
+
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+----
+
+== Choosing your client type
+
+There are 3 ways to request for feature updates via this SDK:
+
+- *Server Sent Events* - these are near realtime events, so the events get pushed to you. The connection to the server lasts usually 1-3 minutes (it can be longer
+depending on how your admin has it configured), and the SDK will then disconnect
+and reconnect again, ensuring it has received all feature updates in the meantime. This is typically the mode used by Java server based projects. You specify this in code by choosing `fhConfig.streaming().init()`.
+
+- *Passive REST* - This is where a polling interval is set. There is an initial request for feature state, but until a feature is evaluated and that polling interval has been exceeded, the client will not ask for a fresh set of features or check if any have changed. This is a good choice where there is a low incidence of feature updates, but is usually used on mobile devices (like Android) where you don't want continuous polling if the user isn't doing anything.You specify this in code by choosing `fhConfig.restPassive().init()`.
+
+- *Active REST* - This is where the client will make a request for updated state every X seconds regardless if anyone is using it. You specify this in code by choosing `fhConfig.restActive().init()`.
+
+If you are using *Server Evaluated* keys, you do not want to call `init()`. You need to create your first
+`ClientContext` (see below) and call `build()` - which will trigger a connection, passing all the requisite
+data to the FeatureHub server for evaluation. 
 
 == Examples
 
-The examples are shifting from the `featurehub-examples` folder into this Java repository. They currently consist of:
+Its always good to look at examples on how to do what you want. We have examples for:
 
-- link:examples/todo-java/README.adoc[`todo-java`] - this is a Jersey 3 server that will use any of the Android, Jersey 3 or OKHttp SSE clients depending on configuration.
+- Spring 7 - using a simple streaming client
+- Quarkus, Jersey 2, Jersey 3 - configurable for usage with OpenTelemetry and Segment and offering Streaming, and active or passive REST.
+
+These are in the `examples` and `v17-and-above/examples` folders.
+
+== How FeatureHub's Java SDK works
+
+Every FeatureHub SDK works the same basic way - it needs the URL of your FeatureHub server, and an API key.
+
+You give those two things to the `FeatureHubConfig` (in Java, its the `EdgeFeatureHubConfig`), then specify
+your client type (see above, SSE, Active or Passive REST) and then initialize. 
+
+The SDK takes the responsibility of getting the features from the server, keeping a local copy of them in memory,
+and then responding to your requests for feature evaluations.
+
+Feature evaluations are always done within the scope of a `ClientContext` - which is just a bag of attributes
+(a map) you want to keep track of about the current user, request, etc, so that you can use targeting in your feature
+evaluation (called strategies). Where those strategies are evaluated depends on the type of key you are using.
+
+If you use a client evaluated key - as is normal for Java apps - all of the necessary data for decision making
+comes to the Java app and it makes decisions there. This is most idealy for any kind of situation where there
+will ever be more than one instance of a ClientContext - like a web server for instance.
+
+If you use a server evaluated key, all those attributes get sent to the server and it evaluates the feature values
+and returns them to you. 
+
+If you have confidential information in your features and your client is not confidential, you should use a 
+server evaluated key, otherwise you should generally use a client evaluated key.
+
+=== When is it ready to be used?
+
+Once your SDK has the list of features, it will go into the Ready state, and won't go out again even if it loses the connection or ability to talk to your server.
+
+We then recommend you consider adding FeatureHub to your heartbeat or liveness check.
+
+.SpringBoot - liveness
+[source,java]
+----
+  @RequestMapping("/liveness")
+  public String liveness() {
+    if (featureHubConfig.getReadyness() == Readyness.Ready) {
+      return "yes";
+    }
+
+    log.warn("FeatureHub connection not yet available, reporting not live.");
+    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
+}
+----
+
+This will prevent most services like Application Load Balancers or Kubernetes from routing traffic to your
+server before it has connected to the feature service and is ready.
+
+There are other ways to do this - for example not starting your server until you have a readyness success,
+but this is the most strongly recommended because it ensures that a system in a properly structured Java service will behave as expected.
+
+=== The ClientContext
+
+The next thing you would normally do is to ensure that the `ClientContext` is ready and set up for downstream
+systems to get a hold of and use. In Java this is normally done by using a `filter` and providing some
+kind of _request level scope_ - a Request Level injectable object.
+
+In our examples, we simply put the Authorization header into the UserKey of the context, allowing you to just pass the
+name of the user to keep it simple. You can see each platform's example to see how this is done in
+alternative ways.
+
+.SpringBoot - creating and using the fhClient
+[source,java]
+----
+@Configuration
+public class UserConfiguration {
+  @Bean
+  @Scope("request")
+  ClientContext createClient(FeatureHubConfig fhConfig, HttpServletRequest request) {
+    ClientContext fhClient = fhConfig.newContext();
+
+    if (request.getHeader("Authorization") != null) {
+      // you would always authenticate some other way, this is just an example
+      fhClient.userKey(request.getHeader("Authorization"));
+    }
+
+    return fhClient;
+  }
+}
+
+@RestController
+public class HelloResource {
+  ...
+
+  @RequestMapping("/")
+  public String index() {
+    ClientContext fhClient = clientProvider.get();
+    return "Hello World " + fhClient.feature("SUBMIT_COLOR_BUTTON").getString();
+  }
+}
+----
+
+
+These examples show us how we can wire the FeatureHub functionality into our system in two different cases, the standard CDI
+(with extensions) way that Quarkus (and to a degree Jersey) works, and the way that Spring/SpringBoot works.
+
+**Server side evaluation**
+
+In the server side evaluation (e.g. an Android Mobile app or a Batch application), the context is created once as you evaluate one user per client.
+This config is likely loaded into resources that are baked into your Mobile image and once you load them, you can progress
+from there.
+
+You should not use Server Sent Events for Mobile as they attempt to keep the radio on and will drain battery. For Mobile we recommend `restPassive()` as the mode chosen for this reason. It will only poll if the poll
+timeout has occurred and a user is evaluating a feature.
+
+As such, it is recommended that you create your `ClientContext` as early as sensible and build it. This will trigger
+a poll to the server and it will get the feature statuses and you will be ready to go. Each time you need an update,
+you can simply .build() your context again and it will force a poll.
+
+----
+ClientContext fhClient = fhConfig.newContext().build().get();
+----
+
+== Rollout Strategies
+
+Starting from version 1.1.0 FeatureHub supports _server side_ evaluation of complex rollout strategies
+that are applied to individual feature values in a specific environment. This includes support of preset rules, e.g. per **_user key_**, **_country_**, **_device type_**, **_platform type_** as well as **_percentage splits_** rules and custom rules that you can create according to your application needs.
+
+For more details on rollout strategies, targeting rules and feature experiments see the https://docs.featurehub.io/#_rollout_strategies_and_targeting_rules[core documentation].
+
+We are actively working on supporting client side evaluation of
+strategies in the future releases as this scales better when you have 10000+ consumers.
+
+=== Coding for Rollout strategies 
+There are several preset strategies rules we track specifically: `user key`, `country`, `device` and `platform`. However, if those do not satisfy your requirements you also have an ability to attach a custom rule. Custom rules can be created as following types: `string`, `number`, `boolean`, `date`, `date-time`, `semantic-version`, `ip-address`
+
+FeatureHub SDK will match your users according to those rules, so you need to provide attributes to match on in the SDK:
+
+**Sending preset attributes:**
+
+Provide the following attribute to support `userKey` rule:
+
+[source,java]
+----
+fhClient.userKey("ideally-unique-id"); 
+----
+
+to support `country` rule:
+
+[source,java]
+----
+fhClient.country(StrategyAttributeCountryName.NewZealand);
+----
+
+to support `device` rule:
+
+[source,java]
+----
+fhClient.device(StrategyAttributeDeviceName.Browser);
+----
+
+to support `platform` rule:
+
+[source,java]
+----
+fhClient.platform(StrategyAttributePlatformName.Android);
+----
+
+to support `semantic-version` rule:
+
+[source,java]
+----
+fhClient.version("1.2.0"); 
+----
+
+or if you are using multiple rules, you can combine attributes as follows:
+
+[source,java]
+----
+fhClient.userKey("ideally-unique-id")
+      .country(StrategyAttributeCountryName.NewZealand)
+      .device(StrategyAttributeDeviceName.Browser)
+      .platform(StrategyAttributePlatformName.Android)
+      .version("1.2.0");  
+----
+
+If you are using *Server Evaluated API Keys* then you should always run `.build()` which will execute a background
+poll. If you wish to ensure the next line of code has the upated statuses, wait for the future to complete with `.get()`
+
+.Server Evaluated API Key - ensuring the repository is updated
+[source,java]
+----
+  ClientContext fhClient = fhConfig.newContext().userKey("user@mailinator.com").build.get();
+----
+
+You do not have to do the build().get()  (but you can) for client evaluated keys as the context is mutable and changes are immediate.
+As the context is evaluated locally, it will always be ready the very next line of code.
+
+**Sending custom attributes:**
+
+To add a custom key/value pair, use `attr(key, value)`
+
+[source,java]
+----
+    fhClient.attr("first-language", "russian");
+----
+
+Or with array of values (only applicable to custom rules):
+
+[source,java]
+----
+fhClient.attrs(“languages”, Arrays.asList(“russian”, “english”, “german”));
+----
+
+You can also use `fhClient.clear()` to empty your context.
+
+Remember, for *Server Evaluated Keys* you must always call `.build()` to trigger a request to update the feature values
+based on the context changes.
+
+**Coding for percentage splits:**
+For percentage rollout you are only required to provide the `userKey` or `sessionKey`.
+
+[source,java]
+----
+fhClient.userKey("ideally-unique-id"); 
+----
+or
+
+[source,java]
+----
+fhClient.sessionKey("session-id"); 
+----
+
+For more details on percentage splits and feature experiments see https://docs.featurehub.io/#_percentage_split_rule[Percentage Split Rule].
+
+== Controlling connectivity and retries
+
+New in this version is also considerable control over server connection connectivity. The values can be
+set using environment variables or system properties. 
+
+- `featurehub.edge.server-connect-timeout-ms` - defaults to 5000
+- `featurehub.edge.server-sse-read-timeout-ms` - defaults to 1800000 - 3m (180 seconds), should be higher if the server is configured for longer by default
+- `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process 
+- `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
+- `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to wait before reconnecting
+- `featurehub.edge.backoff-multiplier` - defaults to 10
+- `featurehub.edge.maximum-backoff-ms` - defaults to 30000 
+
+This will not be affected by API keys not existing, that will stop connectivity completely. Also, if you are using
+the SaaS version and you have exceeded your maximum connects that you have specified, it will also stop after
+the first success.
+
+== Feature Interceptors
+
+Feature Interceptors are the ability to intercept the request for a feature. They only operate in imperative state. For
+an overview check out the https://docs.featurehub.io/#_feature_interceptors[Documentation on them].
+
+We currently support two feature interceptors:
+
+- `io.featurehub.client.interceptor.SystemPropertyValueInterceptor` - link:core/client-java-core/src/main/java/io/featurehub/client/interceptor/SystemPropertyValueInterceptor.java this will read properties from system properties and if they match the name of a key (case significant) then they will return that value. You need to have specified a system property `featurehub.features.allow-override=true`. If you set a system property `feature-toggles.FEATURE_NAME` then you can override the value of what the value
+is for feature flags. This is a further convenience feature and can be useful for an individual developer
+working on a new feature, where it is off for everyone else but not for them.
+
+== Usage Adapters
+
+A new feature in version 3 of the Core SDK is Usage Adapters. They allow you to hook into the event when 
+features are being evaluated and capture the result of the evaluation and all ancillary data that is in the
+ClientContext. A couple of samples are provided:
+
+ - OpenTelemetry - this will attach the feature, and its value, and any other data in the client context, to either the span as attributes or as an event. This is controlled by the environment variable `FEATUREHUB_OTEL_SPAN_AS_EVENTS`. see link:usage-adapters/featurehub-opentelemetry-adapter/README.adoc for more details on how it works.
+- Segment - this integrates with Twilo's Segment tool to push evaluation analytics to that platform. As features are evaluated they are pushed to Segment - there are more detailed instructions in link:usage-adapters/featurehub-segment-adapter/README.adoc 
+
+It is easy to write your own for whatever platform you wish to send evaluation data to, as long as it has an
+API you can support.
+
+== Hacking the SDK
+
+The SDK gives convenience methods for usage, but you can make it do almost anything you like.
+
+If you want to specify and deliberately configure it, you can use:
+
+[source,java]
+----
+fhConfig.setEdgeService(() => new EdgeProvider...());
+----
+
+Where EdgeProvider is the name of your class that knows how to connect to the Edge and pull feature details.
+
+There is an example in `examples/migration-check` which does a REST connection initially, and when it has
+the features, it will update the repository, allowing the features to be evaluated correctly, but stop the
+REST connection and swap to SSE. 
 
 == Working with the repository
 
-First thing you need to do is run the setup.sh - so it will load the `tiles` into your local repository.
-Tiles are a Maven extension that lets you side-load and componentize plugin configuration.
+Run `build_only.sh` (or look at it and run the same commands) to install it
+on your own system. Once installed you should be able to load it into your IDE.
 
-We use Tiles and Composites (collections of dependencies) to avoid repeating build configuration, each
-artifact should include only the things that make it different.
+The Java 11 libraries are kept separate from the Java 17+ versions as they
+build separately in CI. You can load the link:pom.xml and link:v17-and-above/pom.xml into your IDE separately.
 
 === Modules
 
@@ -46,34 +368,8 @@ Java 8 is used in the entire repository, consists of various artifacts:
 
 - `core-java-api` - this is a local build of the SSE API from the main FeatureHub repository and will generally
 track that. It can be behind, but it will never be a breaking change.
-- `client-java-core` - holds the basic local cache that is filled in different ways by different clients. It
+- `client-java-core` -  It
 holds the definition of all of the core functionality, including the feature repository, its features, listeners,
-analytics capability and so forth. It does not connect to the outside world in any way, that is specific to
-the HTTP library you have chosen to use. 
-- `client-java-android` - this is a Java 8 client suitable for Android SDK 24 (Android 7.0) and onwards. It
-includes OKHttp 4 and provides a GET only API. It does not poll as that doesn't really make sense in a Mobile
-application. It can handle server side or client side evaluation keys equally well.
-- `client-java-jersey` - this is a Java 8 Jersey 2.x client for Java, use this if you use Jersey. It has an
-SSE client and is capable of both server side and client side evaluation keys. However, it is not recommended you
-us server evaluation keys for SSE and they perform badly for SSE in Jersey.
-- `client-java-jersey3` - As above, but for Jersey 3.x clients - using Jakarta Java EE 8+
-- `client-java-sse` - This uses OKHttp4 to provide a SSE only client for Java.
+usage and so forth. It does not connect to the outside world in any way, that is specific to
 
-==== The support libraries
-
-In the support folder are the build tiles (common plugins used for building) and the composites (which are groupings
-of dependencies that are common and go together).
-
-All of these libraries are used in the _provided_ scope in our SDKs, which means you need to include our composites
-or provide your own (which is more typical). This means you need to use slf4j but not which version, you need to use
-jackson, but not the version we use, etc. You are free to evolve your library version choice separate to ours.
-
-These are:
-
-- `composite-jackson` - Jackson shared libraries, shared amongst all of the SDKs
-- `composite-jersey2` - Client specific jersey libraries for Jersey 2
-- `composite-jersey3` - Client specific jersey libraries for Jersey 3
-- `composite-logging` - Logging implementation (using log4j2) for the SDKs - they use it in test mode only
-- `composite-logging-api` - Logging API (slf4j)
-- `composite-test` - Test libraries that we use (Spock, Groovy)
 

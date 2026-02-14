@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.featurehub.sdk</groupId>
+  <artifactId>java-client-jersey3</artifactId>
+  <version>3.1-SNAPSHOT</version>
+  <name>java-client-jersey3</name>
+
+  <description>
+    Jersey 3 client for featurehub (jakarta annotations)
+  </description>
+
+  <url>https://featurehub.io</url>
+  <developers>
+    <developer>
+      <email>irina@featurehub.io</email>
+      <id>isouthwell</id>
+      <name>Irina Southwell</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+
+    <developer>
+      <email>richard@featurehub.io</email>
+      <id>rvowles</id>
+      <name>Richard Vowles</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+  </developers>
+
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
+    </license>
+  </licenses>
+
+  <scm>
+    <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
+    <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
+    <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <properties>
+    <jersey.version>3.1.2</jersey.version>
+  </properties>
+
+  <dependencies>
+    <!-- required for the test api -->
+    <dependency>
+      <groupId>cd.connect.openapi.gensupport</groupId>
+      <artifactId>openapi-jersey3-support</artifactId>
+      <version>2.6</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jersey3</artifactId>
+      <version>[1.1, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-core</artifactId>
+      <version>[4, 5)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-test</artifactId>
+      <version>[1.1, 2)</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1.1-SNAPSHOT, 2]</version>
+      <scope>test</scope>
+    </dependency>
+
+
+    <dependency>
+      <groupId>org.glassfish.jersey.test-framework</groupId>
+      <artifactId>jersey-test-framework-core</artifactId>
+      <version>${jersey.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.test-framework.providers</groupId>
+      <artifactId>jersey-test-framework-provider-grizzly2</artifactId>
+      <version>${jersey.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- pull the defined API and unzip it -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>extract-sse-edge-components</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>io.featurehub.sdk</groupId>
+                  <artifactId>java-client-api</artifactId>
+                  <version>2.1</version>
+                  <classifier>api</classifier>
+                  <type>yaml</type>
+                  <outputDirectory>${project.basedir}/target</outputDirectory>
+                  <destFileName>sse.yaml</destFileName>
+                </artifactItem>
+              </artifactItems>
+              <overWriteReleases>true</overWriteReleases>
+              <overWriteSnapshots>true</overWriteSnapshots>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>5.2.1</version>
+        <dependencies>
+          <dependency>
+            <groupId>cd.connect.openapi</groupId>
+            <artifactId>connect-openapi-jersey3</artifactId>
+            <version>7.15</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>featurehub-api</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <output>${project.basedir}/target/generated-sources/api</output>
+              <apiPackage>io.featurehub.sse.api</apiPackage>
+              <modelPackage>io.featurehub.sse.model</modelPackage>
+              <inputSpec>${project.basedir}/target/sse.yaml</inputSpec>
+              <generatorName>jersey3-api</generatorName>
+              <generateApis>true</generateApis>
+              <generateModels>false</generateModels>
+
+              <additionalProperties>
+                <additionalProperty>server</additionalProperty>
+                <additionalProperty>noFormData</additionalProperty>
+                <additionalProperty>openApiNullable=false</additionalProperty>
+              </additionalProperties>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-generated-source</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/api/src/gen</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>io.repaint.maven</groupId>
+        <artifactId>tiles-maven-plugin</artifactId>
+        <version>2.32</version>
+        <extensions>true</extensions>
+        <configuration>
+          <filtering>false</filtering>
+          <tiles>
+            <tile>io.featurehub.sdk.tiles:tile-java11:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-sdk:[1.1-SNAPSHOT,2)</tile>
+          </tiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.featurehub.java</groupId>
+  <artifactId>todo-java-jersey3</artifactId>
+  <name>todo-java-jersey3</name>
+  <version>1.1-SNAPSHOT</version>
+  <description>
+    This is an example of the server side of Jersey 3 using an SSE or GET client (depending on environment variables).
+
+    It expects environment variables or system property config as follows:
+
+    - feature-service.host = the host where features are stored, e.g. http://localhost:8085
+    - feature-service.api-key = the API key issued by the server.
+
+    There are examples in https://github.com/featurehub-io/featurehub/tree/main/adks/e2e-sdk on how to populate your
+    server automatically via tests to create the features required for this scenario.
+  </description>
+
+  <properties>
+    <docker.appname>${project.artifactId}</docker.appname>
+    <docker.appversion>${project.version}</docker.appversion>
+    <docker.project>todo-java-jersey2</docker.project>
+    <grizzly.version>3.0.1</grizzly.version>
+    <grizzly.npn.version>2.0.0</grizzly.npn.version>
+    <jersey.version>3.1.2</jersey.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-jersey3</artifactId>
+      <version>[3.1-SNAPSHOT, 4)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.java</groupId>
+      <artifactId>todo-java-shared</artifactId>
+      <version>1.1-SNAPSHOT</version>
+    </dependency>
+
+    <!-- these otel libraries are required for the agent to recognize jersey3 -->
+    <dependency>
+      <groupId>io.opentelemetry.javaagent.instrumentation</groupId>
+      <artifactId>opentelemetry-javaagent-jaxrs-3.0-jersey-3.0</artifactId>
+      <version>2.6.0-alpha</version>
+    </dependency>
+
+    <!-- this is required to allow otel agent to recognize grizzly -->
+    <dependency>
+      <groupId>io.opentelemetry.javaagent.instrumentation</groupId>
+      <artifactId>opentelemetry-javaagent-grizzly-2.3</artifactId>
+      <version>2.6.0-alpha</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-jersey3</artifactId>
+      <version>[1.1-SNAPSHOT, 2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1, 2]</version>
+    </dependency>
+
+    <!-- this is the grizzly version specific to jersey3 -->
+    <dependency>
+      <groupId>org.glassfish.jersey.containers</groupId>
+      <artifactId>jersey-container-grizzly2-http</artifactId>
+      <version>${jersey.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.glassfish.grizzly</groupId>
+          <artifactId>grizzly-http-server</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-http-server</artifactId>
+      <version>${grizzly.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-http2</artifactId>
+      <version>${grizzly.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-npn-bootstrap</artifactId>
+      <version>${grizzly.npn.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.glassfish.grizzly</groupId>
+      <artifactId>grizzly-npn-api</artifactId>
+      <version>${grizzly.npn.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>sdk-composite-test</artifactId>
+      <version>1.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
+    </license>
+  </licenses>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.repaint.maven</groupId>
+        <artifactId>tiles-maven-plugin</artifactId>
+        <version>2.32</version>
+        <extensions>true</extensions>
+        <configuration>
+          <filtering>false</filtering>
+          <tiles>
+            <tile>io.featurehub.sdk.tiles:tile-java11-no-spock:[1.1,2)</tile>
+          </tiles>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
+        <version>7.0.1</version>
+        <dependencies>
+          <dependency>
+            <groupId>cd.connect.openapi</groupId>
+            <artifactId>connect-openapi-jersey3</artifactId>
+            <version>9.1</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>featurehub-api</id>
+            <goals>
+              <goal>generate</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <output>${project.basedir}/target/generated-sources/api</output>
+              <apiPackage>todo.api</apiPackage>
+              <modelPackage>todo.model</modelPackage>
+              <inputSpec>${project.basedir}/../todo-java-shared/todo-api.yaml</inputSpec>
+              <generatorName>jersey3-api</generatorName>
+              <library>jersey3-api</library>
+
+              <additionalProperties>
+                <additionalProperty>server</additionalProperty>
+                <additionalProperty>openApiNullable=false</additionalProperty>
+              </additionalProperties>
+
+              <configOptions>
+                <configOption>
+                  <name>useBeanValidation</name>
+                  <value>true</value>
+                </configOption>
+              </configOptions>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-generated-source</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/api/src/gen</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

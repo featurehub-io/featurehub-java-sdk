@@ -34,11 +34,15 @@
   </licenses>
 
   <modules>
-    <module>composite-jackson</module>
+    <module>common-jackson</module>
+    <module>common-jacksonv2</module>
+<!--    <module>common-jacksonv3</module>-->
     <module>composite-jersey2</module>
     <module>composite-jersey3</module>
+    <module>composite-okhttp</module>
     <module>composite-logging</module>
     <module>composite-logging-api</module>
     <module>composite-test</module>
+    <module>featurehub-okhttp3-jackson2</module>
   </modules>
 </project>

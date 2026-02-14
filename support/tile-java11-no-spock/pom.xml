@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.featurehub.sdk.tiles</groupId>
+  <artifactId>tile-java11-no-spock</artifactId>
+  <version>1.1</version>
+  <packaging>tile</packaging>
+  <name>tile-java11-no-spock</name>
+
+  <description>
+    tile java contains plugins required for java application creation. It is focused on Java 11 and is designed
+    to allow us to side-load plugins in a consistent fashion across the java-sdk without repeating ourselves.
+
+    It removes Groovy when there is no Spock support and is primarily used in composites. The Groovy plugin checks
+    to see if Groovy is available BEFORE it checks if there are any sources.
+  </description>
+
+  <url>https://featurehub.io</url>
+  <developers>
+    <developer>
+      <email>irina@featurehub.io</email>
+      <id>isouthwell</id>
+      <name>Irina Southwell</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+
+    <developer>
+      <email>richard@featurehub.io</email>
+      <id>rvowles</id>
+      <name>Richard Vowles</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+  </developers>
+
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>https://github.com/featurehub-io/featurehub/blob/master/LICENSE.txt</url>
+    </license>
+  </licenses>
+
+  <scm>
+    <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
+    <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
+    <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>io.repaint.maven</groupId>
+        <artifactId>tiles-maven-plugin</artifactId>
+        <version>2.32</version>
+        <extensions>true</extensions>
+        <configuration>
+          <filtering>false</filtering>
+          <tiles>
+            <tile>io.featurehub.sdk.tiles:tile-release:[1.1,2)</tile>
+          </tiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+
+</project>

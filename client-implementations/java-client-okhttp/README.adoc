@@ -1,0 +1,76 @@
+= FeatureHub SDK for REST clients
+
+== Overview
+This SDK operates using periodic REST requests. It should be used typically
+in client libraries when near-real-time updates are not required. It operates
+on a timeout + use based context where you can set a refresh period, and it
+will ignore any attempts to poll for new updates outside of that timeout period.
+Any request to evaluate a feature will automatically cause an attempt to poll,
+so use of your application will cause features to update within the time period,
+whereas lack of use will not consume any bandwidth.
+
+It is therefore up to you as to how "fresh" you wish to keep your features, 
+with the knowledge that once that freshness timeout has been exceeded and 
+the app is evaluating features, it will re-request the feature state.
+
+== Considerations
+
+=== Dependencies
+This library uses:
+
+- OKHttp 4 (for http)
+- Jackson 2.x (for json)
+- SLF4j (for logging)
+
+==== Using directly
+
+It is recommended that developers use this SDK directly if they wish to have full control. Using it directly
+allows you complete control over the OKHttpConfig object that is passed, being able to set connect and request
+timeouts, interceptors for adding any extra parameters and so forth.
+
+[source,java]
+----
+// create the central config
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+
+// create and override the http client
+OkHttpClient httpClient = new OkHttpClient.Builder()
+  .connectTimeout(1, TimeUnit.SECONDS)
+  .readTimeout(1, TimeUnit.SECONDS).build();
+
+// construct the new client
+FeatureHubClient client = new FeatureHubClient(fhConfig.baseUrl(), Collections.singletonList(fhConfig.apiKey()config.getRepository(), httpClient, fhConfig));
+
+// tell the config to use this client in all its dealings
+fhConfig.setEdgeService(() -> client);
+----
+
+Because you have the REST client, you can make arbitrary calls on it any time. If you need
+to change it out part way through for any reason, just calling:
+
+[source,java]
+----
+fhConfig.setEdgeService(() -> client);
+----
+
+will let you replace the client.
+
+=== Using on Android
+
+As it requires internet access, you will need to add to your `AndroidManifest.xml` the usual:
+
+`<uses-permission android:name="android.permission.INTERNET"/>`
+
+If you are using it locally and not behind https, you will also need to specify an attribute on your `<application>` tag,
+which allows clear text traffic.
+
+`android:usesCleartextTraffic="true"`
+
+You will need to store your repository in a central location, using a static or via a DI tool like Dagger.Using a static
+might look something like this:
+
+Core uses Java's ServiceLoader capability to automatically discover the JerseyClient implementation. Please
+simply follow the instructions in the https://github.com/featurehub-io/featurehub-java-sdk/tree/main/client-java-core[Java Core library].
+
+As per that documentation you can manually configure the Edge provider to be the `AndroidFeatureHubClientFactory` if 
+you wish.

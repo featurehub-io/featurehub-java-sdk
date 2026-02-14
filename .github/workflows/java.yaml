@@ -3,16 +3,37 @@ name: Java CI
 on: [push]
 
 jobs:
-  build:
+  build-java11:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - name: Set up JDK 11
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v5
         with:
           java-version: '11'
           distribution: 'temurin'
           cache: maven
-      - name: Build with Maven
-        run: sh setup.sh && mvn --batch-mode --quiet package
+      - name: Install tiles
+        run: cd support && mvn -f pom-tiles.xml install
+      - name: Install support composites
+        run: mvn install
+  build-java21:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: ['17', '21', '25']
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Java ${{ matrix.java-version }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      - name: Install tiles
+        run: cd support && mvn -f pom-tiles.xml install
+      - name: All other things
+        run: mvn install
+      - name: java17+ only
+        working-directory: v17-and-above
+        run: mvn install
