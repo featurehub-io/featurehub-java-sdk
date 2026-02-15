@@ -93,6 +93,7 @@
               <output>${project.basedir}/target/generated-sources/api</output>
               <apiPackage>io.featurehub.sse.api</apiPackage>
               <modelPackage>io.featurehub.sse.model</modelPackage>
+              <!-- if you change this one, remember to change the one in ../client-implementations/java-client-jersey3 -->
               <inputSpec>https://api.dev.featurehub.io/edge/1.1.8.yaml</inputSpec>
               <generatorName>jersey3-api</generatorName>
               <generateApis>false</generateApis>
