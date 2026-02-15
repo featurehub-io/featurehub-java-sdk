@@ -12,13 +12,25 @@
     This is an example of using the SDK for a simple batch example.
   </description>
 
-  <properties>
-    <log4j.version>2.20.0</log4j.version>
-    <lmax.disruptor>3.4.4</lmax.disruptor>
-    <slfj4.version>2.0.5</slfj4.version>
-  </properties>
-
   <dependencies>
+    <dependency>
+      <groupId>io.featurehub.sdk</groupId>
+      <artifactId>java-client-okhttp</artifactId>
+      <version>[3, 4)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.common</groupId>
+      <artifactId>common-jacksonv2</artifactId>
+      <version>[1,2)</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.featurehub.sdk.composites</groupId>
+      <artifactId>composite-okhttp</artifactId>
+      <version>[1,2)</version>
+    </dependency>
+
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-logging</artifactId>
@@ -45,7 +57,7 @@
         <configuration>
           <filtering>false</filtering>
           <tiles>
-            <tile>io.featurehub.sdk.tiles:tile-java8:[1.1,2)</tile>
+            <tile>io.featurehub.sdk.tiles:tile-java11-no-spock:[1.1,2)</tile>
           </tiles>
         </configuration>
       </plugin>
