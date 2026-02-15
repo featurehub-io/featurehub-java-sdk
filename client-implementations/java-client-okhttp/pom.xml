@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>java-client-okhttp</artifactId>
-  <version>3.1</version>
+  <version>3.2-SNAPSHOT</version>
   <name>java-client-okhttp</name>
 
   <description>
@@ -40,7 +40,7 @@
     <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
     <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
-    <tag>java-client-okhttp-3.1</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <properties>
