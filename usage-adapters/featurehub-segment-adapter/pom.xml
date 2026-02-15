@@ -5,7 +5,7 @@
   <groupId>io.featurehub.sdk.java</groupId>
   <artifactId>segment-usageadapter</artifactId>
   <name>segment-usageadapter</name>
-  <version>1.1</version>
+  <version>1.2-SNAPSHOT</version>
   <description>
     This provides connectivity to Segment's API to allow use of features to be tracked to see what actual features and their
     states are being used by folks.
@@ -40,7 +40,7 @@
     <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
     <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
-    <tag>segment-usageadapter-1.1</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <dependencies>
