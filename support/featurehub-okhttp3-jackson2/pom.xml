@@ -4,7 +4,7 @@
 
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>featurehub-okhttp3-jackson2</artifactId>
-  <version>3.1-SNAPSHOT</version>
+  <version>3.1</version>
   <name>featurehub-okhttp3-jackson2</name>
 
   <description>
@@ -41,7 +41,7 @@
     <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
     <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
-    <tag>HEAD</tag>
+    <tag>featurehub-okhttp3-jackson2-3.1</tag>
   </scm>
 
   <dependencies>
