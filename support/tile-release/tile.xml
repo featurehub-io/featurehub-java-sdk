@@ -85,15 +85,12 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-deploy-plugin</artifactId>
-            <configuration>
-              <skip>true</skip>
-            </configuration>
+            <version>2.8.2</version>
           </plugin>
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.8.0</version>
-            <extensions>true</extensions>
+            <version>0.10.0</version>
             <configuration>
               <publishingServerId>sonatype-staging</publishingServerId>
               <autoPublish>true</autoPublish>
@@ -139,7 +136,7 @@
         <configuration>
           <mavenExecutorId>forked-path</mavenExecutorId>
           <preparationGoals>clean enforcer:enforce verify</preparationGoals>
-          <goals>bounds:update enforcer:enforce deploy</goals>
+          <goals>bounds:update enforcer:enforce central-publishing:publish</goals>
           <tagBase>${project.groupId}/</tagBase>
           <pushChanges>false</pushChanges>
           <localCheckout>true</localCheckout>
