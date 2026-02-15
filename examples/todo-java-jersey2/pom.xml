@@ -45,7 +45,7 @@
     <dependency>
       <groupId>io.featurehub.sdk.composites</groupId>
       <artifactId>sdk-composite-jersey2</artifactId>
-      <version>[1.1-SNAPSHOT, 2)</version>
+      <version>[2, 3)</version>
     </dependency>
 
     <dependency>
