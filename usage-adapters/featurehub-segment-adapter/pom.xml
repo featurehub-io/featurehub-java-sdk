@@ -9,7 +9,41 @@
   <name>segment-usageadapter</name>
   <version>1.1-SNAPSHOT</version>
   <description>
+    This provides connectivity to Segment's API to allow use of features to be tracked to see what actual features and their
+    states are being used by folks.
   </description>
+
+  <url>https://featurehub.io</url>
+  <developers>
+    <developer>
+      <email>irina@featurehub.io</email>
+      <id>isouthwell</id>
+      <name>Irina Southwell</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+
+    <developer>
+      <email>richard@featurehub.io</email>
+      <id>rvowles</id>
+      <name>Richard Vowles</name>
+      <organization>Anyways Labs Ltd</organization>
+    </developer>
+  </developers>
+
+  <licenses>
+    <license>
+      <name>MIT</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
+    </license>
+  </licenses>
+
+  <scm>
+    <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
+    <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
+    <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
+    <tag>HEAD</tag>
+  </scm>
 
   <dependencies>
     <dependency>
@@ -31,14 +65,6 @@
       <scope>provided</scope>
     </dependency>
   </dependencies>
-
-  <licenses>
-    <license>
-      <name>MIT</name>
-      <url>https://opensource.org/licenses/MIT</url>
-      <comments>This code resides in the customer's codebase and therefore has an MIT license.</comments>
-    </license>
-  </licenses>
 
   <build>
     <plugins>
