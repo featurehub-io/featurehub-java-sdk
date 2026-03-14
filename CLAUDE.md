@@ -1,0 +1,90 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+The build must be done in two phases: first the `support/` directory (Maven Tiles + composite POMs), then the root reactor.
+
+```bash
+# Build without tests (fast)
+./build_only.sh
+# Equivalent: cd support && mvn -DskipTests=true -f pom-tiles.xml install && mvn install && cd .. && mvn -T4C -DskipTests=true clean install
+
+# Build with tests
+./build_alL_and_test.sh
+# Equivalent: cd support && mvn -f pom-tiles.xml install && mvn install && cd .. && mvn clean install
+
+# Build Java 17+ modules (requires JDK 17+)
+cd v17-and-above && mvn install
+```
+
+### Running tests
+
+```bash
+# All tests in a module
+cd core/client-java-core && mvn test
+
+# Single test class
+mvn -Dtest=ClassName test
+
+# Single test method
+mvn -Dtest=ClassName#methodName test
+```
+
+Tests are written in **Spock** (Groovy) in most modules.
+
+## Architecture
+
+This is a Maven multi-module SDK for integrating with the FeatureHub feature flag service. The modules form a layered dependency chain:
+
+```
+Usage Adapters (OpenTelemetry, Segment)
+        ↑
+Client Implementations (OKHttp, Jersey2, Jersey3)
+        ↑
+client-java-core  (domain logic, interfaces)
+        ↑
+client-java-api   (OpenAPI-generated models)
+```
+
+### Module Groups
+
+- **`core/client-java-api`** — OpenAPI-generated models: `FeatureRolloutStrategy`, `FeatureState`, SSE event models, strategy matcher types.
+- **`core/client-java-core`** — All domain logic: `ClientFeatureRepository` (in-memory cache), `EdgeService` interface, `ClientContext` (per-user evaluation context), `ApplyFeature` (rollout strategy evaluation engine), `FeatureValueInterceptor`.
+- **`client-implementations/java-client-okhttp`** — OKHttp-based `EdgeService` implementation; the recommended client.
+- **`client-implementations/java-client-jersey2`** and **`jersey3`** — JAX-RS 2.x / Jakarta REST alternatives.
+- **`support/`** — Maven infrastructure: Tiles (shared plugin config for Java 8/11/21), composite POMs (dependency version management for OKHttp, Jersey, Jackson, logging, test utilities). Must be built before root modules.
+- **`support/featurehub-okhttp3-jackson2`** — Pre-configured convenience artifact: OKHttp + Jackson 2, the recommended starting point for most users.
+- **`usage-adapters/`** — Analytics plugins: OpenTelemetry tracing, Segment analytics — both implement `UsagePlugin`.
+- **`v17-and-above/`** — Java 17+ specific modules, built separately with a different JDK.
+
+### Key Interfaces and Extension Points
+
+- **`EdgeService`** — implemented by each HTTP client; abstracts SSE/REST transport.
+- **`FeatureHubClientFactory`** — discovered via `ServiceLoader`; each client registers itself.
+- **`UsagePlugin`** — analytics/observability hooks called on feature evaluation.
+- **`FeatureValueInterceptor`** — allows overriding feature values at runtime (e.g., dev overrides via system properties).
+- **`RepositoryEventHandler`** / **`FeatureListener`** / **`ReadinessListener`** — observer callbacks for repository and feature state changes.
+
+### Typical Initialization Pattern
+
+```java
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+fhConfig.streaming();          // or .restActive() / .restPassive()
+fhConfig.init();               // blocks until first feature fetch
+
+ClientContext ctx = fhConfig.newContext()
+  .userKey("user-123")
+  .country(StrategyAttributeCountryName.NewZealand)
+  .build().get();
+
+boolean enabled = ctx.isEnabled("MY_FEATURE");
+```
+
+### Build Infrastructure Notes
+
+- **Maven Tiles** (`support/tile-java8`, `tile-java11`, `tile-java21`, `tile-sdk`, `tile-release`) provide shared plugin/compiler configuration. The `pom-tiles.xml` in `support/` must be installed before any other module.
+- **Composite POMs** (`composite-okhttp`, `composite-jersey2`, etc.) centralise dependency versions — edit these when upgrading transitive dependencies.
+- `.mvn/jvm.config` contains `--add-exports` flags required by the compiler for Java module system compatibility.
+- The root `pom.xml` reactor version is independent of individual module versions; modules are versioned separately.
