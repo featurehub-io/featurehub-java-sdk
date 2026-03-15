@@ -9,7 +9,7 @@ because all possible clients are collected together (SSO, Passive Rest, Active R
 
 The minimum version of Java supported is Java 11. Some libraries support only Java 17+ because of their dependencies.
 
-It is generally recommended that you should use the `OKHttp` version (`io.featurehub.sdk:java-client-okhttp:3+`) of the libary by preference unless you
+It is generally recommended that you should use the `OKHttp` version (`io.featurehub.sdk:java-client-okhttp:3+`) of the library by preference unless you
 are already using a Jersey 2 or Jersey 3 stack.
 
 NOTE: We are using Gradle standard for referring to version ranges, so `3+` means
@@ -19,19 +19,39 @@ NOTE: We are using Gradle standard for referring to version ranges, so `3+` mean
 
 You can look at the examples to see what we have done for each stack we have examples for (Quarkus, Spring 7, Jersey 2 and Jersey 3) as a starter.
 
+=== Quick start: OKHttp + Jackson 2
+
+If you are starting a new project and do not already have an HTTP or JSON library in your stack, the simplest option
+is the convenience artifact that bundles everything you need in a single dependency:
+
+[source,xml]
+----
+<dependency>
+  <groupId>io.featurehub.sdk</groupId>
+  <artifactId>featurehub-okhttp3-jackson2</artifactId>
+  <version>[3,4)</version>
+</dependency>
+----
+
+This pulls in `java-client-okhttp`, `composite-okhttp`, `common-jacksonv2`, and a SLF4j logging implementation.
+It is the recommended starting point for most users.
+
+=== Manual assembly
+
 The base libraries do not include dependencies on Jackson (which they need) or a logging
 framework (which they also need). A basic OKHttp client will usually require:
 
 - `io.featurehub.sdk:java-client-okhttp:3+` - the basic OKHttp library + shared SDK libraries
 - all of the necessary okhttp components - you can find this in `io.featurehub.sdk.composites:composite-okhttp` located in link:support/composite-okhttp/pom.xml
 - a _jackson_ adapter depending on which version of Jackson (2 or 3) you are using - so `io.featurehub.sdk.common:common-jacksonv2:1+` or `io.featurehub.sdk.common:common-jacksonv3:1+`.
-- an SLF4j implementation - we use `io.featurehub.sdk.composites:sdk-composite-logging:1+` ( link:support/composite-logging/pom.xml )  in this SDK but it is only the API that is a required dependency and we expect you to provide one. 
+  Jackson 3 / `common-jacksonv3` requires Java 17+ and is published under `v17-and-above/support/`.
+- an SLF4j implementation - we use `io.featurehub.sdk.composites:sdk-composite-logging:1+` ( link:support/composite-logging/pom.xml ) in this SDK but it is only the API that is a required dependency and we expect you to provide one.
 
 Jersey 2 and Jersey 3 have equivalent dependencies in `io.featurehub.sdk:java-client-jersey2:3+` and `io.featurehub.sdk:java-client-jersey3:3+` respectively. We also do not include the foundation libraries for these
 in our dependencies as we assume you have them in your stack already, which is why you are choosing those
-implementations. 
+implementations.
 
-We generally recommend using OKHttp if you do not already have Jersey. 
+We generally recommend using OKHttp if you do not already have Jersey.
 
 == Initializing your client
 
@@ -56,29 +76,32 @@ There are 3 ways to request for feature updates via this SDK:
 depending on how your admin has it configured), and the SDK will then disconnect
 and reconnect again, ensuring it has received all feature updates in the meantime. This is typically the mode used by Java server based projects. You specify this in code by choosing `fhConfig.streaming().init()`.
 
-- *Passive REST* - This is where a polling interval is set. There is an initial request for feature state, but until a feature is evaluated and that polling interval has been exceeded, the client will not ask for a fresh set of features or check if any have changed. This is a good choice where there is a low incidence of feature updates, but is usually used on mobile devices (like Android) where you don't want continuous polling if the user isn't doing anything.You specify this in code by choosing `fhConfig.restPassive().init()`.
+- *Passive REST* - This is where a polling interval is set. There is an initial request for feature state, but until a feature is evaluated and that polling interval has been exceeded, the client will not ask for a fresh set of features or check if any have changed. This is a good choice where there is a low incidence of feature updates, but is usually used on mobile devices (like Android) where you don't want continuous polling if the user isn't doing anything. You specify this in code by choosing `fhConfig.restPassive().init()`.
 
 - *Active REST* - This is where the client will make a request for updated state every X seconds regardless if anyone is using it. You specify this in code by choosing `fhConfig.restActive().init()`.
 
 If you are using *Server Evaluated* keys, you do not want to call `init()`. You need to create your first
 `ClientContext` (see below) and call `build()` - which will trigger a connection, passing all the requisite
-data to the FeatureHub server for evaluation. 
+data to the FeatureHub server for evaluation.
 
 == Examples
 
 Its always good to look at examples on how to do what you want. We have examples for:
 
-- Spring 7 - using a simple streaming client
-- Quarkus, Jersey 2, Jersey 3 - configurable for usage with OpenTelemetry and Segment and offering Streaming, and active or passive REST.
-
-These are in the `examples` and `v17-and-above/examples` folders.
+- *Spring Boot 7* (`v17-and-above/examples/todo-java-springboot`) - streaming client, Java 17+
+- *Quarkus* (`v17-and-above/examples/todo-java-quarkus`) - native image support, Java 17+
+- *Jersey 2* (`examples/todo-java-jersey2`) - configurable for OpenTelemetry/Segment, all connection modes
+- *Jersey 3* (`examples/todo-java-jersey3`) - same as Jersey 2 but with Jakarta REST
+- *Batch* (`examples/batch`) - batch processing / short-lived process pattern
+- *Migration check* (`examples/migration-check`) - dynamically swaps REST then SSE at runtime
+- *Cucumber BDD* (`examples/todo-cuke-java`) - integration testing with FeatureHub's test API
 
 == How FeatureHub's Java SDK works
 
 Every FeatureHub SDK works the same basic way - it needs the URL of your FeatureHub server, and an API key.
 
 You give those two things to the `FeatureHubConfig` (in Java, its the `EdgeFeatureHubConfig`), then specify
-your client type (see above, SSE, Active or Passive REST) and then initialize. 
+your client type (see above, SSE, Active or Passive REST) and then initialize.
 
 The SDK takes the responsibility of getting the features from the server, keeping a local copy of them in memory,
 and then responding to your requests for feature evaluations.
@@ -88,40 +111,78 @@ Feature evaluations are always done within the scope of a `ClientContext` - whic
 evaluation (called strategies). Where those strategies are evaluated depends on the type of key you are using.
 
 If you use a client evaluated key - as is normal for Java apps - all of the necessary data for decision making
-comes to the Java app and it makes decisions there. This is most idealy for any kind of situation where there
+comes to the Java app and it makes decisions there. This is most ideally for any kind of situation where there
 will ever be more than one instance of a ClientContext - like a web server for instance.
 
 If you use a server evaluated key, all those attributes get sent to the server and it evaluates the feature values
-and returns them to you. 
+and returns them to you.
 
-If you have confidential information in your features and your client is not confidential, you should use a 
+If you have confidential information in your features and your client is not confidential, you should use a
 server evaluated key, otherwise you should generally use a client evaluated key.
 
-=== When is it ready to be used?
+=== Readiness
 
-Once your SDK has the list of features, it will go into the Ready state, and won't go out again even if it loses the connection or ability to talk to your server.
+The `Readiness` enum has three states:
 
-We then recommend you consider adding FeatureHub to your heartbeat or liveness check.
+[cols="1,3"]
+|===
+|State |Meaning
+
+|`NotReady`
+|The SDK has not yet received its first set of features from the server. Feature evaluations at this point
+return default values.
+
+|`Ready`
+|The SDK has received at least one full feature set and is ready for use. It stays `Ready` even if the
+connection is subsequently lost.
+
+|`Failed`
+|A terminal failure has occurred (e.g. invalid API key, authentication error). The SDK will stop retrying.
+This requires operator intervention (fix the key or server configuration) and a restart.
+|===
+
+Once your SDK has the list of features it will go into `Ready`, and won't drop back out again even if it loses
+the connection or ability to talk to your server.
+
+We recommend adding FeatureHub to your heartbeat or liveness check:
 
 .SpringBoot - liveness
 [source,java]
 ----
-  @RequestMapping("/liveness")
-  public String liveness() {
-    if (featureHubConfig.getReadyness() == Readyness.Ready) {
-      return "yes";
-    }
-
-    log.warn("FeatureHub connection not yet available, reporting not live.");
-    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
+@RequestMapping("/liveness")
+public String liveness() {
+  if (featureHubConfig.getReadiness() == Readiness.Ready) {
+    return "yes";
+  }
+  log.warn("FeatureHub connection not yet available, reporting not live.");
+  throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
 }
 ----
 
 This will prevent most services like Application Load Balancers or Kubernetes from routing traffic to your
 server before it has connected to the feature service and is ready.
 
-There are other ways to do this - for example not starting your server until you have a readyness success,
-but this is the most strongly recommended because it ensures that a system in a properly structured Java service will behave as expected.
+==== Listening for readiness changes
+
+Instead of polling `getReadiness()`, you can register a callback that fires whenever the SDK transitions
+between states. Both `FeatureHubConfig` and `FeatureRepository` expose `addReadinessListener`:
+
+[source,java]
+----
+RepositoryEventHandler sub = fhConfig.addReadinessListener(readiness -> {
+  if (readiness == Readiness.Ready) {
+    log.info("FeatureHub is ready");
+  } else if (readiness == Readiness.Failed) {
+    log.error("FeatureHub entered a terminal failure state");
+  }
+});
+
+// when you no longer need the listener:
+sub.cancel();
+----
+
+The listener is called immediately with the current state when registered, and then again on every transition.
+The returned `RepositoryEventHandler.cancel()` removes the listener to prevent memory leaks.
 
 === The ClientContext
 
@@ -164,7 +225,6 @@ public class HelloResource {
 }
 ----
 
-
 These examples show us how we can wire the FeatureHub functionality into our system in two different cases, the standard CDI
 (with extensions) way that Quarkus (and to a degree Jersey) works, and the way that Spring/SpringBoot works.
 
@@ -185,6 +245,132 @@ you can simply .build() your context again and it will force a poll.
 ClientContext fhClient = fhConfig.newContext().build().get();
 ----
 
+==== ThreadLocalContext
+
+For frameworks where you cannot easily inject a request-scoped `ClientContext` (e.g. plain JAX-RS filters
+or legacy codebases), `ThreadLocalContext` provides a thread-local alternative.
+
+Set the config once at startup:
+
+[source,java]
+----
+ThreadLocalContext.setConfig(fhConfig);
+----
+
+Then anywhere on the same thread — in a filter, a resource method, a service — retrieve the context:
+
+[source,java]
+----
+ClientContext ctx = ThreadLocalContext.getContext(); // or .context()
+----
+
+When the request completes, clean up to avoid context leaking into thread-pool reuse:
+
+[source,java]
+----
+// e.g. in a servlet filter's finally block
+ThreadLocalContext.close();
+----
+
+`close()` calls `ctx.close()` and removes the entry from the thread-local, so the thread is clean for the
+next request.
+
+=== Type-safe feature keys with the `Feature` interface
+
+All `ClientContext` and `FeatureRepository` methods that accept a feature name are overloaded to accept either
+a plain `String` or an instance of the `Feature` interface. Implementing `Feature` on an enum gives you
+compile-time safety and easy IDE refactoring:
+
+[source,java]
+----
+public enum MyFeatures implements Feature {
+  SUBMIT_BUTTON_COLOR,
+  NEW_CHECKOUT_FLOW,
+  MAX_ITEMS_PER_PAGE
+}
+
+// no magic strings
+boolean enabled = ctx.isEnabled(MyFeatures.NEW_CHECKOUT_FLOW);
+String color    = ctx.feature(MyFeatures.SUBMIT_BUTTON_COLOR).getString();
+----
+
+The `Feature` interface requires only a `name()` method, which enums provide automatically.
+
+=== Reading feature values
+
+`ClientContext.feature(key)` and `FeatureRepository.feature(key)` return a `FeatureState<?>` with the
+following accessors:
+
+[cols="1,3"]
+|===
+|Method |Returns
+
+|`getString()`
+|String value, or `null` if unset or wrong type.
+
+|`getFlag()` / `isEnabled()`
+|`Boolean`/`boolean`. `isEnabled()` returns `false` rather than `null` when unset — prefer this for flags.
+
+|`getNumber()`
+|`BigDecimal`, or `null` if unset or wrong type.
+
+|`getRawJson()`
+|Raw JSON string, or `null` if unset or wrong type.
+
+|`getJson(Class<T>)`
+|Deserialised object of the given type using the configured Jackson mapper, or `null`.
+
+|`isSet()`
+|`true` if the feature has a non-null value.
+
+|`exists()`
+|`true` if the key is known to the repository (received from the server). `false` means the feature
+key does not exist in this environment — log a warning and check the key name.
+
+|`isLocked()`
+|`true` if the feature is locked server-side. Interceptors registered without `allowLockOverride` are skipped.
+
+|`getType()`
+|`FeatureValueType` enum: `BOOLEAN`, `STRING`, `NUMBER`, `JSON`.
+
+|`featureProperties()`
+|`Map<String,String>` of metadata properties attached to the feature in the FeatureHub admin console.
+|===
+
+==== Reacting to feature changes with `FeatureListener`
+
+Register a `FeatureListener` on any `FeatureState` to be notified when its value changes:
+
+[source,java]
+----
+ctx.feature("SUBMIT_BUTTON_COLOR").addListener(featureState -> {
+  log.info("SUBMIT_BUTTON_COLOR changed to {}", featureState.getString());
+  refreshUi();
+});
+----
+
+NOTE: Do *not* add a listener to a `ClientContext`-scoped `FeatureState` in server-evaluated mode when many
+contexts are created per request — each context holds its listener list and this will cause a memory leak.
+In server-evaluated mode, register the listener on the repository-level feature instead:
+`fhConfig.getRepository().feature("KEY").addListener(...)`.
+
+For repository-wide change notifications, `FeatureRepository` exposes two streams, both returning a
+`RepositoryEventHandler` whose `cancel()` removes the subscription:
+
+[source,java]
+----
+// fires for every individual feature that changes value
+RepositoryEventHandler sub = fhConfig.getRepository()
+    .registerFeatureUpdateAvailable(fs -> log.info("{} = {}", fs.getKey(), fs.getString()));
+
+// fires once whenever a fresh full state arrives (SSE reconnect or REST poll)
+RepositoryEventHandler sub2 = fhConfig.getRepository()
+    .registerNewFeatureStateAvailable(repo -> log.info("fresh feature set received"));
+
+// to unsubscribe:
+sub.cancel();
+----
+
 == Rollout Strategies
 
 Starting from version 1.1.0 FeatureHub supports _server side_ evaluation of complex rollout strategies
@@ -195,7 +381,7 @@ For more details on rollout strategies, targeting rules and feature experiments 
 We are actively working on supporting client side evaluation of
 strategies in the future releases as this scales better when you have 10000+ consumers.
 
-=== Coding for Rollout strategies 
+=== Coding for Rollout strategies
 There are several preset strategies rules we track specifically: `user key`, `country`, `device` and `platform`. However, if those do not satisfy your requirements you also have an ability to attach a custom rule. Custom rules can be created as following types: `string`, `number`, `boolean`, `date`, `date-time`, `semantic-version`, `ip-address`
 
 FeatureHub SDK will match your users according to those rules, so you need to provide attributes to match on in the SDK:
@@ -206,7 +392,7 @@ Provide the following attribute to support `userKey` rule:
 
 [source,java]
 ----
-fhClient.userKey("ideally-unique-id"); 
+fhClient.userKey("ideally-unique-id");
 ----
 
 to support `country` rule:
@@ -234,7 +420,7 @@ to support `semantic-version` rule:
 
 [source,java]
 ----
-fhClient.version("1.2.0"); 
+fhClient.version("1.2.0");
 ----
 
 or if you are using multiple rules, you can combine attributes as follows:
@@ -245,19 +431,19 @@ fhClient.userKey("ideally-unique-id")
       .country(StrategyAttributeCountryName.NewZealand)
       .device(StrategyAttributeDeviceName.Browser)
       .platform(StrategyAttributePlatformName.Android)
-      .version("1.2.0");  
+      .version("1.2.0");
 ----
 
 If you are using *Server Evaluated API Keys* then you should always run `.build()` which will execute a background
-poll. If you wish to ensure the next line of code has the upated statuses, wait for the future to complete with `.get()`
+poll. If you wish to ensure the next line of code has the updated statuses, wait for the future to complete with `.get()`
 
 .Server Evaluated API Key - ensuring the repository is updated
 [source,java]
 ----
-  ClientContext fhClient = fhConfig.newContext().userKey("user@mailinator.com").build.get();
+ClientContext fhClient = fhConfig.newContext().userKey("user@mailinator.com").build().get();
 ----
 
-You do not have to do the build().get()  (but you can) for client evaluated keys as the context is mutable and changes are immediate.
+You do not have to do the build().get() (but you can) for client evaluated keys as the context is mutable and changes are immediate.
 As the context is evaluated locally, it will always be ready the very next line of code.
 
 **Sending custom attributes:**
@@ -266,14 +452,14 @@ To add a custom key/value pair, use `attr(key, value)`
 
 [source,java]
 ----
-    fhClient.attr("first-language", "russian");
+fhClient.attr("first-language", "russian");
 ----
 
 Or with array of values (only applicable to custom rules):
 
 [source,java]
 ----
-fhClient.attrs(“languages”, Arrays.asList(“russian”, “english”, “german”));
+fhClient.attrs("languages", Arrays.asList("thai", "english", "german"));
 ----
 
 You can also use `fhClient.clear()` to empty your context.
@@ -286,56 +472,392 @@ For percentage rollout you are only required to provide the `userKey` or `sessio
 
 [source,java]
 ----
-fhClient.userKey("ideally-unique-id"); 
+fhClient.userKey("ideally-unique-id");
 ----
 or
 
 [source,java]
 ----
-fhClient.sessionKey("session-id"); 
+fhClient.sessionKey("session-id");
 ----
 
 For more details on percentage splits and feature experiments see https://docs.featurehub.io/#_percentage_split_rule[Percentage Split Rule].
 
+=== Bulk attribute updates: `attrs` vs `attrsMerge`
+
+Both methods accept a `Map<String, List<String>>` but behave differently:
+
+[cols="1,3"]
+|===
+|Method |Behaviour
+
+|`attrs(Map<String, List<String>>)`
+|*Replaces* the entire custom-attribute map. Any attributes previously set (excluding preset fields like
+`userKey`, `country`, etc.) are discarded.
+
+|`attrsMerge(Map<String, List<String>>)`
+|*Merges* the supplied map into the existing attributes. Existing keys are overwritten; keys not present in
+the new map are preserved.
+|===
+
+=== Reading context attributes
+
+[source,java]
+----
+// single value — returns the first element if multi-valued, or null
+String lang = fhClient.getAttr("first-language");
+String lang = fhClient.getAttr("first-language", "english"); // with default
+
+// multi-value — returns List<String>, or null if absent
+List<String> langs = fhClient.getAttrs("languages");
+List<String> langs = fhClient.getAttrs("languages", "english"); // default wrapped in a list
+----
+
 == Controlling connectivity and retries
 
 New in this version is also considerable control over server connection connectivity. The values can be
-set using environment variables or system properties. 
+set using environment variables or system properties.
 
 - `featurehub.edge.server-connect-timeout-ms` - defaults to 5000
 - `featurehub.edge.server-sse-read-timeout-ms` - defaults to 1800000 - 3m (180 seconds), should be higher if the server is configured for longer by default
-- `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process 
+- `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process
 - `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
 - `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to wait before reconnecting
 - `featurehub.edge.backoff-multiplier` - defaults to 10
-- `featurehub.edge.maximum-backoff-ms` - defaults to 30000 
+- `featurehub.edge.maximum-backoff-ms` - defaults to 30000
 
 This will not be affected by API keys not existing, that will stop connectivity completely. Also, if you are using
 the SaaS version and you have exceeded your maximum connects that you have specified, it will also stop after
 the first success.
+
+=== EdgeConnectionState
+
+When the SDK changes connection state it uses the `EdgeConnectionState` enum. This is relevant when implementing
+a custom `EdgeService` or diagnosing connectivity problems from logs:
+
+[cols="1,1,3"]
+|===
+|State |Applies to |Meaning
+
+|`SUCCESS`
+|SSE + REST
+|Connection established and data received.
+
+|`SERVER_SAID_BYE`
+|SSE only
+|Normal server-initiated disconnect after the configured timeout. The SDK reconnects after a short delay.
+
+|`SERVER_WAS_DISCONNECTED`
+|SSE + REST
+|Disconnected before a "bye" was received. The SDK backs off and retries.
+
+|`SERVER_READ_TIMEOUT`
+|SSE + REST
+|Timed out waiting for data. Retryable with backoff.
+
+|`CONNECTION_FAILURE`
+|SSE + REST
+|Low-level failure (e.g. unknown host, refused connection). Retried with exponential backoff.
+
+|`API_KEY_NOT_FOUND`
+|SSE + REST
+|Terminal — the API key is not recognised by the server. The repository transitions to `Failed` and
+the SDK stops retrying.
+
+|`FAILURE`
+|SSE + REST
+|Terminal failure (e.g. 401/403 from Edge). The SDK stops retrying.
+|===
 
 == Feature Interceptors
 
 Feature Interceptors are the ability to intercept the request for a feature. They only operate in imperative state. For
 an overview check out the https://docs.featurehub.io/#_feature_interceptors[Documentation on them].
 
-We currently support two feature interceptors:
+We currently support one built-in feature interceptor:
 
-- `io.featurehub.client.interceptor.SystemPropertyValueInterceptor` - link:core/client-java-core/src/main/java/io/featurehub/client/interceptor/SystemPropertyValueInterceptor.java this will read properties from system properties and if they match the name of a key (case significant) then they will return that value. You need to have specified a system property `featurehub.features.allow-override=true`. If you set a system property `feature-toggles.FEATURE_NAME` then you can override the value of what the value
-is for feature flags. This is a further convenience feature and can be useful for an individual developer
-working on a new feature, where it is off for everyone else but not for them.
+- `io.featurehub.client.interceptor.SystemPropertyValueInterceptor` - link:core/client-java-core/src/main/java/io/featurehub/client/interceptor/SystemPropertyValueInterceptor.java[source]
+  reads system properties; if a property named `featurehub.feature.FEATURE_NAME` is set and
+  `featurehub.features.allow-override=true` is also set, the property value overrides the server value.
+  This is useful for a developer who wants to enable a feature flag locally without affecting others.
+
+=== Writing a custom interceptor
+
+Implement `FeatureValueInterceptor` and register it via `FeatureHubConfig`:
+
+[source,java]
+----
+public class EnvVarInterceptor implements FeatureValueInterceptor {
+  @Override
+  public ValueMatch getValue(String key) {
+    String val = System.getenv("FEATURE_" + key.toUpperCase());
+    return new ValueMatch(val != null, val);
+  }
+}
+
+// false = respect the lock; true = override even locked features
+fhConfig.registerValueInterceptor(false, new EnvVarInterceptor());
+----
 
 == Usage Adapters
 
-A new feature in version 3 of the Core SDK is Usage Adapters. They allow you to hook into the event when 
-features are being evaluated and capture the result of the evaluation and all ancillary data that is in the
-ClientContext. A couple of samples are provided:
+Usage Adapters (new in version 3 of the Core SDK) let you hook into every feature evaluation event. Whenever a
+feature value is read from a `ClientContext`, the SDK fires a `UsageEvent` carrying the feature key, its evaluated
+value, and a snapshot of all context attributes (user key, country, device, custom attrs, etc.). Registered plugins
+receive that event and can forward it to any analytics or observability backend.
 
- - OpenTelemetry - this will attach the feature, and its value, and any other data in the client context, to either the span as attributes or as an event. This is controlled by the environment variable `FEATUREHUB_OTEL_SPAN_AS_EVENTS`. see link:usage-adapters/featurehub-opentelemetry-adapter/README.adoc for more details on how it works.
-- Segment - this integrates with Twilo's Segment tool to push evaluation analytics to that platform. As features are evaluated they are pushed to Segment - there are more detailed instructions in link:usage-adapters/featurehub-segment-adapter/README.adoc 
+=== How it works
 
-It is easy to write your own for whatever platform you wish to send evaluation data to, as long as it has an
-API you can support.
+The core wiring is:
+
+[source]
+----
+FeatureRepository ──registerUsageStream──▶ UsageAdapter ──▶ UsagePlugin(s)
+----
+
+`UsageAdapter` is created automatically by `EdgeFeatureHubConfig` and holds a list of `UsagePlugin` instances.
+Each `UsagePlugin.send(UsageEvent)` is called synchronously for every evaluation.
+
+=== Registering plugins
+
+[source,java]
+----
+FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
+
+// register one or more plugins before calling init()
+fhConfig.registerUsagePlugin(new OpenTelemetryUsagePlugin());
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin(segmentWriteKey));
+
+fhConfig.streaming().init();
+----
+
+`registerUsagePlugin` returns `FeatureHubConfig` so calls can be chained.
+
+=== The event model
+
+The classes involved in a usage event are:
+
+[cols="1,3"]
+|===
+|Class / Interface |Purpose
+
+|`UsageEvent`
+|Base class. Carries a nullable `userKey` and an arbitrary `additionalParams` map. `toMap()` serialises
+everything to a `Map<String, ?>` for downstream consumption.
+
+|`UsageEventName`
+|Interface that adds `getEventName()` — implemented by concrete event types. Plugins should cast to this
+before using the name.
+
+|`UsageEventWithFeature`
+|The standard per-evaluation event. Extends `UsageEvent` and implements `UsageEventName`. `getEventName()`
+returns `"feature"`. `toMap()` adds `feature` (key), `value` (string or `null` for JSON), `id` (feature UUID),
+and all context attributes.
+
+|`FeatureHubUsageValue`
+|Value object attached to `UsageEventWithFeature`. Holds the feature `id`, `key`, and a string `value`
+(booleans become `"on"`/`"off"`, JSON becomes `null`).
+
+|`UsageFeaturesCollection`
+|A bulk snapshot of all features currently held in the repository, serialised as `feature-key → value` pairs.
+Used by `SegmentMessageTransformer` to augment outgoing Segment messages.
+
+|`UsageFeaturesCollectionContext`
+|Extends `UsageFeaturesCollection` and additionally includes all context attributes from the `ClientContext`.
+Populated via `ClientContext.fillUsageCollection(event)`.
+|===
+
+=== Writing your own plugin
+
+Extend `UsagePlugin` and implement `send(UsageEvent event)`:
+
+[source,java]
+----
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageEventName;
+import io.featurehub.client.usage.UsagePlugin;
+
+public class MyAnalyticsPlugin extends UsagePlugin {
+
+  @Override
+  public void send(UsageEvent event) {
+    if (!(event instanceof UsageEventName)) return;
+
+    String name          = ((UsageEventName) event).getEventName();
+    String user          = event.getUserKey();         // may be null
+    Map<String, ?> props = event.toMap();              // feature + context attrs
+
+    // forward to your analytics backend here
+    myClient.track(name, user, props);
+  }
+}
+----
+
+You can also add default properties that are merged into every event for this plugin:
+
+[source,java]
+----
+MyAnalyticsPlugin plugin = new MyAnalyticsPlugin();
+plugin.getDefaultEventParams().put("app_version", "2.1.0");
+plugin.getDefaultEventParams().put("environment", "production");
+fhConfig.registerUsagePlugin(plugin);
+----
+
+If you need access to the raw usage stream without a plugin (e.g. to batch or filter events), you can register
+a callback directly on the repository:
+
+[source,java]
+----
+RepositoryEventHandler sub = fhConfig.getRepository()
+    .registerUsageStream(event -> myHandler(event));
+
+// later, to unsubscribe:
+sub.cancel();
+----
+
+=== Built-in adapters
+
+==== OpenTelemetry
+
+Attaches each feature evaluation to the active OpenTelemetry `Span` — either as span *attributes* (default,
+no extra cost) or as span *events* (enables multiple evaluations per span at the cost of additional data).
+
+[source,java]
+----
+// default prefix "featurehub.", attributes mode
+fhConfig.registerUsagePlugin(new OpenTelemetryUsagePlugin());
+
+// custom prefix
+fhConfig.registerUsagePlugin(new OpenTelemetryUsagePlugin("fh."));
+----
+
+Set `FEATUREHUB_OTEL_SPAN_AS_EVENTS=true` to switch to events mode. The plugin is safe to include even when
+OpenTelemetry is not active — it checks for a valid span before doing anything.
+
+See link:usage-adapters/featurehub-opentelemetry-adapter/README.adoc[OpenTelemetry adapter README] for details.
+
+==== Segment
+
+Integrates with Twilio Segment to push feature evaluation events and/or enrich all outgoing Segment messages
+with the current user's feature state.
+
+*Tracking individual feature evaluations*
+
+[source,java]
+----
+// simplest — reads key from env var FEATUREHUB_USAGE_SEGMENT_WRITE_KEY
+//             or system property featurehub.usage.segment-write-key
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin());
+
+// explicit write key
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin(segmentWriteKey));
+
+// bring your own OkHttpClient (proxies, timeouts, etc.) and optional message transformers
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin(segmentWriteKey, okHttpClient, transformers));
+
+// bring your own pre-built Analytics object
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin(myAnalytics));
+----
+
+*Augmenting all Segment messages with context* — use `SegmentMessageTransformer` to add the current user's
+feature values and context attributes to every outgoing Segment message (Track, Identify, etc.):
+
+[source,java]
+----
+SegmentMessageTransformer transformer = new SegmentMessageTransformer(
+    new Message.Type[]{Message.Type.TRACK, Message.Type.IDENTIFY},
+    () -> ThreadLocalContext.getContext(),  // how to retrieve the current ClientContext
+    false,                                  // useAnonymousUser
+    true                                    // setUserOnMessage
+);
+
+Analytics analytics = Analytics.builder(segmentWriteKey)
+    .messageTransformer(transformer)
+    .build();
+
+fhConfig.registerUsagePlugin(new SegmentUsagePlugin(analytics));
+----
+
+`SegmentMessageTransformer` calls `ClientContext.fillUsageCollection(UsageFeaturesCollectionContext)` to
+collect all evaluated features and context attributes, then sets them as Segment message context.
+
+See link:usage-adapters/featurehub-segment-adapter/README.adoc[Segment adapter README] for details.
+
+== Testing with the Test API
+
+FeatureHub provides a Test API endpoint that lets tests update feature values at runtime without restarting
+the server. This is used to drive CI/CD integration tests and BDD scenarios.
+
+Obtain a `TestApi` from the config (each transport implementation registers one via `ServiceLoader`):
+
+[source,java]
+----
+TestApi testApi = fhConfig.newTestApi();
+
+// change a feature — uses the first/only configured API key
+TestApiResult result = testApi.setFeatureState(
+    "MY_FEATURE",
+    new FeatureStateUpdate().lock(false).value(true)
+);
+
+if (result.isChanged()) {
+    // value was updated
+} else if (result.isNotChanged()) {
+    // already at that value — no action needed
+} else if (result.isNotPossible()) {
+    // feature is locked — unlock it first
+} else if (result.isNotPermitted()) {
+    // this API key does not have permission to change features
+} else if (result.isNonExistant()) {
+    // feature key or environment not found
+}
+
+testApi.close();
+----
+
+If you have multiple environments or API keys configured, you can target a specific one:
+
+[source,java]
+----
+testApi.setFeatureState(specificApiKey, "MY_FEATURE", update);
+----
+
+`TestApiResult` response codes at a glance:
+
+[cols="1,1,3"]
+|===
+|Method |HTTP code |Meaning
+
+|`isSuccess()`
+|2xx
+|Request was accepted.
+
+|`isChanged()`
+|201
+|Feature value was updated.
+
+|`isNotChanged()`
+|200 or 202
+|Feature was already in the requested state.
+
+|`isNonsense()`
+|400
+|Request was malformed (e.g. missing data).
+
+|`isNotPermitted()`
+|403
+|The API key does not have permission to change this feature.
+
+|`isNonExistant()`
+|404
+|Service key, environment, or feature key not found.
+
+|`isNotPossible()`
+|412
+|Operation not possible in current state (e.g. value change without unlocking first).
+|===
+
+See `examples/todo-cuke-java` for a complete BDD test harness using the Test API.
 
 == Hacking the SDK
 
@@ -345,14 +867,30 @@ If you want to specify and deliberately configure it, you can use:
 
 [source,java]
 ----
-fhConfig.setEdgeService(() => new EdgeProvider...());
+fhConfig.setEdgeService(() -> new EdgeProvider(...));
 ----
 
-Where EdgeProvider is the name of your class that knows how to connect to the Edge and pull feature details.
+Where `EdgeProvider` is the name of your class that knows how to connect to the Edge and pull feature details.
 
 There is an example in `examples/migration-check` which does a REST connection initially, and when it has
 the features, it will update the repository, allowing the features to be evaluated correctly, but stop the
-REST connection and swap to SSE. 
+REST connection and swap to SSE.
+
+=== Customising the repository
+
+By default `EdgeFeatureHubConfig` creates a `ClientFeatureRepository` with a single background thread.
+You can supply your own with a larger thread pool or a completely custom `ExecutorService`:
+
+[source,java]
+----
+// larger thread pool (min 3 threads, max is Math.max(n, 10))
+FeatureRepository repo = new ClientFeatureRepository(4);
+
+// bring your own executor
+FeatureRepository repo = new ClientFeatureRepository(myExecutorService);
+
+fhConfig.setRepository(repo);
+----
 
 == Working with the repository
 
@@ -364,12 +902,29 @@ build separately in CI. You can load the link:pom.xml and link:v17-and-above/pom
 
 === Modules
 
-Java 8 is used in the entire repository, consists of various artifacts:
+The SDK consists of the following published artifacts:
 
-- `core-java-api` - this is a local build of the SSE API from the main FeatureHub repository and will generally
-track that. It can be behind, but it will never be a breaking change.
-- `client-java-core` -  It
-holds the definition of all of the core functionality, including the feature repository, its features, listeners,
-usage and so forth. It does not connect to the outside world in any way, that is specific to
+- `io.featurehub.sdk:java-client-api` (`core/client-java-api`) — OpenAPI-generated SSE/REST model classes. Tracks the main FeatureHub repository; changes are always backwards compatible.
+- `io.featurehub.sdk:java-client-core` (`core/client-java-core`) — All domain logic: in-memory feature repository, `ClientContext`, rollout strategy evaluation (`ApplyFeature`), usage adapters, interceptors, and listener infrastructure. Does not connect to the outside world.
+- `io.featurehub.sdk:java-client-okhttp` (`client-implementations/java-client-okhttp`) — OKHttp-based `EdgeService`. The recommended transport.
+- `io.featurehub.sdk:java-client-jersey2` (`client-implementations/java-client-jersey2`) — JAX-RS 2.x transport.
+- `io.featurehub.sdk:java-client-jersey3` (`client-implementations/java-client-jersey3`) — Jakarta REST 3.x transport.
+- `io.featurehub.sdk:featurehub-okhttp3-jackson2` (`support/featurehub-okhttp3-jackson2`) — Convenience bundle: OKHttp + Jackson 2 + composites. Recommended for new projects.
+- `io.featurehub.sdk.common:common-jacksonv2` (`support/common-jacksonv2`) — Jackson 2.x JSON adapter. Required unless using `featurehub-okhttp3-jackson2`.
+- `io.featurehub.sdk.common:common-jacksonv3` (`v17-and-above/support/common-jacksonv3`) — Jackson 3.x JSON adapter. Requires Java 17+; built separately under `v17-and-above/`.
+- `io.featurehub.sdk.composites:composite-okhttp/jersey2/jersey3/logging` (`support/`) — Composite POMs that centralise compatible dependency versions. Import into `<dependencyManagement>` to inherit versions without pulling in the SDK itself.
 
+=== Java 17+ modules
 
+The `v17-and-above/` directory is a separate Maven reactor built with a JDK 17+ toolchain:
+
+[source,bash]
+----
+cd v17-and-above && mvn install
+----
+
+It contains:
+
+- `support/common-jacksonv3` — Jackson 3 adapter (incompatible with Java 11)
+- `examples/todo-java-springboot` — Spring Boot 7 example
+- `examples/todo-java-quarkus` — Quarkus native-image example
