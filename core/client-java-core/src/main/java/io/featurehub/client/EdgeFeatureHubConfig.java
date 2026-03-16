@@ -2,20 +2,21 @@ package io.featurehub.client;
 
 import io.featurehub.client.usage.UsageAdapter;
 import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageEventWithFeature;
 import io.featurehub.client.usage.UsagePlugin;
 import io.featurehub.javascript.JavascriptObjectMapper;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private static final Logger log = LoggerFactory.getLogger(EdgeFeatureHubConfig.class);
@@ -27,6 +28,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private final String edgeUrl;
   @NotNull
   private final List<String> apiKeys;
+  private final UUID environmentId;
   @NotNull
   private InternalFeatureRepository repository = new ClientFeatureRepository();
   @Nullable
@@ -78,6 +80,25 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     realtimeUrl = String.format("%s/features/%s", edgeUrl, apiKeys.get(0));
 
     usageAdapter = new UsageAdapter(repository);
+
+    // when a usage event comes in of the right type, we should tell the passive edge service to poll (check its cache)
+    usageAdapter.registerPlugin(new UsagePlugin() {
+      @Override
+      public void send(UsageEvent event) {
+        if (event instanceof UsageEventWithFeature && edgeType == EdgeType.REST_PASSIVE && edgeService != null) {
+          edgeService.poll();
+        }
+      }
+    });
+
+    String apiKey = apiKeys.get(0);
+    String[] parts = apiKey.split("/");
+    // as we only use it in streaming, and streaming only supports 1 API key...
+    environmentId = UUID.fromString(parts.length == 3 ? parts[1] : parts[0]);
+  }
+
+  public UUID getEnvironmentId() {
+    return environmentId;
   }
 
   @Override

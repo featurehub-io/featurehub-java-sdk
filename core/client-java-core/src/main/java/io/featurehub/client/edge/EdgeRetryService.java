@@ -2,10 +2,10 @@ package io.featurehub.client.edge;
 
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.sse.model.SSEResultState;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.concurrent.ExecutorService;
 
 public interface EdgeRetryService {
   void edgeResult(@NotNull EdgeConnectionState state, @NotNull EdgeReconnector reconnector);
@@ -18,7 +18,7 @@ public interface EdgeRetryService {
 
   @Nullable SSEResultState fromValue(String value);
   void convertSSEState(@NotNull SSEResultState state, String data, @NotNull InternalFeatureRepository
-                       repository);
+                       repository, UUID environmentId);
 
   void close();
 

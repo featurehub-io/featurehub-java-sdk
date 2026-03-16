@@ -1,8 +1,9 @@
 package io.featurehub.client;
 
-import io.featurehub.client.usage.UsageEvent;
-import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.client.usage.FeatureHubUsageValue;
+import io.featurehub.client.usage.UsageEvent;
+import io.featurehub.client.usage.UsageFeaturesCollection;
+import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
@@ -10,11 +11,6 @@ import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
 import io.featurehub.strategies.matchers.MatcherRegistry;
 import io.featurehub.strategies.percentage.PercentageMumurCalculator;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +19,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ClientFeatureRepository implements InternalFeatureRepository {
   private static class Callback<T> implements RepositoryEventHandler {
@@ -163,10 +164,19 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     if (!hasReceivedInitialState) {
       hasReceivedInitialState = true;
       readiness = Readiness.Ready;
+      broadcastInitialStateToUsage(states);
       broadcastReadyness();
     } else if (readiness != Readiness.Ready) {
       readiness = Readiness.Ready;
       broadcastReadyness();
+    }
+  }
+
+  protected void broadcastInitialStateToUsage(List<io.featurehub.sse.model.FeatureState> states) {
+    if (!usageHandlers.isEmpty()) {
+      final UsageFeaturesCollection uce = usageProvider.createUsageCollectionEvent();
+      uce.setFeatureValues(states.stream().map(fs -> new FeatureHubUsageValue(getFeat(fs.getKey()))).collect(Collectors.toList()));
+      recordUsageEvent(uce);
     }
   }
 
@@ -329,12 +339,14 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     broadcastReadyness();
   }
 
+
   @Override
   public void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType,
                    @Nullable Object value, @Nullable Map<String, List<String>> attributes,
-                   String usageUserKey) {
+                   String usageUserKey, @NotNull UUID environmentId) {
+
     recordUsageEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
-      value, valueType
+      value, valueType, environmentId
       ), attributes, usageUserKey));
   }
 

@@ -2,7 +2,6 @@ package io.featurehub.strategies.matchers;
 
 
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
-
 import java.net.InetAddress;
 
 public class IpAddressArrayMatcher implements StrategyMatcher {

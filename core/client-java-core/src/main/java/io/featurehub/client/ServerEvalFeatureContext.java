@@ -1,13 +1,12 @@
 package io.featurehub.client;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ServerEvalFeatureContext extends BaseClientContext {
   private static final Logger log = LoggerFactory.getLogger(ServerEvalFeatureContext.class);

@@ -72,8 +72,8 @@ public interface InternalFeatureRepository extends FeatureRepository {
   void repositoryEmpty();
 
   void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType, @Nullable Object value,
-            @Nullable Map<String, List<String>> attributes,
-            @Nullable String usageUserKey);
+            @Nullable Map<String, @Nullable List<String>> attributes,
+            @Nullable String usageUserKey, @NotNull UUID environmentId);
 
   @NotNull UsageProvider getUsageProvider();
 }

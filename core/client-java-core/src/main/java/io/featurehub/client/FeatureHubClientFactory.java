@@ -1,9 +1,8 @@
 package io.featurehub.client;
 
+import java.util.function.Supplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.function.Supplier;
 
 /**
  * allows the creation of a new edge service without knowing about the underlying implementation.

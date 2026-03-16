@@ -3,15 +3,15 @@ package io.featurehub.client;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsagePlugin;
 import io.featurehub.javascript.JavascriptObjectMapper;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface FeatureHubConfig {
 
@@ -144,4 +144,11 @@ public interface FeatureHubConfig {
   FeatureHubConfig restPassive();
 
   FeatureHubConfig recordUsageEvent(UsageEvent event);
+
+  /**
+   * Gets the EnvironmentID of the
+   * @return
+   */
+  UUID getEnvironmentId();
+
 }

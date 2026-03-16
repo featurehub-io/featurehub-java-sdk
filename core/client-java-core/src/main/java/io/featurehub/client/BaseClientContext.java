@@ -1,24 +1,22 @@
 package io.featurehub.client;
 
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.client.usage.UsageEvent;
-import io.featurehub.client.usage.UsageEventWithFeature;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
-import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class BaseClientContext implements InternalContext {
   private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);
@@ -124,24 +122,14 @@ class BaseClientContext implements InternalContext {
 
   @Override
   public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
-                             @NotNull FeatureValueType valueType) {
+                             @NotNull FeatureValueType valueType, @NotNull UUID environmentId) {
     final HashMap<String, List<String>> attrCopy = new HashMap<>(attributes);
     final String userKey = usageUserKey();
 
     log.trace("recording usage for key: {}, id: {}, value: {}, valueType: {}, userKey: {}, attributes: {}",
       key, id, val, valueType, userKey, attrCopy);
 
-    repository.execute(() -> {
-      try {
-        repository.used(key, id, valueType, val, attrCopy, userKey);
-
-        // a feature has been evaluated, so this allows us to trigger to see if the
-        // time limit has expired on checking for a state update.
-        edgeService.poll().get();
-      } catch (Exception e) {
-        log.error("Failed to poll", e);
-      }
-    });
+    repository.used(key, id, valueType, val, attrCopy, userKey, environmentId);
   }
 
   /**
@@ -154,9 +142,8 @@ class BaseClientContext implements InternalContext {
     return getAttr("session", getAttr("userkey"));
   }
 
-
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordUsageEvent(new UsageEventWithFeature(
+    repository.recordUsageEvent(repository.getUsageProvider().createUsageEventWithFeature(
       new FeatureHubUsageValue(feature.withContext(this)), attributes,
       usageUserKey()));
   }

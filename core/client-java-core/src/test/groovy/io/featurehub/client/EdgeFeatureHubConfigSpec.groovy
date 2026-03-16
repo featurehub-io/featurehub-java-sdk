@@ -17,7 +17,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
   EdgeService edgeClient
 
   def setup() {
-    config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
+    config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/123*abc")
     edgeClient = Mock(EdgeService)
     config.setEdgeService { -> edgeClient }
   }
@@ -69,7 +69,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
   def "when i create a client evaluated feature context it should auto find the provider"() {
     given: "i clean up the static provider"
       FeatureHubTestClientFactory.fake = null
-      config = new EdgeFeatureHubConfig("http://localhost", "2*3")
+      config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/2*3")
     when: "i create a new client"
       def context = config.newContext()
     then:
@@ -82,7 +82,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
 
   def "when i create a server evaluated feature context it should auto find the provider"() {
     given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123-abc")
+      def config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/123-abc")
     when: "i create a new client"
       def context = config.newContext()
     and: "i create a second client"
@@ -94,17 +94,18 @@ class EdgeFeatureHubConfigSpec extends Specification {
 
   def "initialising gets the urls correct and detects server evaluated context"() {
     when: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123-abc")
+      def apiKey = "${UUID.randomUUID()}/123-abc"
+      def config = new EdgeFeatureHubConfig("http://localhost/", apiKey)
     then:
-      config.apiKey() == '123-abc'
+      config.apiKey() == apiKey
       config.baseUrl() == 'http://localhost'
-      config.realtimeUrl == 'http://localhost/features/123-abc'
+      config.realtimeUrl == "http://localhost/features/${apiKey}"
       config.isServerEvaluation()
   }
 
   def "initialising detects client evaluated context"() {
     when: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
+      def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc")
     then:
       !config.isServerEvaluation()
   }
@@ -142,7 +143,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def clientContext = Mock(ClientContext)
 
     and: "A client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+      def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc") {
         @Override
         ClientContext newContext() {
           return clientContext
@@ -164,7 +165,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
     def clientContext = Mock(ClientContext)
 
     and: "A client eval feature config"
-    def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+    def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc") {
       @Override
       ClientContext newContext() {
         return clientContext

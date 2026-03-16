@@ -1,9 +1,7 @@
 package io.featurehub.client.usage;
 
-import io.featurehub.client.ClientContext;
 import io.featurehub.client.FeatureRepository;
 import io.featurehub.client.RepositoryEventHandler;
-
 import java.util.LinkedList;
 import java.util.List;
 

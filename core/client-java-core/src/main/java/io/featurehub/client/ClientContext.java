@@ -4,12 +4,11 @@ import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface ClientContext {
   String get(String key, String defaultValue);

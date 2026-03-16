@@ -1,7 +1,6 @@
 package io.featurehub.strategies.matchers;
 
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
-
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.function.Supplier;

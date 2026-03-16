@@ -1,23 +1,21 @@
 package io.featurehub.client;
 
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
-import io.featurehub.sse.model.RolloutStrategyFieldType;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
+import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
+import io.featurehub.sse.model.RolloutStrategyFieldType;
 import io.featurehub.strategies.matchers.MatcherRepository;
 import io.featurehub.strategies.percentage.PercentageCalculator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ApplyFeature {
   private static final Logger log = LoggerFactory.getLogger(ApplyFeature.class);

@@ -1,14 +1,13 @@
 package io.featurehub.client;
 
 import io.featurehub.sse.model.FeatureValueType;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.util.*;
 
 /**
  * This class is just the base class to avoid a lot of duplication effort and to ensure the
@@ -87,6 +86,9 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     return (feature.fs == null) ? "" : feature.fs.getId().toString();
   }
 
+  @Nullable
+  public UUID getEnvironmentId() { return feature.fs == null ? null : feature.fs.getEnvironmentId(); }
+
   @Override
   public @NotNull String getKey() {
     return feature.fs == null ? feature.key : feature.fs.getKey();
@@ -161,8 +163,9 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
     // was there an overridden value?
     if (vm != null) {
+      // did we want to trigger usage and is this a real feature?
       return triggerUsage && feature.fs != null && feature.fs.getId() != null ?
-        used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type) :
+        used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type, feature.fs.getEnvironmentId()) :
         vm.value;
     }
 
@@ -181,22 +184,22 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
       log.trace("feature is {}", applied);
       if (applied.isMatched()) {
-        return triggerUsage ? used(feature.key, feature.fs.getId(), applied.getValue(), type) : applied.getValue();
+        return triggerUsage ? used(feature.key, feature.fs.getId(), applied.getValue(), type, feature.fs.getEnvironmentId()) : applied.getValue();
       }
     } else {
       log.trace("feature `{}` has no strategies or there is no context, falling back to default value of {}", getKey(), feature.fs.getValue());
     }
 
-    return triggerUsage ? used(feature.key, feature.fs.getId(), feature.fs.getValue(), type) :
+    return triggerUsage ? used(feature.key, feature.fs.getId(), feature.fs.getValue(), type, feature.fs.getEnvironmentId()) :
       feature.fs.getValue();
   }
 
-  Object used(@NotNull String key, @NotNull UUID id, @Nullable Object value, @NotNull FeatureValueType type) {
+  Object used(@NotNull String key, @NotNull UUID id, @Nullable Object value, @NotNull FeatureValueType type, @NotNull UUID environmentId) {
     if (context != null) {
-      context.used(key, id, value, type);
+      context.used(key, id, value, type, environmentId);
     } else {
       log.trace("calling used with  {}", value);
-      repository.used(key, id, type, value, null, null);
+      repository.used(key, id, type, value, null, null, environmentId);
     }
 
     return value;

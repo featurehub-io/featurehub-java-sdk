@@ -1,11 +1,10 @@
 package io.featurehub.client;
 
 import io.featurehub.sse.model.FeatureValueType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.math.BigDecimal;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface FeatureState<K> {
   /**
