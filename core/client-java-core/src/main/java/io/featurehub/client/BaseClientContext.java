@@ -2,6 +2,7 @@ package io.featurehub.client;
 
 import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.client.usage.UsageEvent;
+import java.math.BigDecimal;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
 import io.featurehub.sse.model.FeatureValueType;
@@ -243,6 +244,67 @@ class BaseClientContext implements InternalContext {
   public boolean isEnabled(String name) {
     // we use this mechanism as it will return the state within the context (vs repository which might be different)
     return feature(name).isEnabled();
+  }
+
+  @Override
+  public boolean isEnabled(Feature name, boolean defaultValue) {
+    return isEnabled(name.name(), defaultValue);
+  }
+
+  @Override
+  public boolean isEnabled(String name, boolean defaultValue) {
+    return feature(name).isEnabled(defaultValue);
+  }
+
+  @Override
+  public boolean getFlag(Feature name, boolean defaultValue) {
+    return getFlag(name.name(), defaultValue);
+  }
+
+  @Override
+  public boolean getFlag(String name, boolean defaultValue) {
+    return feature(name).getFlag(defaultValue);
+  }
+
+  @Override
+  public @Nullable String getString(Feature name, @Nullable String defaultValue) {
+    return getString(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable String getString(String name, @Nullable String defaultValue) {
+    return feature(name).getString(defaultValue);
+  }
+
+  @Override
+  public @Nullable BigDecimal getNumber(Feature name, @Nullable BigDecimal defaultValue) {
+    return getNumber(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable BigDecimal getNumber(String name, @Nullable BigDecimal defaultValue) {
+    return feature(name).getNumber(defaultValue);
+  }
+
+  @Override
+  public @Nullable String getRawJson(Feature name, @Nullable String defaultValue) {
+    return getRawJson(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable String getRawJson(String name, @Nullable String defaultValue) {
+    return feature(name).getRawJson(defaultValue);
+  }
+
+  @Override
+  public @Nullable <K> K getValue(Feature name, Class<K> clazz, @Nullable K defaultValue) {
+    return getValue(name.name(), clazz, defaultValue);
+  }
+
+  @Override
+  @SuppressWarnings("unchecked")
+  public @Nullable <K> K getValue(String name, Class<K> clazz, @Nullable K defaultValue) {
+    return ((FeatureState<K>) feature(name)).getValue(clazz, defaultValue);
   }
 
   @Override

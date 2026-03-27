@@ -4,6 +4,7 @@ import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -57,6 +58,24 @@ public interface ClientContext {
    */
   boolean isEnabled(String name);
   boolean isEnabled(Feature name);
+
+  boolean isEnabled(String name, boolean defaultValue);
+  boolean isEnabled(Feature name, boolean defaultValue);
+
+  boolean getFlag(String name, boolean defaultValue);
+  boolean getFlag(Feature name, boolean defaultValue);
+
+  @Nullable String getString(String name, @Nullable String defaultValue);
+  @Nullable String getString(Feature name, @Nullable String defaultValue);
+
+  @Nullable BigDecimal getNumber(String name, @Nullable BigDecimal defaultValue);
+  @Nullable BigDecimal getNumber(Feature name, @Nullable BigDecimal defaultValue);
+
+  @Nullable String getRawJson(String name, @Nullable String defaultValue);
+  @Nullable String getRawJson(Feature name, @Nullable String defaultValue);
+
+  @Nullable <K> K getValue(String name, Class<K> clazz, @Nullable K defaultValue);
+  @Nullable <K> K getValue(Feature name, Class<K> clazz, @Nullable K defaultValue);
 
   boolean isSet(String name);
   boolean isSet(Feature name);

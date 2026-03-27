@@ -14,6 +14,11 @@ public interface FeatureState<K> {
 
   @Nullable String getString();
 
+  default @Nullable String getString(@Nullable String defaultValue) {
+    String val = getString();
+    return val == null ? defaultValue : val;
+  }
+
   /**
    * @deprecated recommend now using the getFlag() method
    */
@@ -26,6 +31,11 @@ public interface FeatureState<K> {
    */
   @Nullable Boolean getFlag();
 
+  default boolean getFlag(boolean defaultValue) {
+    Boolean val = getFlag();
+    return val == null ? defaultValue : val;
+  }
+
   /**
    * Gets the value raw and tries to make it appear as the type you request, regardless of
    * the underlying type. If it is a boolean and you ask for it as a string, it will still be a bool and
@@ -36,9 +46,24 @@ public interface FeatureState<K> {
    */
   @Nullable K getValue(Class<K> clazz);
 
+  default @Nullable K getValue(Class<K> clazz, @Nullable K defaultValue) {
+    K val = getValue(clazz);
+    return val == null ? defaultValue : val;
+  }
+
   @Nullable BigDecimal getNumber();
 
+  default @Nullable BigDecimal getNumber(@Nullable BigDecimal defaultValue) {
+    BigDecimal val = getNumber();
+    return val == null ? defaultValue : val;
+  }
+
   @Nullable String getRawJson();
+
+  default @Nullable String getRawJson(@Nullable String defaultValue) {
+    String val = getRawJson();
+    return val == null ? defaultValue : val;
+  }
 
   @Nullable <T> T getJson(Class<T> type);
 
@@ -46,6 +71,11 @@ public interface FeatureState<K> {
    * true if the flag is boolean and is true
    */
   boolean isEnabled();
+
+  default boolean isEnabled(boolean defaultValue) {
+    Boolean val = getFlag();
+    return val == null ? defaultValue : val;
+  }
 
   boolean isSet();
 
