@@ -41,4 +41,8 @@
     <module>usage-adapters</module>
 <!--    <module>unmaintained</module>-->
   </modules>
+
+  <properties>
+    <gib.disable>true</gib.disable>
+  </properties>
 </project>

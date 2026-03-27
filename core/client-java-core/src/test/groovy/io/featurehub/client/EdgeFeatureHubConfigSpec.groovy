@@ -31,17 +31,13 @@ class EdgeFeatureHubConfigSpec extends Specification {
       0 * _
   }
 
-  def "if we use a client eval key, closing after a newContext and re-opening will get a new connection"() {
-    when: "i ask for a new context"
-      def ctx1 = config.newContext()
+  def "closing after a newContext marks isClosed and prevents re-opening"() {
+    when:
+      config.newContext()
       config.close()
-    and: "i ask again"
-      def ctx2 = config.newContext()
+      config.newContext()
     then:
-      ctx1 != null
-      ctx2 != null
-      ctx1 != ctx2
-      config.edgeService.get() == edgeClient
+      thrown(ConfigurationClosedException)
       1 * edgeClient.close()
       0 * _
   }
@@ -177,5 +173,173 @@ class EdgeFeatureHubConfigSpec extends Specification {
       1 * futureContext.get(1, TimeUnit.MILLISECONDS) >> { throw new TimeoutException() }
       1 * clientContext.build() >> futureContext
       0 * _
+  }
+
+  // --- waitForReady tests ---
+
+  def "waitForReady returns true immediately when already ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.Ready
+    when:
+      def result = config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.Ready)
+  }
+
+  def "waitForReady returns false when timeout elapses before ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.NotReady
+    when:
+      def result = config.waitForReady(250, TimeUnit.MILLISECONDS)
+    then:
+      !result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.NotReady)
+  }
+
+  def "waitForReady polls edge service and returns true when readiness transitions to Ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      def callCount = 0
+      repo.getReadiness() >> { callCount++ < 2 ? Readiness.NotReady : Readiness.Ready }
+    when:
+      def result = config.waitForReady(2, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.NotReady)
+  }
+
+  def "waitForReady throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "waitForReady creates edge service if newContext has not been called yet"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.Ready
+    when: "waitForReady is called without a prior newContext"
+      def result = config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.Ready)
+  }
+
+  // --- closed-state tests ---
+
+  def "isClosed is false before close and true after"() {
+    expect:
+      !config.isClosed()
+    when:
+      config.close()
+    then:
+      config.isClosed()
+  }
+
+  def "close is idempotent"() {
+    when:
+      config.close()
+      config.close()
+    then:
+      noExceptionThrown()
+  }
+
+  def "getReadiness returns NotReady after close"() {
+    when:
+      config.close()
+    then:
+      config.getReadiness() == Readiness.NotReady
+  }
+
+  def "getRepository and getInternalRepository return null after close"() {
+    when:
+      config.close()
+    then:
+      config.getRepository() == null
+      config.getInternalRepository() == null
+  }
+
+  def "getEdgeService returns null after close"() {
+    when:
+      config.close()
+    then:
+      config.getEdgeService() == null
+  }
+
+  def "init throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.init()
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "init with timeout throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.init(1, TimeUnit.SECONDS)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "addReadinessListener throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.addReadinessListener({ } as Consumer<Readiness>)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "registerValueInterceptor throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.registerValueInterceptor(Mock(ExtendedFeatureValueInterceptor))
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "registerRawUpdateFeatureListener throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.registerRawUpdateFeatureListener(Mock(RawUpdateFeatureListener))
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "fluent configuration setters are silently ignored after close"() {
+    when:
+      config.close()
+    then:
+      config.streaming() == config
+      config.restActive() == config
+      config.restPassive() == config
+      config.setEdgeService({ null }) == config
+      config.setJsonConfigObjectMapper(Mock(JavascriptObjectMapper)) == config
+      config.recordUsageEvent(null) == config
+      noExceptionThrown()
+  }
+
+  def "apiKey, baseUrl and isServerEvaluation still work after close"() {
+    when:
+      config.close()
+    then:
+      config.apiKey() != null
+      config.baseUrl() == 'http://localhost'
+      !config.isServerEvaluation()
   }
 }

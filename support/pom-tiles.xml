@@ -41,4 +41,8 @@
     <module>tile-sdk</module>
     <module>tile-release</module>
   </modules>
+
+  <properties>
+    <gib.disable>true</gib.disable>
+  </properties>
 </project>

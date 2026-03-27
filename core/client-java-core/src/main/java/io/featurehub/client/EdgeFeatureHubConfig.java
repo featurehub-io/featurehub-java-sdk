@@ -29,7 +29,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @NotNull
   private final List<String> apiKeys;
   private final UUID environmentId;
-  @NotNull
+  @Nullable
   private InternalFeatureRepository repository = new ClientFeatureRepository();
   @Nullable
   private EdgeService edgeService;
@@ -42,7 +42,9 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Nullable TestApi testApi;
 
-  @NotNull private final UsageAdapter usageAdapter;
+  @Nullable private UsageAdapter usageAdapter;
+
+  private volatile boolean closed = false;
 
   private EdgeType edgeType = EdgeType.REST_PASSIVE;
   private int timeout;
@@ -102,7 +104,19 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
+  public boolean isClosed() {
+    return closed;
+  }
+
+  private void checkClosed() {
+    if (closed) {
+      throw new ConfigurationClosedException();
+    }
+  }
+
+  @Override
   public FeatureHubConfig registerUsagePlugin(@NotNull UsagePlugin plugin) {
+    checkClosed();
     usageAdapter.registerPlugin(plugin);
     return this;
   }
@@ -135,14 +149,18 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
    */
   @Override
   public Future<ClientContext> init() {
+    checkClosed();
     return newContext().build();
   }
 
   @Override
   public void init(long timeout, TimeUnit unit) {
+    checkClosed();
     try {
       final Future<ClientContext> futureContext = newContext().build();
       futureContext.get(timeout, unit);
+    } catch (ConfigurationClosedException e) {
+      throw e;
     } catch (Exception e) {
       log.warn("Failed to initialize FeatureHub client", e);
     }
@@ -156,6 +174,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   @NotNull
   public ClientContext newContext() {
+    checkClosed();
     if (this.edgeService == null) {
       this.edgeService = loadEdgeService(repository).get();
     }
@@ -175,7 +194,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
    * dynamically load an edge service implementation
    */
   @NotNull
-  protected Supplier<EdgeService> loadEdgeService(@NotNull  InternalFeatureRepository repository) {
+  protected Supplier<EdgeService> loadEdgeService(@NotNull InternalFeatureRepository repository) {
     if (edgeServiceSupplier == null) {
       ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 
@@ -201,76 +220,116 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig setRepository(@NotNull FeatureRepository repository) {
+    if (closed) return this;
     this.repository = (InternalFeatureRepository) repository;
     return this;
   }
 
   @Override
-  @NotNull
+  @Nullable
   public FeatureRepository getRepository() {
     return repository;
   }
 
   @Override
-  public @NotNull InternalFeatureRepository getInternalRepository() {
+  public @Nullable InternalFeatureRepository getInternalRepository() {
     return repository;
   }
 
   @Override
   public FeatureHubConfig setEdgeService(@NotNull Supplier<EdgeService> edgeService) {
+    if (closed) return this;
     this.edgeServiceSupplier = edgeService;
     return this;
   }
 
   @Override
-  @NotNull
+  @Nullable
   public Supplier<EdgeService> getEdgeService() {
+    if (closed) return null;
     return loadEdgeService(repository);
   }
 
   @Override
   public @NotNull RepositoryEventHandler addReadinessListener(@NotNull Consumer<Readiness> readinessListener) {
+    checkClosed();
     return repository.addReadinessListener(readinessListener);
   }
 
   @Override
   public FeatureHubConfig registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor) {
-    getRepository().registerValueInterceptor(allowLockOverride, interceptor);
+    checkClosed();
+    repository.registerValueInterceptor(allowLockOverride, interceptor);
     return this;
   }
 
   @Override
   public FeatureHubConfig registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor) {
-    getRepository().registerValueInterceptor(interceptor);
+    checkClosed();
+    repository.registerValueInterceptor(interceptor);
     return this;
   }
 
   @Override
   public FeatureHubConfig registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener) {
-    getRepository().registerRawUpdateFeatureListener(listener);
+    checkClosed();
+    repository.registerRawUpdateFeatureListener(listener);
     return this;
   }
 
   @Override
   public FeatureHubConfig recordUsageEvent(UsageEvent event) {
-    getInternalRepository().recordUsageEvent(event);
+    if (closed) return this;
+    repository.recordUsageEvent(event);
     return this;
   }
 
   @Override
   @NotNull
   public Readiness getReadiness() {
-    return getRepository().getReadiness();
+    if (closed) return Readiness.NotReady;
+    return repository.getReadiness();
   }
 
   @Override
   public FeatureHubConfig setJsonConfigObjectMapper(@NotNull JavascriptObjectMapper jsonConfigObjectMapper) {
-    getRepository().setJsonConfigObjectMapper(jsonConfigObjectMapper);
+    if (closed) return this;
+    repository.setJsonConfigObjectMapper(jsonConfigObjectMapper);
     return this;
   }
 
   @Override
+  public boolean waitForReady(long timeout, TimeUnit unit) {
+    checkClosed();
+
+    if (edgeService == null) {
+      edgeService = loadEdgeService(repository).get();
+    }
+
+    edgeService.poll();
+
+    long deadlineMs = System.currentTimeMillis() + unit.toMillis(timeout);
+
+    while (getReadiness() != Readiness.Ready) {
+      if (System.currentTimeMillis() >= deadlineMs) {
+        return false;
+      }
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  @Override
   public void close() {
+    if (closed) return;
+    closed = true;
+
     if (edgeService != null) {
       log.trace("closing edge connection");
       edgeService.close();
@@ -281,10 +340,18 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       testApi.close();
       testApi = null;
     }
+    if (usageAdapter != null) {
+      usageAdapter.close();
+      usageAdapter = null;
+    }
+    edgeServiceSupplier = null;
+    serverEvalFeatureContext = null;
+    repository = null;
   }
 
   @Override
   public FeatureHubConfig streaming() {
+    if (closed) return this;
     edgeType = EdgeType.STREAMING;
     timeout = 0;
     return this;
@@ -296,6 +363,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig restActive() {
+    if (closed) return this;
     this.timeout = 180;
     edgeType = EdgeType.REST_ACTIVE;
     return this;
@@ -303,6 +371,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig restActive(int intervalInSeconds) {
+    if (closed) return this;
     this.timeout = intervalInSeconds;
     edgeType = EdgeType.REST_ACTIVE;
     return this;
@@ -310,6 +379,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig restPassive(int cacheTimeoutInSeconds) {
+    if (closed) return this;
     this.timeout = cacheTimeoutInSeconds;
     edgeType = EdgeType.REST_PASSIVE;
     return this;
@@ -317,6 +387,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Override
   public FeatureHubConfig restPassive() {
+    if (closed) return this;
     this.timeout = 180;
     edgeType = EdgeType.REST_PASSIVE;
     return this;
