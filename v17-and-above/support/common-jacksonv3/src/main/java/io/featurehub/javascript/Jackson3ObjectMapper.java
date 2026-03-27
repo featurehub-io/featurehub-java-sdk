@@ -1,24 +1,28 @@
 package io.featurehub.javascript;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.SerializationFeature;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureStateUpdate;
-import org.jetbrains.annotations.NotNull;
-import tools.jackson.databind.cfg.DateTimeFeature;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 // migration guide: https://github.com/FasterXML/jackson/blob/main/jackson3/MIGRATING_TO_JACKSON_3.md
 
 public class Jackson3ObjectMapper implements JavascriptObjectMapper {
   private static ObjectMapper mapper;
+  private static final Logger log = LoggerFactory.getLogger(Jackson3ObjectMapper.class);
 
   static {
     mapper = JsonMapper.builder()
@@ -28,6 +32,18 @@ public class Jackson3ObjectMapper implements JavascriptObjectMapper {
       .changeDefaultPropertyInclusion(incl -> incl.withContentInclusion(JsonInclude.Include.NON_NULL))
       .build();
 
+  }
+
+  @Override
+  public @Nullable String writeValueAsString(@Nullable Object data) {
+    if (data == null) return null;
+
+    try {
+      return mapper.writeValueAsString(data);
+    } catch (JacksonException e) {
+      log.error("Unable to write object as string", e);
+      return null;
+    }
   }
 
   @Override

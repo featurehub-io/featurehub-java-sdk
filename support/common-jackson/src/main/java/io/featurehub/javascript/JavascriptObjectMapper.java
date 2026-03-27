@@ -4,6 +4,7 @@ import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureStateUpdate;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.List;
@@ -22,4 +23,5 @@ public interface JavascriptObjectMapper {
   @NotNull List<FeatureEnvironmentCollection> readFeatureCollection(@NotNull String data) throws IOException;
 
   @NotNull String featureStateUpdateToString(FeatureStateUpdate data) throws IOException;
+  @Nullable String writeValueAsString(@Nullable Object data);
 }
