@@ -2,38 +2,13 @@ package io.featurehub.sdk.yaml
 
 import io.featurehub.client.ExtendedFeatureValueInterceptor
 import io.featurehub.client.FeatureRepository
-import io.featurehub.client.InternalFeatureRepository
-import io.featurehub.javascript.JavascriptObjectMapper
 import io.featurehub.sse.model.FeatureState
 import io.featurehub.sse.model.FeatureValueType
-import spock.lang.Specification
-import spock.lang.TempDir
-
-import java.nio.file.Path
 
 
-class LocalYamlValueInterceptorSpec extends Specification {
-  @TempDir Path tempDir
-
-  InternalFeatureRepository internalRepo = Mock()
-  JavascriptObjectMapper jsonMapper = Mock()
+class LocalYamlValueInterceptorSpec extends YamlSpecBase {
   FeatureRepository repo = Mock()
   FeatureState featureState = Mock()
-
-  def setup() {
-    internalRepo.getJsonObjectMapper() >> jsonMapper
-    jsonMapper.writeValueAsString(_) >> { args ->
-      def obj = args[0]
-      if (obj instanceof Map) {
-        def entries = obj.collect { k, v -> "\"${k}\":\"${v}\"" }.join(',')
-        return "{${entries}}"
-      } else if (obj instanceof List) {
-        def items = obj.collect { "\"${it}\"" }.join(',')
-        return "[${items}]"
-      }
-      return "\"${obj}\""
-    }
-  }
 
   String testYaml() {
     getClass().getResource('/test-features.yaml').getFile()

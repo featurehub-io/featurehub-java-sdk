@@ -10,10 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
-
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.ClosedWatchServiceException;
@@ -63,28 +60,7 @@ public class LocalYamlValueInterceptor implements ExtendedFeatureValueIntercepto
   }
 
   void loadFile() {
-    if (!yamlFile.exists()) {
-      log.debug("YAML override file {} not found, no overrides applied", yamlFile.getAbsolutePath());
-      flagValues.set(Collections.emptyMap());
-      return;
-    }
-
-    try (FileInputStream fis = new FileInputStream(yamlFile)) {
-      Map<String, Object> data = new Yaml().load(fis);
-
-      if (data != null && data.get("flagValues") instanceof Map) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> values = (Map<String, Object>) data.get("flagValues");
-        flagValues.set(values);
-        log.debug("Loaded {} feature override(s) from {}", values.size(), yamlFile.getName());
-      } else {
-        log.debug("No flagValues map found in {}", yamlFile.getName());
-        flagValues.set(Collections.emptyMap());
-      }
-    } catch (IOException e) {
-      log.error("Failed to load YAML override file {}", yamlFile.getAbsolutePath(), e);
-      flagValues.set(Collections.emptyMap());
-    }
+    flagValues.set(YamlLoader.readFlagValues(yamlFile, log));
   }
 
   private void startWatching() {

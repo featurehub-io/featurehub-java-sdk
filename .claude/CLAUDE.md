@@ -82,6 +82,50 @@ ClientContext ctx = fhConfig.newContext()
 boolean enabled = ctx.isEnabled("MY_FEATURE");
 ```
 
+### Jackson Abstraction Pattern
+
+This repository deliberately abstracts all Jackson JSON functionality behind an interface so that
+modules remain independent of the Jackson major version in use at runtime.
+
+**Three libraries form the pattern:**
+
+- **`support/common-jackson`** (`io.featurehub.sdk.common:common-jackson`) — the API-only module.
+  Contains the `JavascriptObjectMapper` interface and nothing else. Has no dependency on any Jackson
+  library itself. This is the only Jackson-related artifact that production code should depend on.
+
+- **`support/common-jacksonv2`** (`io.featurehub.sdk.common:common-jacksonv2`) — implements
+  `JavascriptObjectMapper` using Jackson 2.x (`com.fasterxml.jackson`). Registered via Java
+  `ServiceLoader` so it is discovered automatically when on the classpath.
+
+- **`v17-and-above/support/common-jacksonv3`** (`io.featurehub.sdk.common:common-jacksonv3`) —
+  implements `JavascriptObjectMapper` using Jackson 3.x (`tools.jackson`). Java 17+ only.
+  Also registered via `ServiceLoader`.
+
+**Rules when writing or modifying code:**
+
+1. **Never add `jackson-databind`, `jackson-core`, or any `com.fasterxml.jackson` / `tools.jackson`
+   dependency directly to a production module's `pom.xml`.** If JSON functionality is needed,
+   depend on `common-jackson` instead and use the `JavascriptObjectMapper` interface.
+
+2. **If the required functionality is not available on the `JavascriptObjectMapper` interface,
+   stop and ask for direction** — do not reach for Jackson directly or widen the interface
+   without discussion.
+
+3. **For tests that need real Jackson behaviour** (e.g. to back a mock or verify serialisation),
+   add `common-jacksonv2` as a `<scope>test</scope>` dependency. This provides a concrete
+   implementation without polluting production code with a Jackson version choice.
+
+**Example test pom.xml entry:**
+
+```xml
+<dependency>
+  <groupId>io.featurehub.sdk.common</groupId>
+  <artifactId>common-jacksonv2</artifactId>
+  <version>[1.1, 2)</version>
+  <scope>test</scope>
+</dependency>
+```
+
 ### Build Infrastructure Notes
 
 - **Maven Tiles** (`support/tile-java8`, `tile-java11`, `tile-java21`, `tile-sdk`, `tile-release`) provide shared plugin/compiler configuration. The `pom-tiles.xml` in `support/` must be installed before any other module.
