@@ -212,7 +212,7 @@ public class RestClient implements EdgeService {
 
   protected void processFailure(@NotNull IOException e) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE);
+    repository.notify(SSEResultState.FAILURE, "polling");
     busy = false;
     completeReadiness();
   }
@@ -256,7 +256,7 @@ public class RestClient implements EdgeService {
 
         log.trace("updating feature repository: {}", states);
 
-        repository.updateFeatures(states);
+        repository.updateFeatures(states, "polling");
 
         if (response.code() == 236) {
           this.stopped = true; // prevent any further requests
@@ -270,7 +270,7 @@ public class RestClient implements EdgeService {
         // 401 and 403 are possible because of misconfiguration
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
-        repository.notify(SSEResultState.FAILURE);
+        repository.notify(SSEResultState.FAILURE, "polling");
       }
       // could be a 304 or 5xx as expected possible results
     } catch (Exception e) {

@@ -33,6 +33,7 @@ public interface FeatureRepository {
    */
   @NotNull FeatureRepository registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
   @NotNull FeatureRepository registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor);
+  @NotNull FeatureRepository registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener);
   void registerUsageProvider(@NotNull UsageProvider provider);
 
   @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(@NotNull Consumer<FeatureRepository> callback);

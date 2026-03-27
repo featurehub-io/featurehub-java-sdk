@@ -54,6 +54,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<FeatureState<?>>> featureUpdateHandlers = new ArrayList<>();
   private final List<FeatureValueInterceptorHolder> featureValueInterceptors = new ArrayList<>();
   private final List<ExtendedFeatureValueInterceptor> extendedFeatureValueInterceptors = new ArrayList<>();
+  private final List<RawUpdateFeatureListener> rawUpdateFeatureListeners = new ArrayList<>();
   private final List<Callback<UsageEvent>> usageHandlers = new ArrayList<>();
   private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
 
@@ -119,6 +120,12 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
+  public @NotNull FeatureRepository registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener) {
+    rawUpdateFeatureListeners.add(listener);
+    return this;
+  }
+
+  @Override
   public void registerUsageProvider(@NotNull UsageProvider provider) {
     this.usageProvider = provider;
   }
@@ -139,7 +146,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void notify(@NotNull SSEResultState state) {
+  public void notify(@NotNull SSEResultState state, @NotNull String source) {
     log.trace("received state {}", state);
     try {
       switch (state) {
@@ -160,13 +167,14 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void updateFeatures(@NotNull List<io.featurehub.sse.model.FeatureState> features) {
-    updateFeatures(features, false);
+  public void updateFeatures(@NotNull List<io.featurehub.sse.model.FeatureState> features, @NotNull String source) {
+    updateFeatures(features, false, source);
   }
 
   @Override
-  public void updateFeatures(List<io.featurehub.sse.model.FeatureState> states, boolean force) {
-    states.forEach(s -> updateFeature(s, force));
+  public void updateFeatures(List<io.featurehub.sse.model.FeatureState> states, boolean force, @NotNull String source) {
+    states.forEach(s -> updateFeatureInternal(s, force, source));
+    rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeatures(states, source)));
 
     if (!hasReceivedInitialState) {
       hasReceivedInitialState = true;
@@ -195,7 +203,9 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public void execute(@NotNull Runnable command) {
-    executor.execute(command);
+    if (!executor.isShutdown()) {
+      executor.execute(command);
+    }
   }
 
   @Override
@@ -218,6 +228,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   public void close() {
     log.info("featurehub repository closing");
     extendedFeatureValueInterceptors.forEach(ExtendedFeatureValueInterceptor::close);
+    rawUpdateFeatureListeners.forEach(RawUpdateFeatureListener::close);
     features.clear();
 
     readiness = Readiness.NotReady;
@@ -248,9 +259,11 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     }
   }
 
-  public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue) {
+  @Override
+  public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue, @NotNull String source) {
     readValue.setValue(null);
-    updateFeature(readValue);
+    updateFeatureInternal(readValue, false, source);
+    rawUpdateFeatureListeners.forEach(l -> execute(() -> l.deleteFeature(readValue, source)));
   }
 
   @Override
@@ -273,12 +286,21 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     return getFeat(key, clazz);
   }
 
-  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState) {
-    return updateFeature(featureState, false);
+  @Override
+  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, @NotNull String source) {
+    boolean changed = updateFeatureInternal(featureState, false, source);
+    rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeature(featureState, source)));
+    return changed;
   }
 
   @Override
-  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force) {
+  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force, @NotNull String source) {
+    boolean changed = updateFeatureInternal(featureState, force, source);
+    rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeature(featureState, source)));
+    return changed;
+  }
+
+  private boolean updateFeatureInternal(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force, @NotNull String source) {
     FeatureStateBase<?> holder = features.get(featureState.getKey());
     if (holder == null) {
       holder = new FeatureStateBase<>(this, featureState.getKey());

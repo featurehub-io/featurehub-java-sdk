@@ -149,22 +149,22 @@ public class EdgeRetryer implements EdgeRetryService {
           List<FeatureState> features =
             repository.getJsonObjectMapper().readFeatureStates(data);
           features.forEach(f -> f.setEnvironmentId(environmentId));
-          repository.updateFeatures(features);
+          repository.updateFeatures(features, "streaming");
         } else {
           if (state == SSEResultState.FEATURE) {
             FeatureState fs = repository.getJsonObjectMapper().readValue(data, FeatureState.class);
             fs.setEnvironmentId(environmentId);
-            repository.updateFeature(fs);
+            repository.updateFeature(fs, "streaming");
           } else if (state == SSEResultState.DELETE_FEATURE) {
             FeatureState fs = repository.getJsonObjectMapper().readValue(data, FeatureState.class);
             fs.setEnvironmentId(environmentId);
-            repository.deleteFeature(fs);
+            repository.deleteFeature(fs, "streaming");
           }
         }
       }
 
       if (state == SSEResultState.FAILURE) {
-        repository.notify(state);
+        repository.notify(state, "streaming");
       }
     } catch (IOException jpe) {
       throw new RuntimeException("JSON failed", jpe);

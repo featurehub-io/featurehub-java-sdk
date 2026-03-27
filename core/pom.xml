@@ -36,5 +36,6 @@
   <modules>
     <module>client-java-api</module>
     <module>client-java-core</module>
+    <module>local-yaml</module>
   </modules>
 </project>

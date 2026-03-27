@@ -180,7 +180,7 @@ public class RestClient implements EdgeService {
 
   protected void processFailure(@NotNull Exception e) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE);
+    repository.notify(SSEResultState.FAILURE, "polling");
     busy = false;
     completeReadiness();
   }
@@ -213,7 +213,7 @@ public class RestClient implements EdgeService {
 
       log.trace("updating feature repository: {}", states);
 
-      repository.updateFeatures(states);
+      repository.updateFeatures(states, "polling");
       completeReadiness();
 
       if (response.getStatusCode() == 236) {
@@ -227,7 +227,7 @@ public class RestClient implements EdgeService {
     } else if (response.getStatusCode() == 400 || response.getStatusCode() == 404) {
       stopped = true;
       log.error("Server indicated an error with our requests making future ones pointless.");
-      repository.notify(SSEResultState.FAILURE);
+      repository.notify(SSEResultState.FAILURE, "polling");
       completeReadiness();
     } else if (response.getStatusCode() >= 500) {
       completeReadiness(); // we haven't changed anything, but we have to unblock clients as we can't just hang

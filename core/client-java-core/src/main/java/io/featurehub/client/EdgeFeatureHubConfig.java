@@ -246,6 +246,12 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   }
 
   @Override
+  public FeatureHubConfig registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener) {
+    getRepository().registerRawUpdateFeatureListener(listener);
+    return this;
+  }
+
+  @Override
   public FeatureHubConfig recordUsageEvent(UsageEvent event) {
     getInternalRepository().recordUsageEvent(event);
     return this;
