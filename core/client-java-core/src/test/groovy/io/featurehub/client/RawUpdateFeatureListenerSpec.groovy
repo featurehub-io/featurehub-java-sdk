@@ -64,23 +64,35 @@ class RawUpdateFeatureListenerSpec extends Specification {
       1 * listener.updateFeature(feature, 'unknown')
   }
 
+  def "deleteFeature removes the feature from the repository"() {
+    given:
+      def featureState = fs('x')
+      repo.updateFeatures([featureState], 'streaming')
+    when:
+      repo.deleteFeature(featureState, 'streaming')
+    then: "the key is no longer in the repository"
+      !repo.getFeatureKeys().contains('x')
+    and: "a subsequent getFeat returns a non-existent placeholder"
+      !repo.getFeat('x').exists()
+  }
+
   def "deleteFeature notifies listener with the feature and source, not updateFeature"() {
     given:
-      def feature = fs('x')
+      def featureState = fs('x')
     when:
-      repo.deleteFeature(feature, 'streaming')
+      repo.deleteFeature(featureState, 'streaming')
     then:
-      1 * listener.deleteFeature(feature, 'streaming')
+      1 * listener.deleteFeature(featureState, 'streaming')
       0 * listener.updateFeature(_, _)
   }
 
   def "deleteFeature without source passes 'unknown' to listener"() {
     given:
-      def feature = fs('x')
+      def featureState = fs('x')
     when:
-      repo.deleteFeature(feature)
+      repo.deleteFeature(featureState)
     then:
-      1 * listener.deleteFeature(feature, 'unknown')
+      1 * listener.deleteFeature(featureState, 'unknown')
       0 * listener.updateFeature(_, _)
   }
 

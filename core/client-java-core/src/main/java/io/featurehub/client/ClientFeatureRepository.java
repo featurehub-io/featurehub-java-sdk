@@ -261,8 +261,14 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue, @NotNull String source) {
-    readValue.setValue(null);
-    updateFeatureInternal(readValue, false, source);
+    final FeatureStateBase<?> holder = features.remove(readValue.getKey());
+    if (readValue.getId() != null) {
+      featuresById.remove(readValue.getId());
+    }
+    if (holder != null) {
+      holder.setFeatureState(null);
+      broadcastFeatureUpdatedListeners(holder);
+    }
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.deleteFeature(readValue, source)));
   }
 
