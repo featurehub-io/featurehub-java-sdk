@@ -4,11 +4,11 @@ import com.segment.analytics.MessageTransformer;
 import com.segment.analytics.messages.Message;
 import com.segment.analytics.messages.MessageBuilder;
 import io.featurehub.client.ClientContext;
+import io.featurehub.client.usage.DefaultUsageFeaturesCollectionContext;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.function.Supplier;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * SegmentMessageTransformer is designed to allow an analytics builder to attach the current user's features
@@ -47,7 +47,7 @@ public class SegmentMessageTransformer implements MessageTransformer {
 
     if (context != null && augmentTypes.contains(builder.type())) {
       // create a holder that will collect the user and all the respective data
-      final UsageFeaturesCollectionContext usage = new UsageFeaturesCollectionContext();
+      final UsageFeaturesCollectionContext usage = new DefaultUsageFeaturesCollectionContext();
 
       context.fillUsageCollection(usage);
 
