@@ -47,7 +47,7 @@ class RestClientSpec extends Specification {
     when:
       client.poll().get()
     then:
-      1 * repo.updateFeatures([])
+      1 * repo.updateFeatures([], "polling")
       1 * config.apiKeys() >> apiKeys
 //      1 * config.isServerEvaluation() >> true
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
@@ -61,7 +61,7 @@ class RestClientSpec extends Specification {
     when:
       def result = client.poll().get()
     then:
-      1 * repo.updateFeatures([])
+      1 * repo.updateFeatures([], "polling")
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.readiness >> Readiness.Ready
@@ -92,7 +92,7 @@ class RestClientSpec extends Specification {
       def result = client.poll().get()
     then:
       1 * config.apiKeys() >> apiKeys
-      1 * repo.notify(SSEResultState.FAILURE)
+      1 * repo.notify(SSEResultState.FAILURE, "polling")
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.readiness >> Readiness.Failed
       0 * _
@@ -123,7 +123,7 @@ class RestClientSpec extends Specification {
     when:
       def result = client.poll().get()
     then:
-      1 * repo.updateFeatures([])
+      1 * repo.updateFeatures([], "polling")
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.readiness >> Readiness.Ready
@@ -140,7 +140,7 @@ class RestClientSpec extends Specification {
       def result = client.poll().get()
       def result2 = client.poll().get()
     then:
-      1 * repo.updateFeatures([])
+      1 * repo.updateFeatures([], "polling")
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       2 * repo.readiness >> Readiness.Ready
@@ -155,7 +155,7 @@ class RestClientSpec extends Specification {
       client.poll().get()
       client.poll().get()
     then:
-      2 * repo.updateFeatures([])
+      2 * repo.updateFeatures([], "polling")
       2 * config.apiKeys() >> apiKeys
       2 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       2 * repo.readiness >> Readiness.Ready

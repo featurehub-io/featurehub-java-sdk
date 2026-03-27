@@ -1,0 +1,119 @@
+= Developer Guide
+:toc:
+:toc-placement: preamble
+
+== Build
+
+The build must be done in two phases: first the `support/` directory (Maven Tiles + composite POMs), then the root reactor.
+
+[source,bash]
+----
+# Build without tests (fast)
+./build_only.sh
+
+# Build with tests
+./build_all_and_test.sh
+----
+
+Java 17+ modules are built separately and require JDK 17 or above:
+
+[source,bash]
+----
+cd v17-and-above && mvn install
+----
+
+=== Running Tests
+
+[source,bash]
+----
+# All tests in a module
+cd core/client-java-core && mvn test
+
+# Single test class
+mvn -Dtest=ClassName test
+
+# Single test method
+mvn -Dtest=ClassName#methodName test
+----
+
+== Module Change Tracking
+
+CI uses three generated files to know which modules need to be built and released.
+These files are committed to the repository and must be kept up to date whenever
+you change modules on a branch.
+
+|===
+| File | Contents
+
+| `v17-and-above/java17_changed.txt`
+| Modules under `v17-and-above/` that differ from `main`, with the `v17-and-above/` prefix stripped
+
+| `java11_changed.txt`
+| All changed modules excluding those under `v17-and-above/`
+
+| `release_modules.txt`
+| Cumulative list of Java 11 changed modules (excluding examples and `v17-and-above/`) accumulated
+  across merges to `main`, so multiple branches can be released together in a single batch.
+
+| `v17-and-above/release_modules.txt`
+| Same as above but for Java 17 modules only, with the `v17-and-above/` prefix stripped.
+|===
+
+To regenerate all three files:
+
+[source,bash]
+----
+./detect_module_changes.sh
+----
+
+To check whether the files are up to date without writing anything:
+
+[source,bash]
+----
+./detect_module_changes.sh --diff
+----
+
+This exits with code `1` and prints a diff if any file is stale.
+
+=== Git Hook
+
+A pre-push hook is provided that automatically runs the `--diff` check before
+every push, blocking the push if the files are out of date.
+
+==== Installing the Hook
+
+Option A — configure Git to use the checked-in hooks directory (recommended, applies to all hooks):
+
+[source,bash]
+----
+git config core.hooksPath .githooks
+----
+
+Option B — copy the hook manually:
+
+[source,bash]
+----
+cp .githooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+----
+
+==== When the Hook Blocks Your Push
+
+If you see:
+
+----
+Push blocked: module change files are out of date.
+Run './detect_module_changes.sh' to regenerate them, then commit and push again.
+----
+
+Run the following to fix it:
+
+[source,bash]
+----
+./detect_module_changes.sh   # regenerates and stages the files
+git commit -m "chore: update module change files"
+git push
+----
+
+NOTE: `release_modules.txt` is cumulative — running the script merges the current branch's
+modules into any that were already listed in the file from prior merges.
+To start a fresh release cycle, clear the file and commit it before merging further branches.

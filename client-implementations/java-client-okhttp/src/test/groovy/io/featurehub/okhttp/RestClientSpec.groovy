@@ -51,7 +51,7 @@ class RestClientSpec extends Specification {
     when:
       client.poll().get()
     then:
-      1 * repo.updateFeatures([])
+      1 * repo.updateFeatures([], "polling")
   }
 
   def "a request with an etag and a cache-control should work as expected"() {
@@ -79,7 +79,7 @@ class RestClientSpec extends Specification {
       future2.get()
       def interval = client.pollingInterval
     then:
-      2 * repo.updateFeatures([])
+      2 * repo.updateFeatures([], "polling")
       req1.requestUrl.queryParameter("contextSha") == "0"
       etag == "etag12345"
       interval == 20
@@ -136,7 +136,7 @@ class RestClientSpec extends Specification {
     then:
       client.canMakeRequests()
       1 * repo.getReadiness() >> Readiness.Ready
-      1 * repo.updateFeatures(_)
+      1 * repo.updateFeatures(_, "polling")
   }
 
   def "a context header causes the connection to be tried with a contextSha"() {
