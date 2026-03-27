@@ -80,3 +80,4 @@ node-js
 front-end-changed.projects
 
 /examples/todo-cuke-java/
+/.claude/settings.local.json
