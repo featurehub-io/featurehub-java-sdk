@@ -217,6 +217,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   @Override
   public void close() {
     log.info("featurehub repository closing");
+    extendedFeatureValueInterceptors.forEach(ExtendedFeatureValueInterceptor::close);
     features.clear();
 
     readiness = Readiness.NotReady;
