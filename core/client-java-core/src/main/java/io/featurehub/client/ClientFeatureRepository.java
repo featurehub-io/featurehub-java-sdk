@@ -53,6 +53,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<FeatureRepository>> newStateAvailableHandlers = new ArrayList<>();
   private final List<Callback<FeatureState<?>>> featureUpdateHandlers = new ArrayList<>();
   private final List<FeatureValueInterceptorHolder> featureValueInterceptors = new ArrayList<>();
+  private final List<ExtendedFeatureValueInterceptor> extendedFeatureValueInterceptors = new ArrayList<>();
   private final List<Callback<UsageEvent>> usageHandlers = new ArrayList<>();
   private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
 
@@ -108,6 +109,12 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     featureValueInterceptors.add(
         new FeatureValueInterceptorHolder(allowFeatureOverride, interceptor));
 
+    return this;
+  }
+
+  @Override
+  public @NotNull FeatureRepository registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor) {
+    extendedFeatureValueInterceptors.add(interceptor);
     return this;
   }
 
@@ -348,6 +355,23 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     recordUsageEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
       value, valueType, environmentId
       ), attributes, usageUserKey));
+  }
+
+  @Override
+  public @Nullable ExtendedFeatureValueInterceptor.ValueMatch findIntercept(@NotNull String key,
+                                                                            io.featurehub.sse.model.@Nullable FeatureState featureState) {
+    final ExtendedFeatureValueInterceptor.ValueMatch matched = extendedFeatureValueInterceptors.stream().map(fv -> {
+        return fv.getValue(key, this, featureState);
+      }).filter(Objects::nonNull)
+      .filter(r -> r.matched)
+      .findFirst()
+      .orElse(new ExtendedFeatureValueInterceptor.ValueMatch(false, null));
+
+    if (matched.matched) {
+      return matched;
+    }
+
+    return ExtendedFeatureValueInterceptor.ValueMatch.fromOld(findIntercept(featureState != null && featureState.getL(), key));
   }
 
   @Override

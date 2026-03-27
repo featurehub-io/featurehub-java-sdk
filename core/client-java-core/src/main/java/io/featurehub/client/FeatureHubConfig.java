@@ -106,7 +106,9 @@ public interface FeatureHubConfig {
    * @param allowLockOverride
    * @param interceptor
    */
+  @Deprecated
   FeatureHubConfig registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
+  FeatureHubConfig registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor);
 
   FeatureHubConfig registerUsagePlugin(@NotNull UsagePlugin plugin);
 

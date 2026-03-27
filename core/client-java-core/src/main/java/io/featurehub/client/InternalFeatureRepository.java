@@ -41,7 +41,10 @@ public interface InternalFeatureRepository extends FeatureRepository {
   boolean updateFeature(@NotNull FeatureState feature, boolean force);
   void deleteFeature(@NotNull FeatureState feature);
 
+  @Deprecated
   @Nullable FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, @NotNull String key);
+  // findIntercept here will never return null, but a false match with a null value
+  @NotNull ExtendedFeatureValueInterceptor.ValueMatch findIntercept(@NotNull String key, @Nullable FeatureState featureState);
 
   @NotNull Applied applyFeature(@NotNull List<FeatureRolloutStrategy> strategies, @NotNull String key, @NotNull String featureValueId,
                                 @NotNull ClientContext cac);

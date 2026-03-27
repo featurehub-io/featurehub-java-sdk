@@ -239,6 +239,11 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     return this;
   }
 
+  @Override
+  public FeatureHubConfig registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor) {
+    getRepository().registerValueInterceptor(interceptor);
+    return this;
+  }
 
   @Override
   public FeatureHubConfig recordUsageEvent(UsageEvent event) {

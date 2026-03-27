@@ -32,6 +32,7 @@ public interface FeatureRepository {
    * @return the instance of the repo for chaining
    */
   @NotNull FeatureRepository registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
+  @NotNull FeatureRepository registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor);
   void registerUsageProvider(@NotNull UsageProvider provider);
 
   @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(@NotNull Consumer<FeatureRepository> callback);

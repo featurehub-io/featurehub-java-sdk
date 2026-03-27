@@ -157,13 +157,14 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     boolean locked = feature.fs != null && Boolean.TRUE.equals(feature.fs.getL());
 
     // the intercetor can trigger even on invalid feature keys, so we need to be able to track it
-    FeatureValueInterceptor.ValueMatch vm = repository.findIntercept(locked, feature.key);
+    ExtendedFeatureValueInterceptor.ValueMatch vm = repository.findIntercept(feature.key, feature.fs);
 
     final FeatureValueType type = (passedType == null && feature.fs != null) ? feature.fs.getType() : passedType;
 
     // was there an overridden value?
-    if (vm != null) {
-      // did we want to trigger usage and is this a real feature?
+    if (vm.matched) {
+      // did we want to trigger usage and is this a real feature? We never trigger usage for intercepted features that have
+      // no actual feature
       return triggerUsage && feature.fs != null && feature.fs.getId() != null ?
         used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type, feature.fs.getEnvironmentId()) :
         vm.value;
