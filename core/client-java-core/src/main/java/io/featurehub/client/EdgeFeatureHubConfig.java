@@ -29,6 +29,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @NotNull
   private final List<String> apiKeys;
   private final UUID environmentId;
+  private final boolean noopMode;
   @Nullable
   private InternalFeatureRepository repository = new ClientFeatureRepository();
   @Nullable
@@ -49,11 +50,28 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   private EdgeType edgeType = EdgeType.REST_PASSIVE;
   private int timeout;
 
+  /**
+   * Creates an {@code EdgeFeatureHubConfig} in noop mode: no remote edge server is contacted.
+   * Features must be loaded directly into the repository (e.g. via {@code LocalYamlFeatureStore}).
+   */
+  public EdgeFeatureHubConfig() {
+    this.noopMode = true;
+    this.apiKeys = Collections.emptyList();
+    this.realtimeUrl = "";
+    this.edgeUrl = "";
+    this.serverEvaluation = false;
+    this.environmentId = UUID.randomUUID();
+    this.edgeType = EdgeType.REST_PASSIVE;
+    this.timeout = 0;
+    this.usageAdapter = new UsageAdapter(repository);
+  }
+
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull String apiKey) {
     this(edgeUrl, Collections.singletonList(apiKey));
   }
 
   public EdgeFeatureHubConfig(@NotNull String edgeUrl, @NotNull List<String> apiKeys) {
+    this.noopMode = false;
     this.apiKeys = apiKeys;
 
     if (this.apiKeys.isEmpty()) {
@@ -130,7 +148,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
   @Override
   @NotNull
   public String apiKey() {
-    return apiKeys.get(0);
+    return apiKeys.isEmpty() ? "" : apiKeys.get(0);
   }
 
   @Override
@@ -195,6 +213,13 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
    */
   @NotNull
   protected Supplier<EdgeService> loadEdgeService(@NotNull InternalFeatureRepository repository) {
+    if (noopMode) {
+      if (edgeServiceSupplier == null) {
+        edgeServiceSupplier = () -> new NoopEdgeService(this);
+      }
+      return edgeServiceSupplier;
+    }
+
     if (edgeServiceSupplier == null) {
       ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
 

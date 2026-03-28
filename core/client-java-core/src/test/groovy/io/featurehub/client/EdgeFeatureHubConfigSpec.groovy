@@ -342,4 +342,101 @@ class EdgeFeatureHubConfigSpec extends Specification {
       config.baseUrl() == 'http://localhost'
       !config.isServerEvaluation()
   }
+
+  // --- noop mode tests ---
+
+  def "no-arg constructor creates config in noop mode"() {
+    when:
+      def noop = new EdgeFeatureHubConfig()
+    then:
+      noop.noopMode
+      noop.apiKeys().isEmpty()
+      noop.apiKey() == ''
+      noop.baseUrl() == ''
+      noop.getRealtimeUrl() == ''
+      !noop.isServerEvaluation()
+      noop.getEnvironmentId() != null
+  }
+
+  def "noop mode newContext returns a ClientEvalFeatureContext backed by a NoopEdgeService"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      def ctx = noop.newContext()
+    then:
+      ctx instanceof ClientEvalFeatureContext
+      (ctx as ClientEvalFeatureContext).edgeService instanceof NoopEdgeService
+  }
+
+  def "noop mode does not require a ServiceLoader EdgeService on the classpath"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      // would throw if it tried to find a real edge service via ServiceLoader
+      def ctx = noop.newContext()
+    then:
+      noExceptionThrown()
+  }
+
+  def "noop mode poll returns current readiness without connecting"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    when:
+      def result = noopEdge.poll().get()
+    then:
+      result == Readiness.NotReady
+  }
+
+  def "noop mode contextChange returns current readiness without connecting"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    when:
+      def result = noopEdge.contextChange(null, '0').get()
+    then:
+      result == Readiness.NotReady
+  }
+
+  def "noop mode getConfig returns the config"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    expect:
+      noopEdge.getConfig() == noop
+      noopEdge.isClientEvaluation()
+      !noopEdge.isStopped()
+      noopEdge.currentInterval() == 0
+  }
+
+  def "noop mode same NoopEdgeService instance is reused across newContext calls"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      def ctx1 = noop.newContext()
+      def ctx2 = noop.newContext()
+    then:
+      (ctx1 as ClientEvalFeatureContext).edgeService.is((ctx2 as ClientEvalFeatureContext).edgeService)
+  }
+
+  def "noop mode close still works cleanly"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      noop.newContext()
+    when:
+      noop.close()
+    then:
+      noop.isClosed()
+      noExceptionThrown()
+  }
+
+  def "two-arg constructor with empty apiKey list throws"() {
+    when:
+      new EdgeFeatureHubConfig("http://localhost", [])
+    then:
+      thrown(RuntimeException)
+  }
 }

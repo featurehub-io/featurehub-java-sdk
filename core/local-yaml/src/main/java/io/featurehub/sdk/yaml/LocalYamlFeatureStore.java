@@ -33,13 +33,12 @@ public class LocalYamlFeatureStore {
   private static final Logger log = LoggerFactory.getLogger(LocalYamlFeatureStore.class);
   static final String SOURCE = "local-yaml-store";
 
-  private final UUID environmentId = UUID.randomUUID();
-
   public LocalYamlFeatureStore(@NotNull FeatureHubConfig config) {
     this(config, null);
   }
 
   public LocalYamlFeatureStore(@NotNull FeatureHubConfig config, @Nullable String filename) {
+    final UUID environmentId = config.getEnvironmentId();
     InternalFeatureRepository repository = config.getInternalRepository();
     if (repository == null) {
       log.warn("FeatureHubConfig is closed; LocalYamlFeatureStore will not load features");

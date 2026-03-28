@@ -32,7 +32,8 @@ mvn -Dtest=ClassName test
 mvn -Dtest=ClassName#methodName test
 ```
 
-Tests are written in **Spock** (Groovy) in most modules.
+Tests are written in **Spock** (Groovy) in most modules. Spock is preferred for ALL tests and should be used when attempting to write tests. It relies on the composite-testing dependency which needs to be installed as a scope: `test`
+for each project. It is located at `support/composite-logging/pom.xml`. 
 
 ## Architecture
 

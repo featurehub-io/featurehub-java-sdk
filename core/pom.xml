@@ -37,5 +37,6 @@
     <module>client-java-api</module>
     <module>client-java-core</module>
     <module>local-yaml</module>
+    <module>redis-store</module>
   </modules>
 </project>

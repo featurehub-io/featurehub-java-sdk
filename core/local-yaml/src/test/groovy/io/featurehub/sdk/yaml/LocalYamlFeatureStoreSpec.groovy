@@ -134,16 +134,17 @@ class LocalYamlFeatureStoreSpec extends YamlSpecBase {
       }, 'local-yaml-store')
   }
 
-  def "all features share the same non-null environmentId"() {
+  def "all features use the environmentId from the config"() {
     given:
+      def envId = UUID.randomUUID()
+      config.getEnvironmentId() >> envId
       def f = yamlWith('multi.yaml', "flagValues:\n  a: true\n  b: 'hello'\n  c: 42\n")
     when:
       new LocalYamlFeatureStore(config, f.absolutePath)
     then:
       1 * internalRepo.updateFeatures({ List<FeatureState> fs ->
         fs.size() == 3 &&
-        fs.collect { it.environmentId }.toSet().size() == 1 &&
-        fs[0].environmentId != null
+        fs.every { it.environmentId == envId }
       }, 'local-yaml-store')
   }
 
