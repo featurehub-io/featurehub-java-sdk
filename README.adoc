@@ -659,7 +659,8 @@ and all context attributes.
 (booleans become `"on"`/`"off"`, JSON becomes `null`).
 
 |`UsageFeaturesCollection`
-|A bulk snapshot of all features currently held in the repository, serialised as `feature-key → value` pairs.
+|A bulk snapshot of all features currently held in the repository, serialised as `feature-key → value (string)` pairs.  The raw values of the features are stored as `"feature-key"_raw → value` and the all of the keys available in
+the collection are stored in `fhub_keys` as an array.
 Used by `SegmentMessageTransformer` to augment outgoing Segment messages.
 
 |`UsageFeaturesCollectionContext`

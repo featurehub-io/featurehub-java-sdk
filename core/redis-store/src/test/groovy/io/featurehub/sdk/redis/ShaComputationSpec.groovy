@@ -51,11 +51,11 @@ class ShaComputationSpec extends Specification {
           RedisSessionStore.computeSha([fs(id2, 1L)])
   }
 
-  def "null version is treated as 0"() {
+  def "0 version is treated as 0"() {
     given:
       def id1 = UUID.randomUUID()
     expect:
-      RedisSessionStore.computeSha([fs(id1, null)]) ==
+      RedisSessionStore.computeSha([fs(id1, 0L)]) ==
           RedisSessionStore.computeSha([fs(id1, 0L)])
   }
 

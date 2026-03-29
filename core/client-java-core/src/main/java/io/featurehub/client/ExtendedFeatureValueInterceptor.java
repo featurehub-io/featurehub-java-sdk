@@ -35,7 +35,7 @@ public interface ExtendedFeatureValueInterceptor {
     }
   }
 
-  ValueMatch getValue(String key, FeatureRepository repository, @Nullable FeatureState rawFeature);
+  ValueMatch getValue(String key, InternalFeatureRepository repository, @Nullable FeatureState rawFeature);
 
   default void close() {}
 }

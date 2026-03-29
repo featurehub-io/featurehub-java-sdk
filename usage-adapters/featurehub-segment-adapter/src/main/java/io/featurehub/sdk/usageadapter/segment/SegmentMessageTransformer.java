@@ -5,8 +5,13 @@ import com.segment.analytics.messages.Message;
 import com.segment.analytics.messages.MessageBuilder;
 import io.featurehub.client.ClientContext;
 import io.featurehub.client.usage.DefaultUsageFeaturesCollectionContext;
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.Nullable;
 
@@ -52,8 +57,20 @@ public class SegmentMessageTransformer implements MessageTransformer {
       context.fillUsageCollection(usage);
 
       augmentUser(builder, usage);
+      Map<String, Object> data = new HashMap<>();
 
-      builder.context(usage.toMap());
+      UUID environmentId = null;
+
+      for (FeatureHubUsageValue fv : usage.getFeatureValues()) {
+        data.put(fv.getKey(), fv.getRawValue());
+        environmentId = fv.getEnvironmentId();
+      }
+
+      if (environmentId != null) {
+        data.put("featurehub_env", environmentId.toString());
+      }
+
+      builder.context(data);
     }
 
     return true;

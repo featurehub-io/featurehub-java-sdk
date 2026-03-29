@@ -1,13 +1,11 @@
 package io.featurehub.sdk.yaml
 
 import io.featurehub.client.ExtendedFeatureValueInterceptor
-import io.featurehub.client.FeatureRepository
 import io.featurehub.sse.model.FeatureState
 import io.featurehub.sse.model.FeatureValueType
 
 
 class LocalYamlValueInterceptorSpec extends YamlSpecBase {
-  FeatureRepository repo = Mock()
   FeatureState featureState = Mock()
 
   String testYaml() {
@@ -15,17 +13,17 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
   }
 
   LocalYamlValueInterceptor interceptor(String filename, boolean watch = false) {
-    new LocalYamlValueInterceptor(internalRepo, filename, watch)
+    new LocalYamlValueInterceptor(config, filename, watch)
   }
 
   ExtendedFeatureValueInterceptor.ValueMatch match(LocalYamlValueInterceptor i, String key) {
-    i.getValue(key, repo, featureState)
+    i.getValue(key, internalRepo, featureState)
   }
 
   ExtendedFeatureValueInterceptor.ValueMatch matchTyped(LocalYamlValueInterceptor i, String key, FeatureValueType type) {
     def fs = Mock(FeatureState)
     fs.getType() >> type
-    i.getValue(key, repo, fs)
+    i.getValue(key, internalRepo, fs)
   }
 
   def "returns null for a missing key"() {
@@ -81,7 +79,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       (result.value as BigDecimal).compareTo(new BigDecimal('3.14')) == 0
   }
 
-  def "converts complex map to JSON string via the repository mapper"() {
+  def "converts complex map to JSON string via the internalRepository mapper"() {
     when:
       def result = match(interceptor(testYaml()), 'myJson')
     then:
@@ -92,7 +90,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       (result.value as String).contains('"red"')
   }
 
-  def "converts list to JSON string via the repository mapper"() {
+  def "converts list to JSON string via the internalRepository mapper"() {
     when:
       def result = match(interceptor(testYaml()), 'myJsonList')
     then:
@@ -183,7 +181,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       matchTyped(i, 'm', FeatureValueType.STRING).value == null
   }
 
-  def "JSON type: map and list are serialized via repository mapper"() {
+  def "JSON type: map and list are serialized via internalRepository mapper"() {
     given:
       def f = tempDir.resolve('json-objs.yaml').toFile()
       f.text = "flagValues:\n  obj:\n    x: 1\n  arr:\n    - p\n    - q\n"
@@ -198,7 +196,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       listResult.value == '["p","q"]'
   }
 
-  def "JSON type: string value is passed through repository mapper"() {
+  def "JSON type: string value is passed through internalRepository mapper"() {
     given:
       def f = tempDir.resolve('json-str.yaml').toFile()
       f.text = "flagValues:\n  s: hello\n"
@@ -206,6 +204,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
     when:
       def result = matchTyped(i, 's', FeatureValueType.JSON)
     then:
+      1 * jsonMapper.readMapValue('hello') >> [] // can be anything, just not null
       1 * jsonMapper.writeValueAsString('hello') >> '"hello"'
       result.value == '"hello"'
   }
@@ -214,7 +213,7 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
 
   def "defaults to featurehub-features.yaml when no filename given and env var not set"() {
     given:
-      def i = new LocalYamlValueInterceptor(internalRepo)
+      def i = new LocalYamlValueInterceptor(config)
     expect:
       match(i, 'anything') == null
   }

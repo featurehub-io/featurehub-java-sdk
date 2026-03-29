@@ -2,8 +2,8 @@ package io.featurehub.sdk.yaml;
 
 import io.featurehub.client.ExtendedFeatureValueInterceptor;
 import io.featurehub.client.FeatureHubConfig;
-import io.featurehub.client.FeatureRepository;
 import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.utils.Conversion;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureValueType;
 import org.jetbrains.annotations.NotNull;
@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -36,10 +35,14 @@ public class LocalYamlValueInterceptor implements ExtendedFeatureValueIntercepto
   Thread watchThread;
   WatchService watchService;
 
-  public LocalYamlValueInterceptor(@NotNull InternalFeatureRepository repository,
+  public LocalYamlValueInterceptor(@NotNull FeatureHubConfig config,
                                    @Nullable String filename,
                                    boolean watchForChanges) {
-    this.repository = repository;
+    if (config.getInternalRepository() == null) {
+      throw new RuntimeException("Cannot register interceptor with no internal repository");
+    }
+    this.repository = config.getInternalRepository();
+    config.registerValueInterceptor(this);
     String resolved = filename != null ? filename : FeatureHubConfig.getConfig(ENV_VAR, DEFAULT_FILE);
     this.yamlFile = new File(resolved);
 
@@ -50,13 +53,13 @@ public class LocalYamlValueInterceptor implements ExtendedFeatureValueIntercepto
     }
   }
 
-  public LocalYamlValueInterceptor(@NotNull InternalFeatureRepository repository,
+  public LocalYamlValueInterceptor(@NotNull FeatureHubConfig config,
                                    @Nullable String filename) {
-    this(repository, filename, false);
+    this(config, filename, false);
   }
 
-  public LocalYamlValueInterceptor(@NotNull InternalFeatureRepository repository) {
-    this(repository, null, false);
+  public LocalYamlValueInterceptor(@NotNull FeatureHubConfig config) {
+    this(config, null, false);
   }
 
   void loadFile() {
@@ -112,7 +115,7 @@ public class LocalYamlValueInterceptor implements ExtendedFeatureValueIntercepto
   }
 
   @Override
-  public ValueMatch getValue(String key, FeatureRepository repository, @Nullable FeatureState rawFeature) {
+  public ValueMatch getValue(String key, InternalFeatureRepository repository, @Nullable FeatureState rawFeature) {
     Object value = flagValues.get().get(key);
 
     if (value == null && !flagValues.get().containsKey(key)) {
@@ -120,45 +123,10 @@ public class LocalYamlValueInterceptor implements ExtendedFeatureValueIntercepto
     }
 
     FeatureValueType type = rawFeature != null ? rawFeature.getType() : null;
-    return new ValueMatch(true, toTypedValue(type, value, key));
+    return new ValueMatch(true, Conversion.toTypedValue(type, value, key, this.repository));
   }
 
-  @Nullable
-  private Object toTypedValue(@Nullable FeatureValueType type, @Nullable Object value, @NotNull String key) {
-    if (type == FeatureValueType.BOOLEAN) {
-      if (value == null) return Boolean.FALSE;
-      if (value instanceof Boolean) return value;
-      return "true".equalsIgnoreCase(value.toString());
-    }
 
-    if (value == null) return null;
-
-    if (type == FeatureValueType.NUMBER) {
-      if (value instanceof Number) return new BigDecimal(value.toString());
-      try {
-        return new BigDecimal(value.toString());
-      } catch (Exception e) {
-        log.debug("Cannot convert '{}' to a number for key '{}'", value, key);
-        return null;
-      }
-    }
-
-    if (type == FeatureValueType.STRING) {
-      if (value instanceof String || value instanceof Boolean || value instanceof Number) {
-        return value.toString();
-      }
-      return null;
-    }
-
-    if (type == FeatureValueType.JSON) {
-      return repository.getJsonObjectMapper().writeValueAsString(value);
-    }
-
-    // Unknown type — return primitives as-is (Number as BigDecimal), objects as JSON
-    if (value instanceof Boolean || value instanceof String) return value;
-    if (value instanceof Number) return new BigDecimal(value.toString());
-    return repository.getJsonObjectMapper().writeValueAsString(value);
-  }
 
   @Override
   public void close() {

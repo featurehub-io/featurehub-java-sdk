@@ -4,11 +4,6 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureValueType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Reads a YAML file in the same {@code flagValues} format as {@link LocalYamlValueInterceptor}

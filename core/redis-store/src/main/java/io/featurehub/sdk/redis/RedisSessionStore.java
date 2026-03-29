@@ -92,23 +92,26 @@ public class RedisSessionStore implements RawUpdateFeatureListener {
     this.config = config;
     this.options = options;
 
+    InternalFeatureRepository repo = config.getInternalRepository();
+    if (repo == null) {
+      throw new RuntimeException("We must have a repository to connect to");
+    }
+
     UUID environmentId = config.getEnvironmentId();
     this.dataKey = options.getPrefix() + "_" + environmentId;
     this.shaKey = options.getPrefix() + "_" + environmentId + "_sha";
 
-    loadFromRedis();
+    // we have to have a repo otherwise it makes no sense
+    repo.execute(this::loadFromRedis);
 
-    InternalFeatureRepository repo = config.getInternalRepository();
-    if (repo != null) {
-      repo.registerRawUpdateFeatureListener(this);
-    }
+    repo.registerRawUpdateFeatureListener(this);
 
     this.scheduler = buildScheduler();
     this.scheduler.scheduleAtFixedRate(
-        this::refreshIfChanged,
-        options.getRefreshTimeoutSeconds(),
-        options.getRefreshTimeoutSeconds(),
-        TimeUnit.SECONDS);
+      this::refreshIfChanged,
+      options.getRefreshTimeoutSeconds(),
+      options.getRefreshTimeoutSeconds(),
+      TimeUnit.SECONDS);
   }
 
   // visible for testing

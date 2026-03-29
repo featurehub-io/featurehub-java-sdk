@@ -1,0 +1,2 @@
+- filter out the fhub_key_raw and fhub_keys in the segment adapter
+- 

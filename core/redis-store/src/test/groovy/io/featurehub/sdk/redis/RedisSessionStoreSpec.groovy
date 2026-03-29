@@ -28,6 +28,7 @@ class RedisSessionStoreSpec extends Specification {
     shaKey  = "featurehub_${envId}_sha"
     config.getEnvironmentId() >> envId
     config.getInternalRepository() >> repo
+    repo.execute { Runnable cmd -> cmd.run() }
     repo.getJsonObjectMapper() >> mapper
     // Note: adapter.get(dataKey) is NOT stubbed here — Spock returns null by default,
     // so loadFromRedis() exits early in tests that don't need it.
@@ -74,11 +75,14 @@ class RedisSessionStoreSpec extends Specification {
     when:
       buildStore()
     then:
+      1 * repo.execute {Runnable cmd ->  // 2 for listeners
+        cmd.run()
+      }
       1 * repo.updateFeatures([fs], RedisSessionStore.SOURCE)
       1 * repo.registerRawUpdateFeatureListener(_)
   }
 
-  def "constructor does nothing when getInternalRepository returns null"() {
+  def "constructor fails when getInternalRepository returns null"() {
     given:
       // Use a local config mock so we don't conflict with setup()'s stub
       def localConfig = Mock(FeatureHubConfig)
@@ -89,8 +93,7 @@ class RedisSessionStoreSpec extends Specification {
         @Override ScheduledExecutorService buildScheduler() { return scheduler }
       }
     then:
-      0 * repo.updateFeatures(_, _)
-      0 * repo.registerRawUpdateFeatureListener(_)
+      thrown(RuntimeException)
   }
 
   def "constructor schedules refresh with the configured interval"() {
@@ -337,6 +340,7 @@ class RedisSessionStoreSpec extends Specification {
       def fs = feature('f', id1, 1L)
       def json = '[{"id":"' + id1 + '"}]'
       // Prime the store so currentSha is set
+      repo.execute(_ as Runnable) >> { Runnable cmd -> cmd.run() }
       adapter.get(dataKey) >> json
       mapper.readFeatureStates(json) >> [fs]
       def store = buildStore()

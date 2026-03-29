@@ -1,0 +1,6 @@
+flagValues:
+  FEATURE_STRING: some string
+  FEATURE_NUMBER: 12
+  FEATURE_TITLE_TO_UPPERCASE: true
+  FEATURE_JSON:
+    foo: data

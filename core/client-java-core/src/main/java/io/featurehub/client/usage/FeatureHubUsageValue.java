@@ -50,6 +50,26 @@ public class FeatureHubUsageValue {
     this.environmentId = environmentId;
   }
 
+  public @NotNull String getKey() { return key; }
+
+  public @Nullable Object getRawValue() { return rawValue; }
+
+  public @NotNull String getId() {
+    return id;
+  }
+
+  public @Nullable String getValue() {
+    return value;
+  }
+
+  public @NotNull FeatureValueType getType() {
+    return type;
+  }
+
+  public @NotNull UUID getEnvironmentId() {
+    return environmentId;
+  }
+
   public FeatureHubUsageValue(@NotNull FeatureStateBase<?> holder) {
     this.id = holder.getId();
     this.key = holder.getKey();

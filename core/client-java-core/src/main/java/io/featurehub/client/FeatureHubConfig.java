@@ -158,6 +158,7 @@ public interface FeatureHubConfig {
    * server cleanly
    */
   void close();
+  void closeEdge();
 
   FeatureHubConfig streaming();
 

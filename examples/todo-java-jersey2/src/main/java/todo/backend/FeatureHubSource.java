@@ -32,7 +32,7 @@ public class FeatureHubSource implements FeatureHub {
 
   public FeatureHubSource() {
     config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey)
-      .registerValueInterceptor(true, new SystemPropertyValueInterceptor());
+      .registerValueInterceptor(new SystemPropertyValueInterceptor());
 
     if (segmentWriteKey != null) {
       final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey,

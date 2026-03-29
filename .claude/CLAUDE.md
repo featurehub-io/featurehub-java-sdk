@@ -126,6 +126,11 @@ modules remain independent of the Jackson major version in use at runtime.
   <scope>test</scope>
 </dependency>
 ```
+### Notes when writing code
+
+- **Source code** - NEVER try and extract meaning from .class or jar files, always ask the user for the location of the source. The user can always provide it to make understanding how to use the library more simple, often including documentation. Redis and SnakeYAML are examples of this.
+- If code is not compiling when running the `mvn` command and it depends on an API from another module in this same repository, it may be that it has changed in source, but that source has not been installed into the local maven repository ($HOME/.m2/repository). Always try to do a `mvn install` in the folder of that specific module that is the root of the problem. Often this is `core/client-java-core` as it is the central module for most code.   
+
 
 ### Build Infrastructure Notes
 

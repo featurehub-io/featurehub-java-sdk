@@ -355,11 +355,8 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     if (closed) return;
     closed = true;
 
-    if (edgeService != null) {
-      log.trace("closing edge connection");
-      edgeService.close();
-      edgeService = null;
-    }
+    closeEdge();
+
     if (testApi != null) {
       log.trace("closing test api");
       testApi.close();
@@ -369,9 +366,19 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
       usageAdapter.close();
       usageAdapter = null;
     }
+
     edgeServiceSupplier = null;
     serverEvalFeatureContext = null;
     repository = null;
+  }
+
+  @Override
+  public void closeEdge() {
+    if (edgeService != null) {
+      log.trace("closing edge connection");
+      edgeService.close();
+      edgeService = null;
+    }
   }
 
   @Override

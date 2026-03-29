@@ -1,5 +1,6 @@
 package io.featurehub.sdk.yaml
 
+import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.javascript.JavascriptObjectMapper
 import spock.lang.Specification
@@ -14,10 +15,12 @@ import java.nio.file.Path
 abstract class YamlSpecBase extends Specification {
   @TempDir Path tempDir
 
+  FeatureHubConfig config = Mock()
   InternalFeatureRepository internalRepo = Mock()
   JavascriptObjectMapper jsonMapper = Mock()
 
   def setup() {
+    config.getInternalRepository() >> internalRepo
     internalRepo.getJsonObjectMapper() >> jsonMapper
     jsonMapper.writeValueAsString(_) >> { args ->
       def obj = args[0]

@@ -173,6 +173,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public void updateFeatures(List<io.featurehub.sse.model.FeatureState> states, boolean force, @NotNull String source) {
+    log.trace("received {} features from {}", features.size(), source);
     states.forEach(s -> updateFeatureInternal(s, force, source));
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeatures(states, source)));
 
@@ -261,6 +262,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue, @NotNull String source) {
+    log.trace("received delete feature {} from {}", readValue.getKey(), source);
+
     final FeatureStateBase<?> holder = features.remove(readValue.getKey());
     if (readValue.getId() != null) {
       featuresById.remove(readValue.getId());
@@ -301,6 +304,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force, @NotNull String source) {
+    log.trace("received update feature {} from {}", featureState.getKey(), source);
     boolean changed = updateFeatureInternal(featureState, force, source);
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeature(featureState, source)));
     return changed;

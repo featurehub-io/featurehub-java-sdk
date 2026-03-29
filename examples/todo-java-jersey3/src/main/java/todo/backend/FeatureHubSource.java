@@ -8,11 +8,16 @@ import com.segment.analytics.messages.Message;
 import io.featurehub.client.EdgeFeatureHubConfig;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.interceptor.SystemPropertyValueInterceptor;
+import io.featurehub.sdk.redis.RedisSessionStore;
+import io.featurehub.sdk.redis.RedisSessionStoreOptions;
 import io.featurehub.sdk.usageadapter.opentelemetry.OpenTelemetryUsagePlugin;
 import io.featurehub.sdk.usageadapter.segment.SegmentAnalyticsSource;
 import io.featurehub.sdk.usageadapter.segment.SegmentMessageTransformer;
 import io.featurehub.sdk.usageadapter.segment.SegmentUsagePlugin;
+import io.featurehub.sdk.yaml.LocalYamlFeatureStore;
+import io.featurehub.sdk.yaml.LocalYamlValueInterceptor;
 import org.jetbrains.annotations.Nullable;
+import redis.clients.jedis.JedisPool;
 
 import java.util.List;
 
@@ -31,16 +36,27 @@ public class FeatureHubSource implements FeatureHub {
   private final FeatureHubConfig config;
 
   public FeatureHubSource() {
-    config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey)
-      .registerValueInterceptor(true, new SystemPropertyValueInterceptor());
+    if (System.getenv("FEATUREHUB_LOCAL_YAML") != null) {
+      config = new EdgeFeatureHubConfig();
+      new LocalYamlValueInterceptor(config, null, true);
+      // registers itself
+      new LocalYamlFeatureStore(config);
+    } else {
+      config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey);
+      new SystemPropertyValueInterceptor(config);
 
-    if (segmentWriteKey != null) {
-      final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey,
-        List.of(new SegmentMessageTransformer(Message.Type.values(),
-          FeatureHubClientContextThreadLocal::get, false, true)));
-      config.registerUsagePlugin(segmentUsagePlugin);
-      segmentAnalyticsSource = segmentUsagePlugin;
+      if (System.getenv("REDIS_URL") != null) {
+        new RedisSessionStore(new JedisPool(System.getenv("REDIS_URL")), config, RedisSessionStoreOptions.builder().refreshTimeoutSeconds(5).build());
+      }
     }
+
+//    if (segmentWriteKey != null) {
+//      final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey,
+//        List.of(new SegmentMessageTransformer(Message.Type.values(),
+//          FeatureHubClientContextThreadLocal::get, false, true)));
+//      config.registerUsagePlugin(segmentUsagePlugin);
+//      segmentAnalyticsSource = segmentUsagePlugin;
+//    }
 
     if (openTelemetryEnabled) {
       // this won't do anything if otel isn't found or configured
@@ -66,6 +82,14 @@ public class FeatureHubSource implements FeatureHub {
       }
     });
   }
+
+  // used if you only want to listen to Redis for updates for example
+  public void disconnectEdge() {
+    // force edge to close so we stop listening for updates from FeatureHub and only get them from a local source
+    // e.g. redis or whatever
+    config.closeEdge();
+  }
+
 
   @Override
   public FeatureHubConfig getConfig() {

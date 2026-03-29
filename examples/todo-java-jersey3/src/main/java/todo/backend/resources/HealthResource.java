@@ -20,6 +20,13 @@ public class HealthResource {
   }
 
   @GET
+  @Path("/disable")
+  public Response disableEdge() {
+    featureHub.getConfig().closeEdge();
+    return Response.ok().build();
+  }
+
+  @GET
   @Path(("/liveness"))
   public Response liveness() {
     if (featureHub.getConfig().getReadiness() == Readiness.Ready) {
