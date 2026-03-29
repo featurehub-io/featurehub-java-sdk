@@ -158,46 +158,41 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
   @Nullable
   public EvaluatedFeature internalGetValue(@Nullable FeatureValueType passedType, boolean triggerUsage) {
-    // the intercetor can trigger even on invalid feature keys, so we need to be able to track it
-    ExtendedFeatureValueInterceptor.ValueMatch vm = repository.findIntercept(feature.key, feature.fs);
+    // we try and use interceptors first, as they accept phantom features
+    io.featurehub.sse.model.FeatureState fs = feature.fs;
 
-    final FeatureValueType type = (passedType == null && feature.fs != null) ? feature.fs.getType() : passedType;
+    // the interceptor can trigger even on invalid feature keys, so we need to be able to track it
+    ExtendedFeatureValueInterceptor.ValueMatch vm = repository.findIntercept(feature.key, feature.fs);
 
     // was there an overridden value?
     if (vm.matched) {
+      final EvaluatedFeature result = EvaluatedFeature.from(fs, vm.value);
+
       // did we want to trigger usage and is this a real feature? We never trigger usage for intercepted features that have
       // no actual feature
-      if (triggerUsage && feature.fs != null) {
-        return used(EvaluatedFeature.from(feature.fs, vm.value));
-      }
-
-      return EvaluatedFeature.from(feature.fs, vm.value);
+      return (triggerUsage && fs != null) ? used(result) : result;
     }
 
-    if (feature.fs == null || ( passedType == null && feature.fs.getType() == null )) {
+    // are we a phantom feature? if so we don't know how to do anything with this, so we return
+    // next if they have asked for say a BOOLEAN and we are a JSON feature, thats nonsense, return null
+    if (fs == null || (passedType != null && fs.getType() != passedType)) {
       return null;
     }
 
-    if (feature.fs.getType() != type || type == null) {
-      return null;
-    }
-
-    if (context != null && feature.fs.getStrategies() != null && !feature.fs.getStrategies().isEmpty()) {
+    if (context != null && fs.getStrategies() != null && !fs.getStrategies().isEmpty()) {
       final Applied applied =
         repository.applyFeature(
-          feature.fs.getStrategies(), feature.key, feature.fs.getId().toString(), context);
+          fs.getStrategies(), feature.key, fs.getId().toString(), context);
 
       log.trace("feature is {}", applied);
       if (applied.isMatched()) {
-        final EvaluatedFeature result = EvaluatedFeature.from(feature.fs, applied.getValue(), applied.getStrategyId());
+        final EvaluatedFeature result = EvaluatedFeature.from(fs, applied.getValue(), applied.getStrategyId());
 
         return triggerUsage ? used(result) : result;
       }
-    } else {
-      log.trace("feature `{}` has no strategies or there is no context, falling back to default value of {}", getKey(), feature.fs.getValue());
     }
 
-    final EvaluatedFeature result = EvaluatedFeature.from(feature.fs);
+    final EvaluatedFeature result = EvaluatedFeature.from(fs);
 
     return triggerUsage ? used(result) : result;
   }

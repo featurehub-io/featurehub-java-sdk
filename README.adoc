@@ -574,12 +574,23 @@ the SDK stops retrying.
 Feature Interceptors are the ability to intercept the request for a feature. They only operate in imperative state. For
 an overview check out the https://docs.featurehub.io/#_feature_interceptors[Documentation on them].
 
-We currently support one built-in feature interceptor:
+The following built-in feature interceptors are provided:
 
 - `io.featurehub.client.interceptor.SystemPropertyValueInterceptor` - link:core/client-java-core/src/main/java/io/featurehub/client/interceptor/SystemPropertyValueInterceptor.java[source]
   reads system properties; if a property named `featurehub.feature.FEATURE_NAME` is set and
   `featurehub.features.allow-override=true` is also set, the property value overrides the server value.
   This is useful for a developer who wants to enable a feature flag locally without affecting others.
+
+- `io.featurehub.sdk.yaml.LocalYamlValueInterceptor` (`io.featurehub.sdk:local-yaml`) —
+  reads overrides from a YAML file keyed on feature names. The file is watched for changes at runtime
+  so that you can toggle features by editing a file without restarting.
+  See <<_local_yaml_interceptor_and_feature_store>> for details.
+
+- `io.featurehub.sdk.usageadapter.opentelemetry.OpenTelemetryFeatureInterceptor`
+  (`io.featurehub.sdk.java:opentelemetry-usageadapter`) — reads feature overrides from the OTel
+  `fhub` baggage header written by an upstream service's `OpenTelemetryBaggagePlugin`. This enables
+  feature state to flow transparently across service boundaries in a distributed trace.
+  See <<_opentelemetry_baggage_propagation>> for details.
 
 === Writing a custom interceptor
 
@@ -704,6 +715,27 @@ plugin.getDefaultEventParams().put("environment", "production");
 fhConfig.registerUsagePlugin(plugin);
 ----
 
+==== Asynchronous dispatch
+
+By default `send()` is called synchronously on the thread that evaluated the feature. If your plugin
+does I/O (network calls, database writes, etc.) you can opt into background dispatch by overriding
+`shouldRunAsync()`:
+
+[source,java]
+----
+@Override
+public boolean shouldRunAsync() {
+  return true;
+}
+----
+
+When this returns `true` the `UsageAdapter` wraps the `send()` call in a `Runnable` and submits it to
+the repository's executor, keeping the evaluating thread free.
+
+NOTE: `OpenTelemetryBaggagePlugin` must *not* run async — it needs to update the thread-local OTel
+context before the request sends outgoing HTTP calls. Keep the default `shouldRunAsync() = false`
+for any plugin that writes to thread-local state.
+
 If you need access to the raw usage stream without a plugin (e.g. to batch or filter events), you can register
 a callback directly on the repository:
 
@@ -720,8 +752,14 @@ sub.cancel();
 
 ==== OpenTelemetry
 
-Attaches each feature evaluation to the active OpenTelemetry `Span` — either as span *attributes* (default,
-no extra cost) or as span *events* (enables multiple evaluations per span at the cost of additional data).
+The OpenTelemetry adapter (`io.featurehub.sdk.java:opentelemetry-usageadapter`) provides three
+collaborating classes for different observability and context-propagation use cases:
+
+===== `OpenTelemetryUsagePlugin` — span attributes / events
+
+Attaches each feature evaluation to the active OpenTelemetry `Span` — either as span *attributes*
+(default, no extra cost) or as span *events* (records a named event per evaluation, useful when
+multiple features are evaluated per span).
 
 [source,java]
 ----
@@ -732,8 +770,55 @@ fhConfig.registerUsagePlugin(new OpenTelemetryUsagePlugin());
 fhConfig.registerUsagePlugin(new OpenTelemetryUsagePlugin("fh."));
 ----
 
-Set `FEATUREHUB_OTEL_SPAN_AS_EVENTS=true` to switch to events mode. The plugin is safe to include even when
-OpenTelemetry is not active — it checks for a valid span before doing anything.
+Set env var `FEATUREHUB_OTEL_SPAN_AS_EVENTS=true` to switch to span-events mode. The plugin is safe
+to include even when no span is active — it checks for a recording span before doing anything.
+
+Each key from `UsageEvent.toMap()` (feature name, value, context attributes) is written as a span
+attribute or event attribute under `<prefix><key>`. Lists are joined as comma-separated strings.
+Null values are skipped.
+
+[#_opentelemetry_baggage_propagation]
+===== `OpenTelemetryBaggagePlugin` + `OpenTelemetryFeatureInterceptor` — cross-service feature propagation
+
+These two classes work as a pair to propagate the features evaluated in one service transparently to
+downstream services via the W3C Baggage header.
+
+`OpenTelemetryBaggagePlugin` (a `UsagePlugin`) writes each evaluated feature's *raw* value into the
+OTel Baggage under the key `fhub` — a compact, URL-encoded, alphabetically sorted
+`key=value,...` string.  Because it updates the thread-local OTel context, the standard OTel
+instrumentation (Servlet filter, Spring interceptor, OkHttp interceptor, etc.) automatically injects
+`fhub` into the `baggage` header of every outgoing HTTP request from the same thread.
+
+`OpenTelemetryFeatureInterceptor` (an `ExtendedFeatureValueInterceptor`) reads the `fhub` baggage
+entry in the *receiving* service and overrides the local feature value with whatever the upstream
+service evaluated, giving both services the exact same feature state without any extra coordination.
+
+[source,java]
+----
+// --- Upstream service (the one that first evaluates features) ---
+fhConfig.registerUsagePlugin(new OpenTelemetryBaggagePlugin());
+
+// --- Downstream service (receives the fhub baggage header) ---
+// self-registers with the config; env var FEATUREHUB_OTEL_ALLOW_LOCKED_OVERRIDE
+// controls whether locked features can be overridden (default: false)
+new OpenTelemetryFeatureInterceptor(fhConfig);
+
+// or with an explicit locked-override setting:
+new OpenTelemetryFeatureInterceptor(fhConfig, true);
+----
+
+The `fhub` format is a comma-separated, alphabetically sorted list of URL-encoded key=value pairs:
+
+----
+dark-mode=true,page-size=20,theme=light+blue
+----
+
+A key with no `=` sign represents a feature whose raw value is `null` (the interceptor returns the
+type's zero/default value for that feature).
+
+NOTE: `OpenTelemetryBaggagePlugin` must run synchronously (`shouldRunAsync()` returns `false`, the
+default). It must update the thread-local OTel context *before* any outgoing HTTP calls are made on
+the same thread.
 
 See link:usage-adapters/featurehub-opentelemetry-adapter/README.adoc[OpenTelemetry adapter README] for details.
 
@@ -783,6 +868,120 @@ fhConfig.registerUsagePlugin(new SegmentUsagePlugin(analytics));
 collect all evaluated features and context attributes, then sets them as Segment message context.
 
 See link:usage-adapters/featurehub-segment-adapter/README.adoc[Segment adapter README] for details.
+
+[#_local_yaml_interceptor_and_feature_store]
+== Local YAML Interceptor and Feature Store
+
+The `io.featurehub.sdk:local-yaml` module provides two mechanisms for loading feature values from a
+local YAML file rather than (or in addition to) a live FeatureHub server. Both are useful for
+development, integration testing, and offline/batch scenarios.
+
+=== YAML file format
+
+The file lists feature keys and their values:
+
+[source,yaml]
+----
+flagValues:
+  dark-mode: true
+  page-size: 20
+  theme: "dark"
+  json-config: '{"key":"value"}'
+----
+
+The default file name is `featurehub-features.yaml` in the working directory. Override with the
+`FEATUREHUB_LOCAL_YAML` env var or system property, or pass a filename explicitly.
+
+=== `LocalYamlValueInterceptor` — live override without a server
+
+Implements `ExtendedFeatureValueInterceptor`. On construction it reads the YAML file, registers
+itself with the `FeatureHubConfig`, and optionally watches the file for changes — reloading
+automatically when the file is saved.
+
+[source,java]
+----
+// default file, no file watching
+new LocalYamlValueInterceptor(fhConfig);
+
+// explicit file, watch for changes
+new LocalYamlValueInterceptor(fhConfig, "/etc/myapp/features.yaml", true);
+----
+
+Values override whatever the server sends.  Locked features are never overridden.
+
+=== `LocalYamlFeatureStore` — offline/test feature population
+
+Reads the YAML file and pushes the entries as `FeatureState` objects directly into the repository
+via `updateFeatures()` (source tag `"local-yaml-store"`). This lets you work completely offline,
+or seed a test repository with a known feature set before connecting to a server.
+
+[source,java]
+----
+// uses FEATUREHUB_LOCAL_YAML / default "featurehub-features.yaml"
+new LocalYamlFeatureStore(fhConfig);
+
+// explicit path
+new LocalYamlFeatureStore(fhConfig, "src/test/resources/test-features.yaml");
+----
+
+The file is read exactly once at construction; no change watching is performed. Each feature gets a
+deterministic UUID derived from its key name, and all share the same environment UUID from the config.
+
+NOTE: `LocalYamlFeatureStore` seeds the repository (as if features arrived from the server), while
+`LocalYamlValueInterceptor` intercepts evaluations at read time. Use the store when you need the
+repository to report `Ready` status and when you want features visible to all listeners; use the
+interceptor when you want a lightweight per-evaluation override on top of live server data.
+
+== Redis Session Store
+
+The `io.featurehub.sdk:redis-store` module persists the feature set to Redis and keeps multiple SDK
+instances sharing the same environment in sync without each needing its own persistent Edge
+connection.
+
+=== How it works
+
+On construction `RedisSessionStore`:
+
+1. Reads any features already stored in Redis and pushes them into the repository (so the SDK
+   reaches `Ready` immediately even before the Edge connection succeeds).
+2. Registers a `RawUpdateFeatureListener` that writes every subsequent Edge update back to Redis.
+3. Starts a background scheduler that polls a SHA-256 fingerprint key in Redis; when the SHA
+   changes (meaning another instance wrote new features) the full feature list is re-loaded,
+   keeping all instances in sync.
+
+Redis key layout:
+----
+<prefix>_<environmentId>       — JSON array of FeatureState objects
+<prefix>_<environmentId>_sha   — SHA-256 fingerprint of sorted "id:version" pairs
+----
+
+=== Setup
+
+[source,java]
+----
+// with a JedisPool (WATCH/MULTI/EXEC semantics, recommended)
+new RedisSessionStore(jedisPool, fhConfig);
+
+// with a UnifiedJedis (optimistic check-then-write)
+new RedisSessionStore(unifiedJedis, fhConfig);
+----
+
+=== Configuration
+
+[source,java]
+----
+RedisSessionStoreOptions options = RedisSessionStoreOptions.builder()
+    .prefix("myapp")            // default: "featurehub"
+    .refreshTimeoutSeconds(60)  // how often to poll for SHA changes, default: 300
+    .retryUpdateCount(5)        // write-contention retries, default: 10
+    .backoffTimeoutMs(200)      // sleep between retries, default: 500
+    .build();
+
+new RedisSessionStore(jedisPool, fhConfig, options);
+----
+
+The store uses `jedis 7.1.0` as its client dependency; include it in your project alongside
+`io.featurehub.sdk:redis-store`.
 
 == Testing with the Test API
 
@@ -905,15 +1104,33 @@ build separately in CI. You can load the link:pom.xml and link:v17-and-above/pom
 
 The SDK consists of the following published artifacts:
 
+*Core SDK*
+
 - `io.featurehub.sdk:java-client-api` (`core/client-java-api`) — OpenAPI-generated SSE/REST model classes. Tracks the main FeatureHub repository; changes are always backwards compatible.
 - `io.featurehub.sdk:java-client-core` (`core/client-java-core`) — All domain logic: in-memory feature repository, `ClientContext`, rollout strategy evaluation (`ApplyFeature`), usage adapters, interceptors, and listener infrastructure. Does not connect to the outside world.
+
+*Transport implementations*
+
 - `io.featurehub.sdk:java-client-okhttp` (`client-implementations/java-client-okhttp`) — OKHttp-based `EdgeService`. The recommended transport.
 - `io.featurehub.sdk:java-client-jersey2` (`client-implementations/java-client-jersey2`) — JAX-RS 2.x transport.
 - `io.featurehub.sdk:java-client-jersey3` (`client-implementations/java-client-jersey3`) — Jakarta REST 3.x transport.
+
+*Convenience bundles and composites*
+
 - `io.featurehub.sdk:featurehub-okhttp3-jackson2` (`support/featurehub-okhttp3-jackson2`) — Convenience bundle: OKHttp + Jackson 2 + composites. Recommended for new projects.
 - `io.featurehub.sdk.common:common-jacksonv2` (`support/common-jacksonv2`) — Jackson 2.x JSON adapter. Required unless using `featurehub-okhttp3-jackson2`.
 - `io.featurehub.sdk.common:common-jacksonv3` (`v17-and-above/support/common-jacksonv3`) — Jackson 3.x JSON adapter. Requires Java 17+; built separately under `v17-and-above/`.
 - `io.featurehub.sdk.composites:composite-okhttp/jersey2/jersey3/logging` (`support/`) — Composite POMs that centralise compatible dependency versions. Import into `<dependencyManagement>` to inherit versions without pulling in the SDK itself.
+
+*Local feature sources*
+
+- `io.featurehub.sdk:local-yaml` (`core/local-yaml`) — `LocalYamlValueInterceptor` (live override with optional file-watch) and `LocalYamlFeatureStore` (one-shot population of the repository from a YAML file). See <<_local_yaml_interceptor_and_feature_store>>.
+- `io.featurehub.sdk:redis-store` (`core/redis-store`) — `RedisSessionStore` persists feature state to Redis and keeps multiple SDK instances sharing an environment in sync. See <<_redis_session_store>>.
+
+*Usage adapters / observability*
+
+- `io.featurehub.sdk.java:opentelemetry-usageadapter` (`usage-adapters/featurehub-opentelemetry-adapter`) — Three components: `OpenTelemetryUsagePlugin` (span attributes/events), `OpenTelemetryBaggagePlugin` (write evaluated features into OTel Baggage for downstream propagation), `OpenTelemetryFeatureInterceptor` (read `fhub` baggage and override local features). See <<_opentelemetry_baggage_propagation>>.
+- `io.featurehub.sdk.java:segment-usageadapter` (`usage-adapters/featurehub-segment-adapter`) — `SegmentUsagePlugin` sends feature evaluation events to Twilio Segment; `SegmentMessageTransformer` enriches all outgoing Segment messages with the current user's feature state.
 
 === Java 17+ modules
 

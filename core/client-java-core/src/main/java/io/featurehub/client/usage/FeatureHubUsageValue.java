@@ -69,7 +69,7 @@ public class FeatureHubUsageValue {
     return environmentId;
   }
 
-  public FeatureHubUsageValue(EvaluatedFeature value) {
+  public FeatureHubUsageValue(@NotNull EvaluatedFeature value) {
     FeatureState featureState = Objects.requireNonNull(value.getFeatureState());
     this.id = featureState.getId().toString();
     this.key = featureState.getKey();
