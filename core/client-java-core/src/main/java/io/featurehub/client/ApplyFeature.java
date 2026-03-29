@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +38,7 @@ public class ApplyFeature {
       String defaultPercentageKey = cac.defaultPercentageKey();
 
       for(FeatureRolloutStrategy rsi : strategies ) {
-        if (rsi.getPercentage() != null && (defaultPercentageKey != null || !rsi.getPercentageAttributes().isEmpty())) {
+        if (rsi.getPercentage() != null && (defaultPercentageKey != null || (rsi.getPercentageAttributes() != null && !rsi.getPercentageAttributes().isEmpty()))) {
           // determine what the percentage key is
           String newPercentageKey = determinePercentageKey(cac, rsi.getPercentageAttributes());
 
@@ -58,10 +60,10 @@ public class ApplyFeature {
           if (percentage <= (useBasePercentage + rsi.getPercentage())) {
             if (rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
               if (matchAttributes(cac, rsi)) {
-                return new Applied(true, rsi.getValue());
+                return new Applied(true, rsi.getValue(), rsi.getId());
               }
             } else {
-              return new Applied(true, rsi.getValue());
+              return new Applied(true, rsi.getValue(), rsi.getId());
             }
           }
 
@@ -74,13 +76,13 @@ public class ApplyFeature {
         if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) &&
           rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
           if (matchAttributes(cac, rsi)) {
-            return new Applied(true, rsi.getValue());
+            return new Applied(true, rsi.getValue(), rsi.getId());
           }
         }
       }
     }
 
-    return new Applied(false, null);
+    return new Applied(false, null, null);
   }
 
   // This applies the rules as an AND. If at any point it fails it jumps out.
@@ -121,8 +123,8 @@ public class ApplyFeature {
     return true;
   }
 
-  private String determinePercentageKey(ClientContext cac, List<String> percentageAttributes) {
-    if (percentageAttributes.isEmpty()) {
+  private String determinePercentageKey(ClientContext cac, @Nullable List<String> percentageAttributes) {
+    if (percentageAttributes == null || percentageAttributes.isEmpty()) {
       return cac.defaultPercentageKey();
     }
 

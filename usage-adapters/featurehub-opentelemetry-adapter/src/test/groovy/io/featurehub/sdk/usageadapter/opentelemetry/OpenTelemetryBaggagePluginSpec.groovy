@@ -1,5 +1,6 @@
 package io.featurehub.sdk.usageadapter.opentelemetry
 
+import io.featurehub.client.EvaluatedFeature
 import io.featurehub.client.InternalFeatureRepository
 import io.featurehub.client.usage.DefaultUsageEventWithFeature
 import io.featurehub.client.usage.DefaultUsageFeaturesCollection
@@ -30,7 +31,9 @@ class OpenTelemetryBaggagePluginSpec extends Specification {
   }
 
   private static FeatureHubUsageValue value(String key, Object rawValue, FeatureValueType type) {
-    return new FeatureHubUsageValue("id-$key", key, rawValue, type, UUID.randomUUID())
+    def feature = new FeatureState().id(UUID.randomUUID()).environmentId(UUID.randomUUID()).key(key).value(rawValue).type(type).version(1);
+    return new FeatureHubUsageValue(EvaluatedFeature.from(feature, rawValue))
+
   }
 
   private static DefaultUsageEventWithFeature singleEvent(String key, Object rawValue, FeatureValueType type) {

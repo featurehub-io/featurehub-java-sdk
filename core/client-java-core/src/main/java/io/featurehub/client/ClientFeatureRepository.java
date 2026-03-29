@@ -7,7 +7,6 @@ import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
-import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
 import io.featurehub.strategies.matchers.MatcherRegistry;
 import io.featurehub.strategies.percentage.PercentageMumurCalculator;
@@ -53,7 +52,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   private final List<Callback<FeatureRepository>> newStateAvailableHandlers = new ArrayList<>();
   private final List<Callback<FeatureState<?>>> featureUpdateHandlers = new ArrayList<>();
   private final List<FeatureValueInterceptorHolder> featureValueInterceptors = new ArrayList<>();
-  private final List<ExtendedFeatureValueInterceptor> extendedFeatureValueInterceptors = new ArrayList<>();
+  private final List<ExtendedFeatureValueInterceptor> extendedFeatureValueInterceptors =
+      new ArrayList<>();
   private final List<RawUpdateFeatureListener> rawUpdateFeatureListeners = new ArrayList<>();
   private final List<Callback<UsageEvent>> usageHandlers = new ArrayList<>();
   private UsageProvider usageProvider = new UsageProvider.DefaultUsageProvider();
@@ -86,9 +86,13 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   protected static ExecutorService getExecutor(int threadPoolSize) {
     int maxThreads = Math.max(threadPoolSize, 10);
-    return new ThreadPoolExecutor(3, maxThreads,
-      0L, TimeUnit.MILLISECONDS,
-      new LinkedBlockingQueue<>(), new FeatureHubThreadFactory());
+    return new ThreadPoolExecutor(
+        3,
+        maxThreads,
+        0L,
+        TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<>(),
+        new FeatureHubThreadFactory());
   }
 
   public void setJsonConfigObjectMapper(@NotNull JavascriptObjectMapper jsonConfigObjectMapper) {
@@ -106,7 +110,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public @NotNull FeatureRepository registerValueInterceptor(
-    boolean allowFeatureOverride, @NotNull FeatureValueInterceptor interceptor) {
+      boolean allowFeatureOverride, @NotNull FeatureValueInterceptor interceptor) {
     featureValueInterceptors.add(
         new FeatureValueInterceptorHolder(allowFeatureOverride, interceptor));
 
@@ -114,13 +118,15 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull FeatureRepository registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor) {
+  public @NotNull FeatureRepository registerValueInterceptor(
+      @NotNull ExtendedFeatureValueInterceptor interceptor) {
     extendedFeatureValueInterceptors.add(interceptor);
     return this;
   }
 
   @Override
-  public @NotNull FeatureRepository registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener) {
+  public @NotNull FeatureRepository registerRawUpdateFeatureListener(
+      @NotNull RawUpdateFeatureListener listener) {
     rawUpdateFeatureListeners.add(listener);
     return this;
   }
@@ -131,17 +137,20 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(@NotNull Consumer<FeatureRepository> callback) {
+  public @NotNull RepositoryEventHandler registerNewFeatureStateAvailable(
+      @NotNull Consumer<FeatureRepository> callback) {
     return new Callback<>(newStateAvailableHandlers, callback);
   }
 
   @Override
-  public @NotNull RepositoryEventHandler registerFeatureUpdateAvailable(@NotNull Consumer<FeatureState<?>> callback) {
+  public @NotNull RepositoryEventHandler registerFeatureUpdateAvailable(
+      @NotNull Consumer<FeatureState<?>> callback) {
     return new Callback<>(featureUpdateHandlers, callback);
   }
 
   @Override
-  public @NotNull RepositoryEventHandler registerUsageStream(@NotNull Consumer<UsageEvent> callback) {
+  public @NotNull RepositoryEventHandler registerUsageStream(
+      @NotNull Consumer<UsageEvent> callback) {
     return new Callback<>(usageHandlers, callback);
   }
 
@@ -167,12 +176,14 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void updateFeatures(@NotNull List<io.featurehub.sse.model.FeatureState> features, @NotNull String source) {
+  public void updateFeatures(
+      @NotNull List<io.featurehub.sse.model.FeatureState> features, @NotNull String source) {
     updateFeatures(features, false, source);
   }
 
   @Override
-  public void updateFeatures(List<io.featurehub.sse.model.FeatureState> states, boolean force, @NotNull String source) {
+  public void updateFeatures(
+      List<io.featurehub.sse.model.FeatureState> states, boolean force, @NotNull String source) {
     log.trace("received {} features from {}", features.size(), source);
     states.forEach(s -> updateFeatureInternal(s, force, source));
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeatures(states, source)));
@@ -191,14 +202,26 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   protected void broadcastInitialStateToUsage(List<io.featurehub.sse.model.FeatureState> states) {
     if (!usageHandlers.isEmpty()) {
       final UsageFeaturesCollection uce = usageProvider.createUsageCollectionEvent();
-      uce.setFeatureValues(states.stream().map(fs -> new FeatureHubUsageValue(getFeat(fs.getKey()))).collect(Collectors.toList()));
+      uce.setFeatureValues(
+          states.stream()
+              .map(
+                  fs -> {
+                    final EvaluatedFeature result =
+                        getFeat(fs.getKey()).internalGetValue(null, false);
+                    return result == null ? null : new FeatureHubUsageValue(result);
+                  })
+              .filter(Objects::nonNull)
+              .collect(Collectors.toList()));
       recordUsageEvent(uce);
     }
   }
 
   @Override
   public @NotNull Applied applyFeature(
-    @NotNull List<FeatureRolloutStrategy> strategies, @NotNull String key, @NotNull String featureValueId, @NotNull ClientContext cac) {
+      @NotNull List<FeatureRolloutStrategy> strategies,
+      @NotNull String key,
+      @NotNull String featureValueId,
+      @NotNull ClientContext cac) {
     return applyFeature.applyFeature(strategies, key, featureValueId, cac);
   }
 
@@ -261,7 +284,8 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public void deleteFeature(@NotNull io.featurehub.sse.model.FeatureState readValue, @NotNull String source) {
+  public void deleteFeature(
+      @NotNull io.featurehub.sse.model.FeatureState readValue, @NotNull String source) {
     log.trace("received delete feature {} from {}", readValue.getKey(), source);
 
     final FeatureStateBase<?> holder = features.remove(readValue.getKey());
@@ -296,34 +320,43 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
   }
 
   @Override
-  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, @NotNull String source) {
+  public boolean updateFeature(
+      @NotNull io.featurehub.sse.model.FeatureState featureState, @NotNull String source) {
     boolean changed = updateFeatureInternal(featureState, false, source);
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeature(featureState, source)));
     return changed;
   }
 
   @Override
-  public boolean updateFeature(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force, @NotNull String source) {
+  public boolean updateFeature(
+      @NotNull io.featurehub.sse.model.FeatureState featureState,
+      boolean force,
+      @NotNull String source) {
     log.trace("received update feature {} from {}", featureState.getKey(), source);
     boolean changed = updateFeatureInternal(featureState, force, source);
     rawUpdateFeatureListeners.forEach(l -> execute(() -> l.updateFeature(featureState, source)));
     return changed;
   }
 
-  private boolean updateFeatureInternal(@NotNull io.featurehub.sse.model.FeatureState featureState, boolean force, @NotNull String source) {
+  private boolean updateFeatureInternal(
+      @NotNull io.featurehub.sse.model.FeatureState featureState,
+      boolean force,
+      @NotNull String source) {
     FeatureStateBase<?> holder = features.get(featureState.getKey());
     if (holder == null) {
       holder = new FeatureStateBase<>(this, featureState.getKey());
 
       features.put(featureState.getKey(), holder);
     } else if (holder.feature.fs != null && !force) {
-      long existingVersion = holder.feature.fs.getVersion() == null ? -1 : holder.feature.fs.getVersion();
+      long existingVersion =
+          holder.feature.fs.getVersion() == null ? -1 : holder.feature.fs.getVersion();
       long newVersion = featureState.getVersion() == null ? -1 : featureState.getVersion();
       if (existingVersion > newVersion
           || (newVersion == existingVersion
               && !FeatureStateUtils.changed(
                   holder.feature.fs.getValue(), featureState.getValue()))) {
-        // if the old existingVersion is newer, or they are the same existingVersion and the value hasn't changed.
+        // if the old existingVersion is newer, or they are the same existingVersion and the value
+        // hasn't changed.
         // it can change with server side evaluation based on user data
         return false;
       }
@@ -339,29 +372,33 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     return true;
   }
 
-  @NotNull public FeatureStateBase<?> getFeat(@NotNull String key) {
+  @NotNull
+  public FeatureStateBase<?> getFeat(@NotNull String key) {
     return getFeat(key, Boolean.class);
   }
 
   @Override
-  @NotNull public FeatureStateBase<?> getFeat(@NotNull Feature key) {
+  @NotNull
+  public FeatureStateBase<?> getFeat(@NotNull Feature key) {
     return getFeat(key.name(), Boolean.class);
   }
 
   @Override
   @SuppressWarnings("unchecked") // it is all fake anyway
-  @NotNull public <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz) {
-    return (FeatureStateBase<K>) features.computeIfAbsent(
-      key,
-      key1 -> {
-        if (hasReceivedInitialState) {
-          log.warn(
-            "FeatureHub error: application requesting use of invalid key after initialization: `{}`",
-            key1);
-        }
+  @NotNull
+  public <K> FeatureStateBase<K> getFeat(@NotNull String key, @NotNull Class<K> clazz) {
+    return (FeatureStateBase<K>)
+        features.computeIfAbsent(
+            key,
+            key1 -> {
+              if (hasReceivedInitialState) {
+                log.warn(
+                    "FeatureHub error: application requesting use of invalid key after initialization: `{}`",
+                    key1);
+              }
 
-        return new FeatureStateBase<K>(this, key);
-      });
+              return new FeatureStateBase<K>(this, key);
+            });
   }
 
   private void broadcastFeatureUpdatedListeners(@NotNull FeatureState<?> fs) {
@@ -379,50 +416,55 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
     broadcastReadyness();
   }
 
-
   @Override
-  public void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType,
-                   @Nullable Object value, @Nullable Map<String, List<String>> attributes,
-                   String usageUserKey, @NotNull UUID environmentId) {
+  public void used(
+      EvaluatedFeature value,
+      @Nullable Map<String, List<String>> attributes,
+      String usageUserKey) {
 
-    recordUsageEvent(usageProvider.createUsageFeature(new FeatureHubUsageValue(id.toString(), key,
-      value, valueType, environmentId
-      ), attributes, usageUserKey));
+    recordUsageEvent(
+        usageProvider.createUsageFeature(
+            new FeatureHubUsageValue(value), attributes, usageUserKey));
   }
 
   @Override
-  public @Nullable ExtendedFeatureValueInterceptor.ValueMatch findIntercept(@NotNull String key,
-                                                                            io.featurehub.sse.model.@Nullable FeatureState featureState) {
-    final ExtendedFeatureValueInterceptor.ValueMatch matched = extendedFeatureValueInterceptors.stream().map(fv -> {
-        return fv.getValue(key, this, featureState);
-      }).filter(Objects::nonNull)
-      .filter(r -> r.matched)
-      .findFirst()
-      .orElse(new ExtendedFeatureValueInterceptor.ValueMatch(false, null));
+  public @Nullable ExtendedFeatureValueInterceptor.ValueMatch findIntercept(
+      @NotNull String key, io.featurehub.sse.model.@Nullable FeatureState featureState) {
+    final ExtendedFeatureValueInterceptor.ValueMatch matched =
+        extendedFeatureValueInterceptors.stream()
+            .map(
+                fv -> {
+                  return fv.getValue(key, this, featureState);
+                })
+            .filter(Objects::nonNull)
+            .filter(r -> r.matched)
+            .findFirst()
+            .orElse(new ExtendedFeatureValueInterceptor.ValueMatch(false, null));
 
     if (matched.matched) {
       return matched;
     }
 
-    return ExtendedFeatureValueInterceptor.ValueMatch.fromOld(findIntercept(featureState != null && featureState.getL(), key));
+    return ExtendedFeatureValueInterceptor.ValueMatch.fromOld(
+        findIntercept(featureState != null && featureState.getL(), key));
   }
 
   @Override
   public FeatureValueInterceptor.ValueMatch findIntercept(boolean locked, @NotNull String key) {
     return featureValueInterceptors.stream()
-      .filter(vi -> !locked || vi.allowLockOverride)
-      .map(
-        vi -> {
-          FeatureValueInterceptor.ValueMatch vm = vi.interceptor.getValue(key);
-          if (vm != null && vm.matched) {
-            return vm;
-          } else {
-            return null;
-          }
-        })
-      .filter(Objects::nonNull)
-      .findFirst()
-      .orElse(null);
+        .filter(vi -> !locked || vi.allowLockOverride)
+        .map(
+            vi -> {
+              FeatureValueInterceptor.ValueMatch vm = vi.interceptor.getValue(key);
+              if (vm != null && vm.matched) {
+                return vm;
+              } else {
+                return null;
+              }
+            })
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
   }
 
   @Override

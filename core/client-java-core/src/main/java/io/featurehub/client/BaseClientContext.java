@@ -5,7 +5,6 @@ import io.featurehub.client.usage.UsageEvent;
 import java.math.BigDecimal;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
-import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
@@ -122,15 +121,14 @@ class BaseClientContext implements InternalContext {
   }
 
   @Override
-  public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
-                             @NotNull FeatureValueType valueType, @NotNull UUID environmentId) {
+  public void used(@NotNull EvaluatedFeature value) {
     final HashMap<String, List<String>> attrCopy = new HashMap<>(attributes);
     final String userKey = usageUserKey();
 
-    log.trace("recording usage for key: {}, id: {}, value: {}, valueType: {}, userKey: {}, attributes: {}",
-      key, id, val, valueType, userKey, attrCopy);
+    log.trace("recording usage for value {}, userKey: {}, attributes: {}",
+      value, userKey, attrCopy);
 
-    repository.used(key, id, valueType, val, attrCopy, userKey, environmentId);
+    repository.used(value, attrCopy, userKey);
   }
 
   /**
@@ -144,9 +142,15 @@ class BaseClientContext implements InternalContext {
   }
 
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordUsageEvent(repository.getUsageProvider().createUsageEventWithFeature(
-      new FeatureHubUsageValue(feature.withContext(this)), attributes,
-      usageUserKey()));
+    feature.getValue(Object.class);
+
+    final EvaluatedFeature result = feature.withContext(this).internalGetValue(null, false);
+
+    if (result != null) { // we can't record the usage for a phantom flag
+      repository.recordUsageEvent(repository.getUsageProvider().createUsageEventWithFeature(
+        new FeatureHubUsageValue(result), attributes,
+        usageUserKey()));
+    }
   }
 
   protected void recordRelativeValuesForUser() {
@@ -158,8 +162,10 @@ class BaseClientContext implements InternalContext {
 
     if (event instanceof UsageFeaturesCollection) {
       ((UsageFeaturesCollection)event).setFeatureValues(
-        repository.getFeatureKeys().stream().map((k) ->
-          new FeatureHubUsageValue(repository.getFeat(k))).collect(Collectors.toList()));
+        repository.getFeatureKeys().stream().map((k) -> {
+          final EvaluatedFeature result = repository.getFeat(k).withContext(this).internalGetValue(null, false);
+          return result == null ? null : new FeatureHubUsageValue(result);
+        }).filter(Objects::nonNull).collect(Collectors.toList()));
     }
 
     if (event instanceof UsageFeaturesCollectionContext) {

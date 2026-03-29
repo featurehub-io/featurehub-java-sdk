@@ -1,9 +1,11 @@
 package io.featurehub.sdk.usageadapter.opentelemetry
 
+import io.featurehub.client.EvaluatedFeature
 import io.featurehub.client.usage.DefaultUsageEventWithFeature
 import io.featurehub.client.usage.FeatureHubUsageValue
 import io.featurehub.client.usage.UsageEvent
 import io.featurehub.client.usage.UsageEventName
+import io.featurehub.sse.model.FeatureState
 import io.featurehub.sse.model.FeatureValueType
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.trace.Span
@@ -37,7 +39,8 @@ class OpenTelemetryUsagePluginSpec extends Specification {
   }
 
   private static FeatureHubUsageValue fhValue(String key, Object rawValue, String value, FeatureValueType type) {
-    return new FeatureHubUsageValue("id-$key", key, rawValue, type, UUID.randomUUID())
+    def feature = new FeatureState().id(UUID.randomUUID()).environmentId(UUID.randomUUID()).key(key).value(rawValue).type(type).version(1);
+    return new FeatureHubUsageValue(EvaluatedFeature.from(feature, rawValue))
   }
 
   // --- event type filtering ---

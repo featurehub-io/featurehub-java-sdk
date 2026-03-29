@@ -36,6 +36,13 @@ public interface FeatureState<K> {
     return val == null ? defaultValue : val;
   }
 
+  // this is when the calling class will take care of typecasting
+  @Nullable Object getValue();
+  default @Nullable Object getValue(@Nullable Object defaultValue) {
+    Object val = getValue();
+    return val == null ? defaultValue : val;
+  }
+
   /**
    * Gets the value raw and tries to make it appear as the type you request, regardless of
    * the underlying type. If it is a boolean and you ask for it as a string, it will still be a bool and

@@ -5,11 +5,9 @@ import io.featurehub.client.usage.UsageProvider;
 import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureState;
-import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.SSEResultState;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -80,9 +78,9 @@ public interface InternalFeatureRepository extends FeatureRepository {
    */
   void repositoryEmpty();
 
-  void used(@NotNull String key, @NotNull UUID id, @NotNull FeatureValueType valueType, @Nullable Object value,
+  void used(EvaluatedFeature value,
             @Nullable Map<String, @Nullable List<String>> attributes,
-            @Nullable String usageUserKey, @NotNull UUID environmentId);
+            @Nullable String usageUserKey);
 
   @NotNull UsageProvider getUsageProvider();
 }

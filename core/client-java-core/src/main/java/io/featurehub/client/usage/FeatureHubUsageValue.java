@@ -1,6 +1,7 @@
 package io.featurehub.client.usage;
 
-import io.featurehub.client.FeatureStateBase;
+import io.featurehub.client.EvaluatedFeature;
+import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.FeatureValueType;
 import java.util.Objects;
 import java.util.UUID;
@@ -20,6 +21,10 @@ public class FeatureHubUsageValue {
   final FeatureValueType type;
   @NotNull
   final UUID environmentId;
+  // this indicates the strategy-id (if any) that was used to determine this value. It indicates if the FHOS company
+  // is tracking strategies which one actually triggered it.
+  @Nullable
+  final String strategyId;
 
   @Nullable
   static String convert(@Nullable Object value, @Nullable FeatureValueType type) {
@@ -40,14 +45,8 @@ public class FeatureHubUsageValue {
     return null;
   }
 
-  public FeatureHubUsageValue(@NotNull String id, @NotNull String key, @Nullable Object value,
-                              @NotNull FeatureValueType type, @NotNull UUID environmentId) {
-    this.id = id;
-    this.key = key;
-    this.value = convert(value, type);
-    this.rawValue = value;
-    this.type = type;
-    this.environmentId = environmentId;
+  public @Nullable String getStrategyId() {
+    return strategyId;
   }
 
   public @NotNull String getKey() { return key; }
@@ -70,12 +69,14 @@ public class FeatureHubUsageValue {
     return environmentId;
   }
 
-  public FeatureHubUsageValue(@NotNull FeatureStateBase<?> holder) {
-    this.id = holder.getId();
-    this.key = holder.getKey();
-    this.rawValue = holder.getUsageFreeValue();
-    this.type = Objects.requireNonNull(holder.getType());
+  public FeatureHubUsageValue(EvaluatedFeature value) {
+    FeatureState featureState = Objects.requireNonNull(value.getFeatureState());
+    this.id = featureState.getId().toString();
+    this.key = featureState.getKey();
+    this.rawValue = value.getValue();
+    this.type = Objects.requireNonNull(featureState.getType());
     this.value = convert(this.rawValue, this.type);
-    this.environmentId = Objects.requireNonNull(holder.getEnvironmentId());
+    this.environmentId = Objects.requireNonNull(featureState.getEnvironmentId());
+    this.strategyId = value.getStrategyId();
   }
 }

@@ -112,22 +112,17 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
   @Override
   public Boolean getFlag() {
-    Object val = getValue(FeatureValueType.BOOLEAN);
+    EvaluatedFeature val = internalGetValue(FeatureValueType.BOOLEAN, true);
 
-    if (val == null) {
+    if (val == null || val.getValue() == null) {
       return null;
     }
 
-    if (val instanceof String) {
-      return Boolean.TRUE.equals("true".equalsIgnoreCase(val.toString()));
+    if (val.getValue() instanceof String) {
+      return "true".equalsIgnoreCase(val.getValue().toString());
     }
 
-    return Boolean.TRUE.equals(val);
-  }
-
-  @Nullable
-  private Object getValue(@Nullable FeatureValueType type) {
-    return internalGetValue(type, true);
+    return Boolean.TRUE.equals(val.getValue());
   }
 
   @Override
@@ -144,18 +139,25 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     return (topFeature.fs.getFeatureProperties() == null) ? new LinkedHashMap<>() : topFeature.fs.getFeatureProperties();
   }
 
-  public Object getUsageFreeValue() {
+  public EvaluatedFeature getUsageFreeValue() {
     return internalGetValue(null, false);
   }
 
   @Override
-  public K getValue(Class<K> clazz) {
-    return clazz.cast(internalGetValue(null, true));
+  public @Nullable Object getValue() {
+    final EvaluatedFeature result = internalGetValue(null, true);
+    return result == null ? null : result.getValue();
   }
 
-  private Object internalGetValue(@Nullable FeatureValueType passedType, boolean triggerUsage) {
-    boolean locked = feature.fs != null && Boolean.TRUE.equals(feature.fs.getL());
+  @Override
+  public K getValue(Class<K> clazz) {
+    final EvaluatedFeature result = internalGetValue(null, true);
 
+    return result == null ? null : clazz.cast(result.getValue());
+  }
+
+  @Nullable
+  public EvaluatedFeature internalGetValue(@Nullable FeatureValueType passedType, boolean triggerUsage) {
     // the intercetor can trigger even on invalid feature keys, so we need to be able to track it
     ExtendedFeatureValueInterceptor.ValueMatch vm = repository.findIntercept(feature.key, feature.fs);
 
@@ -165,9 +167,11 @@ public class FeatureStateBase<K> implements FeatureState<K> {
     if (vm.matched) {
       // did we want to trigger usage and is this a real feature? We never trigger usage for intercepted features that have
       // no actual feature
-      return triggerUsage && feature.fs != null && feature.fs.getId() != null ?
-        used(feature.key, feature.fs.getId(), vm.value, type == null ? FeatureValueType.STRING : type, feature.fs.getEnvironmentId()) :
-        vm.value;
+      if (triggerUsage && feature.fs != null) {
+        return used(EvaluatedFeature.from(feature.fs, vm.value));
+      }
+
+      return EvaluatedFeature.from(feature.fs, vm.value);
     }
 
     if (feature.fs == null || ( passedType == null && feature.fs.getType() == null )) {
@@ -185,40 +189,44 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
       log.trace("feature is {}", applied);
       if (applied.isMatched()) {
-        return triggerUsage ? used(feature.key, feature.fs.getId(), applied.getValue(), type, feature.fs.getEnvironmentId()) : applied.getValue();
+        final EvaluatedFeature result = EvaluatedFeature.from(feature.fs, applied.getValue(), applied.getStrategyId());
+
+        return triggerUsage ? used(result) : result;
       }
     } else {
       log.trace("feature `{}` has no strategies or there is no context, falling back to default value of {}", getKey(), feature.fs.getValue());
     }
 
-    return triggerUsage ? used(feature.key, feature.fs.getId(), feature.fs.getValue(), type, feature.fs.getEnvironmentId()) :
-      feature.fs.getValue();
+    final EvaluatedFeature result = EvaluatedFeature.from(feature.fs);
+
+    return triggerUsage ? used(result) : result;
   }
 
-  Object used(@NotNull String key, @NotNull UUID id, @Nullable Object value, @NotNull FeatureValueType type, @NotNull UUID environmentId) {
+  EvaluatedFeature used(@NotNull EvaluatedFeature value) {
     if (context != null) {
-      context.used(key, id, value, type, environmentId);
+      context.used(value);
     } else {
-      log.trace("calling used with  {}", value);
-      repository.used(key, id, type, value, null, null, environmentId);
+      log.trace("calling repository used with  {}", value);
+      repository.used(value, null, null);
     }
 
     return value;
   }
 
   private String getAsString(FeatureValueType type) {
-    Object value = getValue(type);
-    return value == null ? null : value.toString();
+    EvaluatedFeature value = internalGetValue(type, true);
+    return value == null || value.isNull() ? null : value.getValue().toString();
   }
 
   @Override
   public BigDecimal getNumber() {
-    Object val = getValue(FeatureValueType.NUMBER);
+    EvaluatedFeature value = internalGetValue(FeatureValueType.NUMBER, true);
 
     try {
-      return (val == null) ? null : (val instanceof BigDecimal ? ((BigDecimal)val) : new BigDecimal(val.toString()));
+      return (value == null) || value.isNull() ? null : (value.getValue() instanceof BigDecimal ? ((BigDecimal)value.getValue())
+        : new BigDecimal(value.getValue().toString()));
     } catch (Exception e) {
-      log.warn("Attempting to convert {} to BigDecimal fails as is not a number", val);
+      log.warn("Attempting to convert {} to BigDecimal fails as is not a number", value);
       return null; // ignore conversion failures
     }
   }
@@ -247,9 +255,9 @@ public class FeatureStateBase<K> implements FeatureState<K> {
 
   @Override
   public boolean isSet() {
-    return getValue((FeatureValueType) null) != null;
+    EvaluatedFeature value = internalGetValue(null, true);
+    return value != null && !value.isNull();
   }
-
 
   @Override
   public void addListener(final @NotNull FeatureListener listener) {
