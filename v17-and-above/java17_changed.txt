@@ -1,1 +1,1 @@
-support/common-jacksonv3
+examples/todo-java-quarkus,support/common-jacksonv3
