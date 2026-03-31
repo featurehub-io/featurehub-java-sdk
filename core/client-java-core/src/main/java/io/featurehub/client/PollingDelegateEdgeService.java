@@ -42,12 +42,17 @@ public class PollingDelegateEdgeService implements EdgeService {
       busy = false;
 
       timer = newTimer(); // once its cancelled, you can't reuse it
-      timer.schedule(new TimerTask() {
-        @Override
-        public void run() {
-          poll();
-        }
-      }, edgeService.currentInterval() * 1000);
+      try {
+        timer.schedule(new TimerTask() {
+          @Override
+          public void run() {
+            poll();
+          }
+        }, edgeService.currentInterval() * 1000);
+      } catch (IllegalStateException e) {
+        // timer was cancelled concurrently (e.g. during close() or contextChange()) - not an error
+        log.debug("Polling timer cancelled before scheduling, client is likely shutting down");
+      }
     }
   }
 
@@ -104,6 +109,10 @@ public class PollingDelegateEdgeService implements EdgeService {
 
   @Override
   public Future<Readiness> poll() {
+    if (edgeService.isStopped()) {
+      return CompletableFuture.completedFuture(repo.getReadiness());
+    }
+
     if (!busy) {
       busy = true;
       cancelTimer();
