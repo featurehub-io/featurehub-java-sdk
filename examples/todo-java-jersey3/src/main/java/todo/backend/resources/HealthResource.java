@@ -20,7 +20,7 @@ public class HealthResource {
   }
 
   @GET
-  @Path("/disable")
+  @Path("/disconnect")
   public Response disableEdge() {
     featureHub.getConfig().closeEdge();
     return Response.ok().build();

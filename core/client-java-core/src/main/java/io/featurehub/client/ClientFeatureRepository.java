@@ -407,7 +407,7 @@ public class ClientFeatureRepository implements InternalFeatureRepository {
 
   @Override
   public void recordUsageEvent(@NotNull UsageEvent event) {
-    usageHandlers.forEach(handler -> execute(() -> handler.callback.accept(event)));
+    usageHandlers.forEach(handler -> handler.callback.accept(event));
   }
 
   @Override

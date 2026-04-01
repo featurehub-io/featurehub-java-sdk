@@ -103,5 +103,10 @@ public interface FeatureState<K> {
 
   @Nullable FeatureValueType getType();
 
+  /**
+   * This is the grab bag of properties that folks can attach to any feature value. At the current time it only works
+   * for open source because of security concerns.
+   * @return
+   */
   @NotNull Map<String,String> featureProperties();
 }

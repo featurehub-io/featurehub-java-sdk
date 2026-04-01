@@ -209,7 +209,7 @@ class RepositorySpec extends Specification {
       repo.readyness == Readiness.Ready
   }
 
-  def "i can attach to a feature before it is added and receive notifications when it is"() {
+  def "i can support phantom features by asking for feature before it is added to the repository and receive notifications when it is"() {
     given: "i have one of each feature type"
       def features = [
         fs().key('banana').value(false).type(FeatureValueType.BOOLEAN),
