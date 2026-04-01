@@ -136,7 +136,7 @@
         <configuration>
           <mavenExecutorId>forked-path</mavenExecutorId>
           <preparationGoals>clean enforcer:enforce verify</preparationGoals>
-          <goals>bounds:update enforcer:enforce central-publishing:publish</goals>
+          <goals>bounds:update enforcer:enforce verify central-publishing:publish</goals>
           <tagBase>${project.groupId}/</tagBase>
           <pushChanges>false</pushChanges>
           <localCheckout>true</localCheckout>
