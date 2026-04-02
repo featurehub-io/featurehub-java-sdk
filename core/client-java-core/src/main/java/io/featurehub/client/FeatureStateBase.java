@@ -255,12 +255,19 @@ public class FeatureStateBase<K> implements FeatureState<K> {
   }
 
   @Override
-  public void addListener(final @NotNull FeatureListener listener) {
+  public FeatureListenerHandler addListener(final @NotNull FeatureListener listener) {
+    FeatureListener midListener = listener;
     if (context != null) {
-      listeners.add((fs) -> listener.notify(this));
-    } else {
-      listeners.add(listener);
+      midListener = (fs) -> listener.notify(this);
     }
+
+    listeners.add(midListener);
+
+    final FeatureListener finalListener = midListener;
+
+    return () -> {
+      listeners.remove(finalListener);
+    };
   }
 
   // stores the feature state and triggers notifyListeners if anything changed

@@ -44,7 +44,7 @@
   </scm>
 
   <properties>
-    <jackson.annotations.version>2.20</jackson.annotations.version>
+    <jackson.annotations.version>2.21</jackson.annotations.version>
   </properties>
 
   <dependencies>

@@ -33,6 +33,7 @@ public class OpenTelemetryUsagePlugin extends UsagePlugin {
   OpenTelemetryUsagePlugin(String prefix, boolean attachAsSpanEvents) {
     this.prefix = prefix;
     this.attachAsSpanEvents = attachAsSpanEvents;
+    log.info("[featurehubsdk] open telemetry {} logger enabled", attachAsSpanEvents ? "span" : "event");
   }
 
   @Override

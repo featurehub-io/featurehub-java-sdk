@@ -51,9 +51,6 @@ public class RestClient implements EdgeService {
   private String etag = null;
   private long pollingInterval;
 
-  private long whenPollingCacheExpires;
-  private final boolean clientSideEvaluation;
-  private final boolean amPollingDelegate;
   @NotNull private final FeatureHubConfig config;
   @NotNull private final ExecutorService executorService;
 
@@ -66,26 +63,16 @@ public class RestClient implements EdgeService {
 
     this.mapper = repository.getJsonObjectMapper();
 
-    this.amPollingDelegate = amPollingDelegate;
     this.repository = repository;
 
     this.client = buildOkHttpClient(edgeRetryService);
 
     this.config = config;
     this.pollingInterval = timeoutInSeconds;
-
-    // ensure the poll has expired the first time we ask for it
-    whenPollingCacheExpires = System.currentTimeMillis() - 100;
-
-    this.clientSideEvaluation = !config.isServerEvaluation();
     this.makeRequests = true;
     executorService = makeExecutorService();
 
     url = config.baseUrl() + "/features?" + config.apiKeys().stream().map(u -> "apiKey=" + u).collect(Collectors.joining("&"));
-
-    if (clientSideEvaluation) {
-      checkForUpdates(null);
-    }
   }
 
   /**
@@ -113,62 +100,6 @@ public class RestClient implements EdgeService {
 
   public RestClient(@NotNull FeatureHubConfig config) {
     this(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), 180, false);
-  }
-
-  private boolean busy = false;
-  private boolean headerChanged = false;
-  private List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
-
-  protected Long now() {
-    return System.currentTimeMillis();
-  }
-
-  public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
-    final boolean breakCache =
-      amPollingDelegate || pollingInterval == 0 || (now() > whenPollingCacheExpires || headerChanged);
-    final boolean ask = makeRequests && !busy && !stopped && breakCache;
-
-    headerChanged = false;
-
-    if (ask) {
-      if (change != null) {
-        // we are going to call, so we take a note of who we need to tell
-        waitingClients.add(change);
-      }
-
-      busy = true;
-
-      String url = this.url + "&contextSha=" + xContextSha;
-      log.trace("request url is {}", url);
-      Request.Builder reqBuilder = new Request.Builder().url(url);
-
-      if (xFeaturehubHeader != null) {
-        reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
-      }
-
-      if (etag != null) {
-        reqBuilder = reqBuilder.addHeader("if-none-match", etag);
-      }
-
-      reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
-
-      Request request = reqBuilder.build();
-
-      Call call = client.newCall(request);
-      call.enqueue(new Callback() {
-        @Override
-        public void onFailure(@NotNull Call call, @NotNull IOException e) {
-          processFailure(e);
-        }
-
-        @Override
-        public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
-          processResponse(response);
-        }
-      });
-    }
-
-    return ask;
   }
 
   /**
@@ -210,16 +141,13 @@ public class RestClient implements EdgeService {
     }
   }
 
-  protected void processFailure(@NotNull IOException e) {
+  protected void processFailure(@NotNull IOException e, CompletableFuture<Readiness> change) {
     log.error("Unable to call for features", e);
     repository.notify(SSEResultState.FAILURE, "polling");
-    busy = false;
-    completeReadiness();
+    change.complete(Readiness.Failed);
   }
 
-  protected void processResponse(Response response) throws IOException {
-    busy = false;
-
+  protected void processResponse(Response response, CompletableFuture<Readiness> change) throws IOException {
     log.trace("response code is {}", response.code());
 
     // check the cache-control for the max-age
@@ -242,7 +170,7 @@ public class RestClient implements EdgeService {
           environments = mapper.readFeatureCollection(new String(body.bytes()));
         } catch (Exception e) {
           log.error("Failed to process successful response from FH Edge server", e);
-          processFailure(new IOException(e));
+          processFailure(new IOException(e), change);
           return;
         }
 
@@ -261,11 +189,6 @@ public class RestClient implements EdgeService {
         if (response.code() == 236) {
           this.stopped = true; // prevent any further requests
         }
-
-        // reset the polling interval to prevent unnecessary polling
-        if (pollingInterval > 0) {
-          whenPollingCacheExpires = now() + (pollingInterval * 1000);
-        }
       } else if (response.code() == 400 || response.code() == 404 || response.code() == 401 || response.code() == 403) {
         // 401 and 403 are possible because of misconfiguration
         makeRequests = false;
@@ -277,7 +200,7 @@ public class RestClient implements EdgeService {
       log.error("Failed to parse response {}", response.code(), e);
     }
 
-    completeReadiness(); // under all circumstances, unblock clients
+    change.complete(repository.getReadiness());
   }
 
   boolean canMakeRequests() {
@@ -286,39 +209,23 @@ public class RestClient implements EdgeService {
 
   public boolean isStopped() { return stopped; }
 
-  private void completeReadiness() {
-    List<CompletableFuture<Readiness>> current = waitingClients;
-    waitingClients = new ArrayList<>();
-    current.forEach(c -> {
-      try {
-        c.complete(repository.getReadiness());
-      } catch (Exception e) {
-        log.error("Unable to complete future", e);
-      }
-    });
+  @Override
+  public boolean needsContextChange(@Nullable String newHeader, @NotNull String contextSha) {
+    return etag == null || repository.getReadiness() != Readiness.Ready
+      || (!isClientEvaluation() && (newHeader != null && !newHeader.equals(xFeaturehubHeader)));
   }
 
   @Override
   public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @NotNull String contextSha) {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-
-    headerChanged = (newHeader != null && !newHeader.equals(xFeaturehubHeader));
-
     xFeaturehubHeader = newHeader;
     xContextSha = contextSha;
 
-    if (busy) {
-      waitingClients.add(change);
-    } else if (!checkForUpdates(change)) {
-      change.complete(repository.getReadiness());
-    }
-
-    return change;
+    return poll();
   }
 
   @Override
   public boolean isClientEvaluation() {
-    return clientSideEvaluation;
+    return !config.isServerEvaluation();
   }
 
   @Override
@@ -343,14 +250,37 @@ public class RestClient implements EdgeService {
 
   @Override
   public Future<Readiness> poll() {
+    String url = this.url + "&contextSha=" + xContextSha;
+    log.trace("request url is {}", url);
+    Request.Builder reqBuilder = new Request.Builder().url(url);
+
+    if (xFeaturehubHeader != null) {
+      reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
+    }
+
+    if (etag != null) {
+      reqBuilder = reqBuilder.addHeader("if-none-match", etag);
+    }
+
+    reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
+
+    Request request = reqBuilder.build();
+
+    log.trace("polling");
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-    if (busy) {
-      waitingClients.add(change);
-    } else if (!checkForUpdates(change)) {
-      // not even planning to ask
-      change.complete(repository.getReadiness());
-    }
+    Call call = client.newCall(request);
+    call.enqueue(new Callback() {
+      @Override
+      public void onFailure(@NotNull Call call, @NotNull IOException e) {
+        processFailure(e, change);
+      }
+
+      @Override
+      public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
+        processResponse(response, change);
+      }
+    });
 
     return change;
   }
@@ -358,9 +288,5 @@ public class RestClient implements EdgeService {
   @Override
   public long currentInterval() {
     return pollingInterval;
-  }
-
-  public long getWhenPollingCacheExpires() {
-    return whenPollingCacheExpires;
   }
 }

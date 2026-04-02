@@ -14,6 +14,7 @@ public interface FeatureHubClientFactory {
 
   @NotNull Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config);
 
+  // amPollingDelegate is no longer used
   @NotNull Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
                                        @Nullable InternalFeatureRepository repository,
                                        int timeoutInSeconds, boolean amPollingDelegate);

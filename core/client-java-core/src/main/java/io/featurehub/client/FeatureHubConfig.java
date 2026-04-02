@@ -182,4 +182,6 @@ public interface FeatureHubConfig {
    */
   UUID getEnvironmentId();
 
+  default void setEdgeSupplierFactory(FeatureHubClientFactory factory) {
+  }
 }

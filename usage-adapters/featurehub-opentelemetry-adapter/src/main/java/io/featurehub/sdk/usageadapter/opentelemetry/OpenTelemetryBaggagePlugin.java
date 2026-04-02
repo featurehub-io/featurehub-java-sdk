@@ -42,6 +42,10 @@ import java.util.TreeMap;
 public class OpenTelemetryBaggagePlugin extends UsagePlugin {
   private static final Logger log = LoggerFactory.getLogger(OpenTelemetryBaggagePlugin.class);
 
+  public OpenTelemetryBaggagePlugin() {
+    log.info("[featurehubsdk] open telemetry baggage plugin installed");
+  }
+
   @Override
   public void send(UsageEvent event) {
     if (event instanceof UsageEventWithFeature) {

@@ -39,7 +39,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
 
   @Nullable private ServerEvalFeatureContext serverEvalFeatureContext;
 
-  @Nullable ServiceLoader<FeatureHubClientFactory> loader;
+  @Nullable FeatureHubClientFactory edgeFactory;
 
   @Nullable TestApi testApi;
 
@@ -105,7 +105,7 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     usageAdapter.registerPlugin(new UsagePlugin() {
       @Override
       public void send(UsageEvent event) {
-        if (event instanceof UsageEventWithFeature && edgeType == EdgeType.REST_PASSIVE && edgeService != null) {
+        if (event instanceof UsageEventWithFeature && edgeType == EdgeType.REST_PASSIVE && edgeService != null && !closed) {
           edgeService.poll();
         }
       }
@@ -221,18 +221,11 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     }
 
     if (edgeServiceSupplier == null) {
-      ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
-
-      for (FeatureHubClientFactory f : loader) {
-        if (edgeType == EdgeType.STREAMING) {
-          edgeServiceSupplier = f.createSSEEdge(this, repository);
-        } else if (edgeType == EdgeType.REST_PASSIVE) {
-          edgeServiceSupplier = f.createRestEdge(this, repository, timeout, false);
-        } else {
-          edgeServiceSupplier = () -> new PollingDelegateEdgeService(
-            f.createRestEdge(this, repository, timeout, true).get(),
-            repository);
-        }
+      if (edgeFactory == null) {
+        ServiceLoader<FeatureHubClientFactory> loader = ServiceLoader.load(FeatureHubClientFactory.class);
+        loader.findFirst().ifPresent(this::setEdge);
+      } else {
+        setEdge(edgeFactory);
       }
     }
 
@@ -241,6 +234,19 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     }
 
     throw new RuntimeException("Unable to find an edge service for featurehub, please include one on classpath.");
+  }
+
+  private void setEdge(FeatureHubClientFactory f) {
+    if (edgeType == EdgeType.STREAMING) {
+      edgeServiceSupplier = f.createSSEEdge(this, repository);
+    } else if (edgeType == EdgeType.REST_PASSIVE) {
+      edgeServiceSupplier = () -> new PassivePollingDelegateEdgeService(
+        f.createRestEdge(this, repository, timeout, false).get(), repository);
+    } else {
+      edgeServiceSupplier = () -> new ActivePollingDelegateEdgeService(
+        f.createRestEdge(this, repository, timeout, true).get(),
+        repository);
+    }
   }
 
   @Override
@@ -423,5 +429,10 @@ public class EdgeFeatureHubConfig implements FeatureHubConfig {
     this.timeout = 180;
     edgeType = EdgeType.REST_PASSIVE;
     return this;
+  }
+
+  @Override
+  public void setEdgeSupplierFactory(FeatureHubClientFactory factory) {
+    edgeFactory = factory;
   }
 }

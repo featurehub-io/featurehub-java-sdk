@@ -209,6 +209,58 @@ class RepositorySpec extends Specification {
       repo.readyness == Readiness.Ready
   }
 
+  def "a FeatureListener can be removed via the returned FeatureListenerHandler"() {
+    given: "a feature exists in the repository"
+      repo.updateFeatures([fs().key('banana').value(false).type(FeatureValueType.BOOLEAN)])
+    and: "a listener is added after the initial state is loaded"
+      def listener = Mock(FeatureListener)
+      def handler = repo.getFeat('banana').addListener(listener)
+    when: "the feature value changes"
+      repo.updateFeatures([fs().key('banana').value(true).type(FeatureValueType.BOOLEAN)])
+    then: "the listener is notified"
+      1 * listener.notify(_)
+    when: "the handler is cancelled and the feature changes again"
+      handler.cancel()
+      repo.updateFeatures([fs().key('banana').value(false).type(FeatureValueType.BOOLEAN)])
+    then: "the listener is no longer notified"
+      0 * listener.notify(_)
+  }
+
+  def "cancelling one handler does not affect other listeners on the same feature"() {
+    given: "a feature exists in the repository"
+      repo.updateFeatures([fs().key('banana').value(false).type(FeatureValueType.BOOLEAN)])
+    and: "two listeners are registered"
+      def listenerA = Mock(FeatureListener)
+      def listenerB = Mock(FeatureListener)
+      def handlerA = repo.getFeat('banana').addListener(listenerA)
+      repo.getFeat('banana').addListener(listenerB)
+    when: "listenerA's handler is cancelled and the feature changes"
+      handlerA.cancel()
+      repo.updateFeatures([fs().key('banana').value(true).type(FeatureValueType.BOOLEAN)])
+    then: "only listenerB is notified"
+      0 * listenerA.notify(_)
+      1 * listenerB.notify(_)
+  }
+
+  def "a context-scoped FeatureListener can be removed via the returned FeatureListenerHandler"() {
+    given: "a feature exists in the repository"
+      repo.updateFeatures([fs().key('banana').value(false).type(FeatureValueType.BOOLEAN)])
+    and: "a listener is added to a context-scoped view of the feature"
+      def ctx = new BaseClientContext(repo, Mock(EdgeService))
+      def contextFeature = ctx.feature('banana')
+      def listener = Mock(FeatureListener)
+      def handler = contextFeature.addListener(listener)
+    when: "the feature value changes"
+      repo.updateFeatures([fs().key('banana').value(true).type(FeatureValueType.BOOLEAN)])
+    then: "the listener is notified via the context wrapper"
+      1 * listener.notify(_)
+    when: "the handler is cancelled and the feature changes again"
+      handler.cancel()
+      repo.updateFeatures([fs().key('banana').value(false).type(FeatureValueType.BOOLEAN)])
+    then: "the context wrapper is removed and the listener is no longer notified"
+      0 * listener.notify(_)
+  }
+
   def "i can support phantom features by asking for feature before it is added to the repository and receive notifications when it is"() {
     given: "i have one of each feature type"
       def features = [

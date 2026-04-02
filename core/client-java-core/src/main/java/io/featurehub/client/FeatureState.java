@@ -95,11 +95,12 @@ public interface FeatureState<K> {
 
   /**
    * Adds a listener to a feature. Do *not* add a listener to a context in server mode, where you are creating
-   * lots of contexts as this will lead to a memory leak.
+   * lots of contexts as this will lead to a memory leak, add it to the repository and evaluate it with your context there instead.
    *
    * @param listener
+   * @return FeatureListenerHandler - allows you to remove this
    */
-  void addListener(@NotNull FeatureListener listener);
+  FeatureListenerHandler addListener(@NotNull FeatureListener listener);
 
   @Nullable FeatureValueType getType();
 

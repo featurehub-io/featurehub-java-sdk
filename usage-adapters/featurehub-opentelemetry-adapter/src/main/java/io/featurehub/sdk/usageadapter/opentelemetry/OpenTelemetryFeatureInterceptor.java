@@ -65,6 +65,8 @@ public class OpenTelemetryFeatureInterceptor implements ExtendedFeatureValueInte
     this.allowLockedOverride = allowLockedOverride != null
         ? allowLockedOverride
         : "true".equalsIgnoreCase(System.getenv(ALLOW_LOCKED_OVERRIDE_ENV));
+
+    log.info("[featurehubsdk] open telemetry feature interceptor enabled (locked override {})", Boolean.TRUE == allowLockedOverride ? "on" : "off");
   }
 
   @Override
