@@ -178,6 +178,7 @@ public class RestClient implements EdgeService {
       repository.updateFeatures(states, "polling");
 
       if (response.getStatusCode() == 236) {
+        log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         this.stopped = true; // prevent any further requests
       }
     } else if (response.getStatusCode() == 400 || response.getStatusCode() == 404) {

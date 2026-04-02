@@ -1,5 +1,27 @@
 === Changes
 
+=== 4.3 
+- addition of the environmentId and strategyId (if any) for features from the usage API
+- simplificiation of the polling active/rest so it is more testable, common functionality removed from RestApi clients in each supported platform to make them easier to implement
+- addition of external sources of features using `RawUpdateFeatureListener` and sources
+- addition of a standard Redis and Yaml backing stores
+- support for empty repository for local development (no edge or api keys)
+- separation of Usage classes into interface and implementation. Although this is a breaking change, I have decided not to 5.0 it as it is so recent.
+- addition of a generic Conversion utility to allow to guess the type coming
+from an external system for yaml and 3rd party external support
+- a new `ExtendedFeatureValueInterceptor` that passes the whole feature you are trying to intercept plus the repository to aid in operation. Existing `FeatureValueInterceptors` still work but are deprecated
+- addition of change detection for supporting pipeline releases, so we
+can have Gitlab do releases.
+- addition of Claude Code support
+
+=== 4.2
+- Minor patch update to fix a close-out issue with the polling API
+
+=== 4.1
+- The separation of client libraries into support for Jersey 2, Jersey 3 and OKHTTP - with all SDK api clients (SSE, REST and the TestApi) included.
+- The addition of the Usage API to give pluggable analytics, with the addition
+of support for OpenTelemetry tracking and Segment Tracking.
+
 === 3.3
 - Support array values in client side evaluation. This was rolled out to the other SDKs but not Java. The SDK can now be given an array of attributes and compare them against an array of values in a Strategy.
 

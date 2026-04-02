@@ -51,6 +51,7 @@ class ActivePollingDelegateEdgeServiceSpec extends Specification {
 
     then: "future resolves normally — no ExecutionException wrapping IllegalStateException"
       result == Readiness.Ready
+      result.isReady()
       noExceptionThrown()
       0 * inner.close()
   }

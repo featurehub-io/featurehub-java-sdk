@@ -123,6 +123,7 @@ public class EdgeRetryer implements EdgeRetryService {
       Map<String, Object> data = mapper.readMapValue(config);
 
       if (data.containsKey("edge.stale")) {
+        log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         stopped = true; // force us to stop trying for this connection
       }
     } catch (IOException e) {

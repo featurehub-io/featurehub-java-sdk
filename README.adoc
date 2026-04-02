@@ -151,7 +151,7 @@ We recommend adding FeatureHub to your heartbeat or liveness check:
 ----
 @RequestMapping("/liveness")
 public String liveness() {
-  if (featureHubConfig.getReadiness() == Readiness.Ready) {
+  if (featureHubConfig.iReady()) {
     return "yes";
   }
   log.warn("FeatureHub connection not yet available, reporting not live.");
@@ -164,7 +164,7 @@ server before it has connected to the feature service and is ready.
 
 ==== Listening for readiness changes
 
-Instead of polling `getReadiness()`, you can register a callback that fires whenever the SDK transitions
+Instead of polling `getReadiness()/isReady()`, you can register a callback that fires whenever the SDK transitions
 between states. Both `FeatureHubConfig` and `FeatureRepository` expose `addReadinessListener`:
 
 [source,java]
@@ -215,7 +215,7 @@ public class UserConfiguration {
 
 @RestController
 public class HelloResource {
-  ...
+  // inject fhClient ...
 
   @RequestMapping("/")
   public String index() {
@@ -230,9 +230,7 @@ These examples show us how we can wire the FeatureHub functionality into our sys
 
 **Server side evaluation**
 
-In the server side evaluation (e.g. an Android Mobile app or a Batch application), the context is created once as you evaluate one user per client.
-This config is likely loaded into resources that are baked into your Mobile image and once you load them, you can progress
-from there.
+In the server side evaluation (e.g. an Android Mobile app or a Batch application), the context is created once as you evaluate one user per client. This is intended for use as a single client per FeatureHubConfig - so one FeatureHubConfig, one FeatureHubRepository and one ClientContext. All attributes are sent to the server for evaluation.
 
 You should not use Server Sent Events for Mobile as they attempt to keep the radio on and will drain battery. For Mobile we recommend `restPassive()` as the mode chosen for this reason. It will only poll if the poll
 timeout has occurred and a user is evaluating a feature.

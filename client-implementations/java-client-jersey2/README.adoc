@@ -38,7 +38,8 @@ simply follow the instructions in the https://github.com/featurehub-io/featurehu
 
 3. Stop conditions (isStopped())
 
-- HTTP 236: server signals "stop polling" (stale SDK key or similar) — sets stopped = true.
+- HTTP 236: server signals "stop polling" (stale SDK key or similar) — sets stopped = true. This means you have set a maximum size on your
+request usage for FeatureHub SaaS and it has exceeded it.
 - HTTP 400 / 404: bad request / not found — sets stopped = true and notifies the repository of FAILURE.
 - The calling BasePollingDelegateEdgeService checks isStopped() and halts scheduling.
 
