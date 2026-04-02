@@ -43,9 +43,10 @@
     <tag>HEAD</tag>
   </scm>
 
+  <!-- if you update this, remember to update the version in client-java-api -->
   <properties>
-    <jackson.version>2.20.0</jackson.version>
-    <jackson.databind.version>2.20.1</jackson.databind.version>
+    <jackson.version>2.21.1</jackson.version>
+    <jackson.databind.version>2.21.1</jackson.databind.version>
   </properties>
 
   <dependencies>

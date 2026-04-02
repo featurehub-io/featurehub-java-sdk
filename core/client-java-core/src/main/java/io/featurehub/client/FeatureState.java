@@ -1,11 +1,10 @@
 package io.featurehub.client;
 
 import io.featurehub.sse.model.FeatureValueType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.math.BigDecimal;
 import java.util.Map;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface FeatureState<K> {
   /**
@@ -14,6 +13,11 @@ public interface FeatureState<K> {
   @NotNull String getKey();
 
   @Nullable String getString();
+
+  default @Nullable String getString(@Nullable String defaultValue) {
+    String val = getString();
+    return val == null ? defaultValue : val;
+  }
 
   /**
    * @deprecated recommend now using the getFlag() method
@@ -27,6 +31,18 @@ public interface FeatureState<K> {
    */
   @Nullable Boolean getFlag();
 
+  default boolean getFlag(boolean defaultValue) {
+    Boolean val = getFlag();
+    return val == null ? defaultValue : val;
+  }
+
+  // this is when the calling class will take care of typecasting
+  @Nullable Object getValue();
+  default @Nullable Object getValue(@Nullable Object defaultValue) {
+    Object val = getValue();
+    return val == null ? defaultValue : val;
+  }
+
   /**
    * Gets the value raw and tries to make it appear as the type you request, regardless of
    * the underlying type. If it is a boolean and you ask for it as a string, it will still be a bool and
@@ -37,9 +53,24 @@ public interface FeatureState<K> {
    */
   @Nullable K getValue(Class<K> clazz);
 
+  default @Nullable K getValue(Class<K> clazz, @Nullable K defaultValue) {
+    K val = getValue(clazz);
+    return val == null ? defaultValue : val;
+  }
+
   @Nullable BigDecimal getNumber();
 
+  default @Nullable BigDecimal getNumber(@Nullable BigDecimal defaultValue) {
+    BigDecimal val = getNumber();
+    return val == null ? defaultValue : val;
+  }
+
   @Nullable String getRawJson();
+
+  default @Nullable String getRawJson(@Nullable String defaultValue) {
+    String val = getRawJson();
+    return val == null ? defaultValue : val;
+  }
 
   @Nullable <T> T getJson(Class<T> type);
 
@@ -47,6 +78,11 @@ public interface FeatureState<K> {
    * true if the flag is boolean and is true
    */
   boolean isEnabled();
+
+  default boolean isEnabled(boolean defaultValue) {
+    Boolean val = getFlag();
+    return val == null ? defaultValue : val;
+  }
 
   boolean isSet();
 
@@ -59,13 +95,19 @@ public interface FeatureState<K> {
 
   /**
    * Adds a listener to a feature. Do *not* add a listener to a context in server mode, where you are creating
-   * lots of contexts as this will lead to a memory leak.
+   * lots of contexts as this will lead to a memory leak, add it to the repository and evaluate it with your context there instead.
    *
    * @param listener
+   * @return FeatureListenerHandler - allows you to remove this
    */
-  void addListener(@NotNull FeatureListener listener);
+  FeatureListenerHandler addListener(@NotNull FeatureListener listener);
 
   @Nullable FeatureValueType getType();
 
+  /**
+   * This is the grab bag of properties that folks can attach to any feature value. At the current time it only works
+   * for open source because of security concerns.
+   * @return
+   */
   @NotNull Map<String,String> featureProperties();
 }

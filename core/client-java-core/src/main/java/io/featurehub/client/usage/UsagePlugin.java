@@ -15,5 +15,9 @@ abstract public class UsagePlugin {
     return defaultEventParams;
   }
 
+  public boolean shouldRunAsync() {
+    return false;
+  }
+
   public abstract void send(UsageEvent event);
 }

@@ -12,3 +12,51 @@ as a transitive dependency, so simply including this library will make everythin
 
 Core uses Java's ServiceLoader capability to automatically discover the JerseyClient implementation. Please
 simply follow the instructions in the https://github.com/featurehub-io/featurehub-java-sdk/tree/main/client-java-core[Java Core library].
+
+  ---
+  RestClient — Overview
+
+  A synchronous HTTP polling implementation of EdgeService for the Jersey 3 client. It fetches feature flag states from the FeatureHub Edge server via REST (polling), as opposed to the SSE (streaming) transport. It is typically
+  managed by a BasePollingDelegateEdgeService which schedules repeated calls.
+
+  ---
+  Core Responsibilities
+
+1. Polling (poll())
+
+- Makes a synchronous REST call to GET /features with the current API keys.
+- Sends two optional headers:
+- x-featurehub — the evaluated context (user attributes for server-side evaluation)
+- if-none-match — the cached ETag for HTTP conditional requests
+- On success, flattens FeatureEnvironmentCollection[] → List<FeatureState> and pushes them into the repository via updateFeatures.
+- Always completes the CompletableFuture<Readiness> with the current repository readiness after the call, whether it succeeded or failed.
+
+2. Cache-Control / ETag handling
+
+- Extracts max-age from Cache-Control response header and updates pollingInterval if it is > 0. This lets the server dynamically tell the client how often to poll.
+- Saves the etag response header and sends it as if-none-match on subsequent requests, enabling 304 Not Modified responses.
+
+3. Stop conditions (isStopped())
+
+- HTTP 236: server signals "stop polling" (stale SDK key or similar) — sets stopped = true. This means you have set a maximum size on your
+request usage for FeatureHub SaaS and it has exceeded it.
+- HTTP 400 / 404: bad request / not found — sets stopped = true and notifies the repository of FAILURE.
+- The calling BasePollingDelegateEdgeService checks isStopped() and halts scheduling.
+
+4. needsContextChange / contextChange
+
+- contextChange simply stores the new header+sha and calls poll() — there is no diffing at this layer.
+- needsContextChange determines whether a poll is actually needed:
+return etag == null                        // never polled yet
+|| repository.getReadiness() != Ready  // not yet initialised
+|| (!isClientEvaluation()              // server-eval mode AND
+&& newHeader != null
+&& !newHeader.equals(xFeaturehubHeader)); // context actually changed
+
+Comments:
+- 304 is an _expected_ response from the server when the etag matches, and is only sent after the initial state has been received. It is expected to be the normal response to polling when feature flags have not changed since the last poll.
+- getPollingInterval being a Long is historical and should not try and be corrected
+-  needsContextChange should always ignore the contextSha in determining if it needs changing because it is just a SHA of the `newHeader` parameter and is calculated elsewhere.
+- The etag is always provided by the server and needs to be tested for
+- It is OK that the JerseyClient is not closed, it is not expected to be reopened. 
+

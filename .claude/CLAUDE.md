@@ -32,7 +32,8 @@ mvn -Dtest=ClassName test
 mvn -Dtest=ClassName#methodName test
 ```
 
-Tests are written in **Spock** (Groovy) in most modules.
+Tests are written in **Spock** (Groovy) in most modules. Spock is preferred for ALL tests and should be used when attempting to write tests. It relies on the composite-testing dependency which needs to be installed as a scope: `test`
+for each project. It is located at `support/composite-logging/pom.xml`. 
 
 ## Architecture
 
@@ -81,6 +82,55 @@ ClientContext ctx = fhConfig.newContext()
 
 boolean enabled = ctx.isEnabled("MY_FEATURE");
 ```
+
+### Jackson Abstraction Pattern
+
+This repository deliberately abstracts all Jackson JSON functionality behind an interface so that
+modules remain independent of the Jackson major version in use at runtime.
+
+**Three libraries form the pattern:**
+
+- **`support/common-jackson`** (`io.featurehub.sdk.common:common-jackson`) — the API-only module.
+  Contains the `JavascriptObjectMapper` interface and nothing else. Has no dependency on any Jackson
+  library itself. This is the only Jackson-related artifact that production code should depend on.
+
+- **`support/common-jacksonv2`** (`io.featurehub.sdk.common:common-jacksonv2`) — implements
+  `JavascriptObjectMapper` using Jackson 2.x (`com.fasterxml.jackson`). Registered via Java
+  `ServiceLoader` so it is discovered automatically when on the classpath.
+
+- **`v17-and-above/support/common-jacksonv3`** (`io.featurehub.sdk.common:common-jacksonv3`) —
+  implements `JavascriptObjectMapper` using Jackson 3.x (`tools.jackson`). Java 17+ only.
+  Also registered via `ServiceLoader`.
+
+**Rules when writing or modifying code:**
+
+1. **Never add `jackson-databind`, `jackson-core`, or any `com.fasterxml.jackson` / `tools.jackson`
+   dependency directly to a production module's `pom.xml`.** If JSON functionality is needed,
+   depend on `common-jackson` instead and use the `JavascriptObjectMapper` interface.
+
+2. **If the required functionality is not available on the `JavascriptObjectMapper` interface,
+   stop and ask for direction** — do not reach for Jackson directly or widen the interface
+   without discussion.
+
+3. **For tests that need real Jackson behaviour** (e.g. to back a mock or verify serialisation),
+   add `common-jacksonv2` as a `<scope>test</scope>` dependency. This provides a concrete
+   implementation without polluting production code with a Jackson version choice.
+
+**Example test pom.xml entry:**
+
+```xml
+<dependency>
+  <groupId>io.featurehub.sdk.common</groupId>
+  <artifactId>common-jacksonv2</artifactId>
+  <version>[1.1, 2)</version>
+  <scope>test</scope>
+</dependency>
+```
+### Notes when writing code
+
+- **Source code** - NEVER try and extract meaning from .class or jar files, always ask the user for the location of the source. The user can always provide it to make understanding how to use the library more simple, often including documentation. Redis and SnakeYAML are examples of this.
+- If code is not compiling when running the `mvn` command and it depends on an API from another module in this same repository, it may be that it has changed in source, but that source has not been installed into the local maven repository ($HOME/.m2/repository). Always try to do a `mvn install` in the folder of that specific module that is the root of the problem. Often this is `core/client-java-core` as it is the central module for most code.   
+
 
 ### Build Infrastructure Notes
 

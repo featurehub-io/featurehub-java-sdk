@@ -7,20 +7,9 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeRetryService;
-import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
-import org.glassfish.jersey.client.ClientProperties;
-import org.glassfish.jersey.jackson.JacksonFeature;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.ws.rs.RedirectionException;
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.ClientBuilder;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,6 +19,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.ws.rs.RedirectionException;
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import org.glassfish.jersey.client.ClientProperties;
+import org.glassfish.jersey.jackson.JacksonFeature;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
@@ -47,9 +45,6 @@ public class RestClient implements EdgeService {
   private String etag = null;
   private long pollingInterval;
 
-  private long whenPollingCacheExpires;
-  private final boolean clientSideEvaluation;
-  private final boolean breakCacheOnEveryCheck;
   @NotNull private final FeatureHubConfig config;
 
   /**
@@ -60,93 +55,64 @@ public class RestClient implements EdgeService {
    * @param config - FH config
    * @param edgeRetryer - used for timeouts
    * @param stateTimeoutInSeconds - use 0 for once off and for when using an actual timer
-   * @param breakCacheOnEveryCheck - this is used by the PollingDelegate to tell the client to just do a GET when its requested to
    */
   public RestClient(@Nullable InternalFeatureRepository repository,
                     @Nullable FeatureService client,
                     @NotNull FeatureHubConfig config,
                     @NotNull EdgeRetryService edgeRetryer,
-                    int stateTimeoutInSeconds, boolean breakCacheOnEveryCheck) {
+                    int stateTimeoutInSeconds) {
     this.edgeRetryer = edgeRetryer;
     if (repository == null) {
       repository = (InternalFeatureRepository) config.getRepository();
     }
 
-    this.breakCacheOnEveryCheck = breakCacheOnEveryCheck;
     this.repository = repository;
     this.client = client == null ? makeClient(config) : client;
     this.config = config;
     this.pollingInterval = stateTimeoutInSeconds;
-
-    // ensure the poll has expired the first time we ask for it
-    whenPollingCacheExpires = System.currentTimeMillis() - 100;
-
-    this.clientSideEvaluation = !config.isServerEvaluation();
   }
 
   @NotNull protected FeatureService makeClient(FeatureHubConfig config) {
     Client client = ClientBuilder.newBuilder()
+      .property(ClientProperties.CONNECT_TIMEOUT, edgeRetryer.getServerConnectTimeoutMs())
+      .property(ClientProperties.READ_TIMEOUT, edgeRetryer.getServerReadTimeoutMs())
       .register(JacksonFeature.class).build();
-
-    client.property(ClientProperties.CONNECT_TIMEOUT, edgeRetryer.getServerConnectTimeoutMs());
-    client.property(ClientProperties.READ_TIMEOUT, edgeRetryer.getServerReadTimeoutMs());
 
     return new FeatureServiceImpl(new ApiClient(client, config.baseUrl()));
   }
-
-  private boolean busy = false;
-  private boolean headerChanged = false;
-  private List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
   protected Long now() {
     return System.currentTimeMillis();
   }
 
-  public boolean checkForUpdates(@Nullable CompletableFuture<Readiness> change) {
-    final boolean breakCache =
-      breakCacheOnEveryCheck || pollingInterval == 0 || (now() > whenPollingCacheExpires) || headerChanged;
-    final boolean ask = !busy && !stopped && breakCache;
+  public Future<Readiness> poll() {
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-    log.trace("ask {}, busy {}, stopped {}, breakCache {}", ask, busy, stopped, breakCache);
-
-    headerChanged = false;
-
-    if (ask) {
-      if (change != null) {
-        // we are going to call, so we take a note of who we need to tell
-        waitingClients.add(change);
-      }
-
-      busy = true;
-
-      Map<String, String> headers = new HashMap<>();
-      if (xFeaturehubHeader != null) {
-        headers.put("x-featurehub", xFeaturehubHeader);
-      }
-
-      if (etag != null) {
-        headers.put("if-none-match", etag);
-      }
-
-      try {
-        final ApiResponse<List<FeatureEnvironmentCollection>> response = client.getFeatureStates(config.apiKeys(),
-          xContextSha, headers);
-        processResponse(response);
-      } catch (RedirectionException re) {
-        // 304 not modified is fine
-        if (re.getResponse().getStatus() != 304) {
-          processFailure(re);
-        } else { // not modified
-          completeReadiness();
-        }
-      } catch (Exception e) {
-        processFailure(e);
-      } finally {
-        busy = false;
-      }
+    Map<String, String> headers = new HashMap<>();
+    if (xFeaturehubHeader != null) {
+      headers.put("x-featurehub", xFeaturehubHeader);
     }
 
-    return ask;
+    if (etag != null) {
+      headers.put("if-none-match", etag);
+    }
+
+    try {
+      final ApiResponse<List<FeatureEnvironmentCollection>> response = client.getFeatureStates(config.apiKeys(),
+        xContextSha, headers);
+      processResponse(response);
+    } catch (RedirectionException re) {
+      // 304 not modified is fine
+      if (re.getResponse().getStatus() != 304) {
+        processFailure(re);
+      }
+    } catch (Exception e) {
+      processFailure(e);
+    }
+
+    change.complete(repository.getReadiness());
+
+    return change;
   }
 
   protected @Nullable String getEtag() {
@@ -180,14 +146,10 @@ public class RestClient implements EdgeService {
 
   protected void processFailure(@NotNull Exception e) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE);
-    busy = false;
-    completeReadiness();
+    repository.notify(SSEResultState.FAILURE, "polling");
   }
 
   protected void processResponse(ApiResponse<List<FeatureEnvironmentCollection>> response) throws IOException {
-    busy = false;
-
     log.trace("response code is {}", response.getStatusCode());
 
     // check the cache-control for the max-age
@@ -213,40 +175,22 @@ public class RestClient implements EdgeService {
 
       log.trace("updating feature repository: {}", states);
 
-      repository.updateFeatures(states);
-      completeReadiness();
+      repository.updateFeatures(states, "polling");
 
       if (response.getStatusCode() == 236) {
+        log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         this.stopped = true; // prevent any further requests
-      }
-
-      // reset the polling interval to prevent unnecessary polling
-      if (pollingInterval > 0) {
-        whenPollingCacheExpires = now() + (pollingInterval * 1000);
       }
     } else if (response.getStatusCode() == 400 || response.getStatusCode() == 404) {
       stopped = true;
       log.error("Server indicated an error with our requests making future ones pointless.");
-      repository.notify(SSEResultState.FAILURE);
-      completeReadiness();
+      repository.notify(SSEResultState.FAILURE, "polling");
     } else if (response.getStatusCode() >= 500) {
-      completeReadiness(); // we haven't changed anything, but we have to unblock clients as we can't just hang
+      log.trace("maybe server is down?");
     }
   }
 
   public boolean isStopped() { return stopped; }
-
-  private void completeReadiness() {
-    List<CompletableFuture<Readiness>> current = waitingClients;
-    waitingClients = new ArrayList<>();
-    current.forEach(c -> {
-      try {
-        c.complete(repository.getReadiness());
-      } catch (Exception e) {
-        log.error("Unable to complete future", e);
-      }
-    });
-  }
 
   @Override
   public boolean needsContextChange(String newHeader, String contextSha) {
@@ -255,33 +199,15 @@ public class RestClient implements EdgeService {
 
   @Override
   public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @NotNull String contextSha) {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-
-    headerChanged = (newHeader != null && !newHeader.equals(xFeaturehubHeader));
-
     xFeaturehubHeader = newHeader;
     xContextSha = contextSha;
 
-    // if there is already another change running, you are out of luck
-    if (busy) {
-      waitingClients.add(change);
-    } else {
-      // if we haven't evaluated the client before or is we are doing server side evaluation and the context changed
-      if (etag == null || !isClientEvaluation() || repository.getReadiness() != Readiness.Ready) {
-        if (!checkForUpdates(change)) {
-          change.complete(repository.getReadiness());
-        }
-      } else {
-        change.complete(repository.getReadiness());
-      }
-    }
-
-    return change;
+    return poll();
   }
 
   @Override
   public boolean isClientEvaluation() {
-    return clientSideEvaluation;
+    return !config.isServerEvaluation();
   }
 
   @Override
@@ -295,26 +221,9 @@ public class RestClient implements EdgeService {
     return config;
   }
 
-  @Override
-  public Future<Readiness> poll() {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-
-    if (busy) {
-      waitingClients.add(change);
-    } else if (!checkForUpdates(change)) {
-      // not even planning to ask
-      change.complete(repository.getReadiness());
-    }
-
-    return change;
-  }
 
   @Override
   public long currentInterval() {
     return pollingInterval;
-  }
-
-  public long getWhenPollingCacheExpires() {
-    return whenPollingCacheExpires;
   }
 }

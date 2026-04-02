@@ -20,11 +20,13 @@ class SSEClientSpec extends Specification {
   EventSourceListener esListener
   SSEClient client
   Request request
+  UUID envId
 
   def setup() {
     mockEventSource = Mock(EventSource)
     retry = Mock(EdgeRetryService)
     repository = Mock(InternalFeatureRepository)
+    envId = UUID.randomUUID()
     config = Mock(FeatureHubConfig)
     config.realtimeUrl >> "http://special"
 
@@ -46,9 +48,10 @@ class SSEClientSpec extends Specification {
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
       1 * retry.fromValue('features') >> SSEResultState.FEATURES // converts the "type" field
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository)
+      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository, envId)
       1 * repository.getReadiness() >> Readiness.Ready
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
+      1 * config.getEnvironmentId() >> envId
       0 * _
   }
 
@@ -60,12 +63,13 @@ class SSEClientSpec extends Specification {
 
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository)
-      1 * retry.convertSSEState(SSEResultState.BYE, "sausage", repository)
+      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository,envId)
+      1 * retry.convertSSEState(SSEResultState.BYE, "sausage", repository,envId)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.fromValue('bye') >> SSEResultState.BYE
       1 * repository.getReadiness() >> Readiness.Ready
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
+      2 * config.getEnvironmentId() >> envId
       0 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
       0 * _
   }
@@ -78,14 +82,15 @@ class SSEClientSpec extends Specification {
       esListener.onClosed(mockEventSource)
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository)
-      1 * retry.convertSSEState(SSEResultState.BYE, "sausage", repository)
+      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository,envId)
+      1 * retry.convertSSEState(SSEResultState.BYE, "sausage", repository,envId)
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.fromValue('bye') >> SSEResultState.BYE
       2 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
+      2 * config.getEnvironmentId() >> envId
       0 * _
   }
 
@@ -96,12 +101,13 @@ class SSEClientSpec extends Specification {
       esListener.onClosed(mockEventSource)
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository)
+      1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository,envId)
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
       1 * repository.notify(SSEResultState.FAILURE)
       2 * repository.getReadiness() >> Readiness.NotReady
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * config.getEnvironmentId() >> envId
       0 * _
   }
 
@@ -125,12 +131,13 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, "1", "features", "data")
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "data", repository)
+      1 * retry.convertSSEState(SSEResultState.FEATURES, "data", repository,envId)
       1 * config.isServerEvaluation() >> false
       2 * repository.getReadiness() >> Readiness.Failed
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       future.get() == Readiness.Failed
+      1 * config.getEnvironmentId() >> envId
       0 * _
   }
 

@@ -3,15 +3,15 @@ package io.featurehub.client;
 import io.featurehub.client.usage.UsageEvent;
 import io.featurehub.client.usage.UsagePlugin;
 import io.featurehub.javascript.JavascriptObjectMapper;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public interface FeatureHubConfig {
 
@@ -88,11 +88,16 @@ public interface FeatureHubConfig {
   }
 
   FeatureHubConfig setRepository(FeatureRepository repository);
-  @NotNull FeatureRepository getRepository();
-  @NotNull InternalFeatureRepository getInternalRepository();
+  @Nullable FeatureRepository getRepository();
+  @Nullable InternalFeatureRepository getInternalRepository();
 
   FeatureHubConfig setEdgeService(Supplier<EdgeService> edgeService);
-  @NotNull Supplier<EdgeService> getEdgeService();
+  @Nullable Supplier<EdgeService> getEdgeService();
+
+  /**
+   * Returns true if {@link #close()} has been called on this config.
+   */
+  default boolean isClosed() { return false; }
 
   /**
    * Allows you to specify a readyness listener to trigger every time the repository goes from
@@ -106,7 +111,10 @@ public interface FeatureHubConfig {
    * @param allowLockOverride
    * @param interceptor
    */
+  @Deprecated
   FeatureHubConfig registerValueInterceptor(boolean allowLockOverride, @NotNull FeatureValueInterceptor interceptor);
+  FeatureHubConfig registerValueInterceptor(@NotNull ExtendedFeatureValueInterceptor interceptor);
+  FeatureHubConfig registerRawUpdateFeatureListener(@NotNull RawUpdateFeatureListener listener);
 
   FeatureHubConfig registerUsagePlugin(@NotNull UsagePlugin plugin);
 
@@ -115,6 +123,28 @@ public interface FeatureHubConfig {
    * @return
    */
   @NotNull Readiness getReadiness();
+
+  /**
+   * Returns true if the repository is in the Ready state.
+   */
+  default boolean isReady() { return getReadiness() == Readiness.Ready; }
+
+  /**
+   * Blocks until the repository reaches the Ready state or the timeout elapses.
+   * Calls poll() on the edge service to trigger an initial data fetch, then
+   * rechecks readiness every 200 ms.
+   *
+   * @param timeout maximum time to wait
+   * @param unit    time unit for the timeout
+   * @return true if ready within the timeout, false if the timeout elapsed or the thread was interrupted
+   */
+  boolean waitForReady(long timeout, TimeUnit unit);
+
+  /**
+   * Blocks for at most 10 seconds until the repository reaches the Ready state.
+   * Returns false if the thread is interrupted.
+   */
+  default boolean waitForReady() { return waitForReady(10, TimeUnit.SECONDS); }
 
   /**
    * Allows you to override how your config will be deserialized when "getJson" is called.
@@ -128,6 +158,7 @@ public interface FeatureHubConfig {
    * server cleanly
    */
   void close();
+  void closeEdge();
 
   FeatureHubConfig streaming();
 
@@ -144,4 +175,13 @@ public interface FeatureHubConfig {
   FeatureHubConfig restPassive();
 
   FeatureHubConfig recordUsageEvent(UsageEvent event);
+
+  /**
+   * Gets the EnvironmentID of the
+   * @return
+   */
+  UUID getEnvironmentId();
+
+  default void setEdgeSupplierFactory(FeatureHubClientFactory factory) {
+  }
 }

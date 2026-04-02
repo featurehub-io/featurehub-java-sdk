@@ -37,6 +37,7 @@ class StrategySpec extends Specification {
           .id(UUID.randomUUID())
           .version(1)
           .type(FeatureValueType.BOOLEAN)
+        .environmentId(UUID.randomUUID())
           .strategies([new FeatureRolloutStrategy().value(false).attributes(
             [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EQUALS)
@@ -67,6 +68,7 @@ class StrategySpec extends Specification {
           .value(16)
           .version(1)
           .type(FeatureValueType.NUMBER)
+          .environmentId(UUID.randomUUID())
           .strategies([new FeatureRolloutStrategy().value(6).attributes(
             [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.NUMBER)
                .conditional(RolloutStrategyAttributeConditional.GREATER_EQUALS)
@@ -103,6 +105,7 @@ class StrategySpec extends Specification {
           .id(UUID.randomUUID())
           .version(1)
           .type(FeatureValueType.STRING)
+          .environmentId(UUID.randomUUID())
           .strategies([new FeatureRolloutStrategy().value("not-mobile").attributes(
             [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EXCLUDES)
@@ -143,6 +146,7 @@ class StrategySpec extends Specification {
           .value("feature")
           .version(1)
           .type(FeatureValueType.JSON)
+          .environmentId(UUID.randomUUID())
           .strategies([new FeatureRolloutStrategy().value("not-mobile").attributes(
             [new FeatureRolloutStrategyAttribute().type(RolloutStrategyFieldType.STRING)
                .conditional(RolloutStrategyAttributeConditional.EXCLUDES)

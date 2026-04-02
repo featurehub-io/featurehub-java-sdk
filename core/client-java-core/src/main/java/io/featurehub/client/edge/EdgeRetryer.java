@@ -6,16 +6,16 @@ import io.featurehub.javascript.JavascriptObjectMapper;
 import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class EdgeRetryer implements EdgeRetryService {
   private static final Logger log = LoggerFactory.getLogger(EdgeRetryer.class);
@@ -123,6 +123,7 @@ public class EdgeRetryer implements EdgeRetryService {
       Map<String, Object> data = mapper.readMapValue(config);
 
       if (data.containsKey("edge.stale")) {
+        log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         stopped = true; // force us to stop trying for this connection
       }
     } catch (IOException e) {
@@ -142,24 +143,29 @@ public class EdgeRetryer implements EdgeRetryService {
 
   @Override
   public void convertSSEState(@NotNull SSEResultState state, String data,
-                              @NotNull InternalFeatureRepository repository) {
+                              @NotNull InternalFeatureRepository repository, UUID environmentId) {
     try {
       if (data != null) {
         if (state == SSEResultState.FEATURES) {
           List<FeatureState> features =
             repository.getJsonObjectMapper().readFeatureStates(data);
-          repository.updateFeatures(features);
-        } else if (state == SSEResultState.FEATURE) {
-          repository.updateFeature(repository.getJsonObjectMapper().readValue(data,
-            io.featurehub.sse.model.FeatureState.class));
-        } else if (state == SSEResultState.DELETE_FEATURE) {
-          repository.deleteFeature(repository.getJsonObjectMapper().readValue(data,
-            io.featurehub.sse.model.FeatureState.class));
+          features.forEach(f -> f.setEnvironmentId(environmentId));
+          repository.updateFeatures(features, "streaming");
+        } else {
+          if (state == SSEResultState.FEATURE) {
+            FeatureState fs = repository.getJsonObjectMapper().readValue(data, FeatureState.class);
+            fs.setEnvironmentId(environmentId);
+            repository.updateFeature(fs, "streaming");
+          } else if (state == SSEResultState.DELETE_FEATURE) {
+            FeatureState fs = repository.getJsonObjectMapper().readValue(data, FeatureState.class);
+            fs.setEnvironmentId(environmentId);
+            repository.deleteFeature(fs, "streaming");
+          }
         }
       }
 
       if (state == SSEResultState.FAILURE) {
-        repository.notify(state);
+        repository.notify(state, "streaming");
       }
     } catch (IOException jpe) {
       throw new RuntimeException("JSON failed", jpe);

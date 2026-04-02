@@ -1,18 +1,16 @@
 package io.featurehub.client.usage;
 
-import io.featurehub.client.ClientContext;
-import io.featurehub.client.FeatureRepository;
+import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.RepositoryEventHandler;
-
 import java.util.LinkedList;
 import java.util.List;
 
 public class UsageAdapter {
   private final List<UsagePlugin> plugins = new LinkedList<>();
-  final FeatureRepository repository;
+  final InternalFeatureRepository repository;
   final RepositoryEventHandler usageHandlerSub;
 
-  public UsageAdapter(FeatureRepository repo) {
+  public UsageAdapter(InternalFeatureRepository repo) {
     this.repository = repo;
     usageHandlerSub = repo.registerUsageStream(this::process);
   }
@@ -22,7 +20,13 @@ public class UsageAdapter {
   }
 
   public void process(UsageEvent event) {
-    plugins.forEach((p) -> p.send(event));
+    plugins.forEach((p) -> {
+      if (p.shouldRunAsync()) {
+        repository.execute(() -> p.send(event));
+      } else {
+        p.send(event);
+      }
+    });
   }
 
   public void registerPlugin(UsagePlugin plugin) {

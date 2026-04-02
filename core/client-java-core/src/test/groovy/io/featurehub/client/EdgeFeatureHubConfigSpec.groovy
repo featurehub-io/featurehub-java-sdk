@@ -17,7 +17,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
   EdgeService edgeClient
 
   def setup() {
-    config = new EdgeFeatureHubConfig("http://localhost", "123*abc")
+    config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/123*abc")
     edgeClient = Mock(EdgeService)
     config.setEdgeService { -> edgeClient }
   }
@@ -31,17 +31,13 @@ class EdgeFeatureHubConfigSpec extends Specification {
       0 * _
   }
 
-  def "if we use a client eval key, closing after a newContext and re-opening will get a new connection"() {
-    when: "i ask for a new context"
-      def ctx1 = config.newContext()
+  def "closing after a newContext marks isClosed and prevents re-opening"() {
+    when:
+      config.newContext()
       config.close()
-    and: "i ask again"
-      def ctx2 = config.newContext()
+      config.newContext()
     then:
-      ctx1 != null
-      ctx2 != null
-      ctx1 != ctx2
-      config.edgeService.get() == edgeClient
+      thrown(ConfigurationClosedException)
       1 * edgeClient.close()
       0 * _
   }
@@ -69,7 +65,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
   def "when i create a client evaluated feature context it should auto find the provider"() {
     given: "i clean up the static provider"
       FeatureHubTestClientFactory.fake = null
-      config = new EdgeFeatureHubConfig("http://localhost", "2*3")
+      config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/2*3")
     when: "i create a new client"
       def context = config.newContext()
     then:
@@ -82,7 +78,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
 
   def "when i create a server evaluated feature context it should auto find the provider"() {
     given: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost", "123-abc")
+      def config = new EdgeFeatureHubConfig("http://localhost", "${UUID.randomUUID()}/123-abc")
     when: "i create a new client"
       def context = config.newContext()
     and: "i create a second client"
@@ -94,17 +90,18 @@ class EdgeFeatureHubConfigSpec extends Specification {
 
   def "initialising gets the urls correct and detects server evaluated context"() {
     when: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123-abc")
+      def apiKey = "${UUID.randomUUID()}/123-abc"
+      def config = new EdgeFeatureHubConfig("http://localhost/", apiKey)
     then:
-      config.apiKey() == '123-abc'
+      config.apiKey() == apiKey
       config.baseUrl() == 'http://localhost'
-      config.realtimeUrl == 'http://localhost/features/123-abc'
+      config.realtimeUrl == "http://localhost/features/${apiKey}"
       config.isServerEvaluation()
   }
 
   def "initialising detects client evaluated context"() {
     when: "i have a client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc")
+      def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc")
     then:
       !config.isServerEvaluation()
   }
@@ -142,7 +139,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
       def clientContext = Mock(ClientContext)
 
     and: "A client eval feature config"
-      def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+      def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc") {
         @Override
         ClientContext newContext() {
           return clientContext
@@ -164,7 +161,7 @@ class EdgeFeatureHubConfigSpec extends Specification {
     def clientContext = Mock(ClientContext)
 
     and: "A client eval feature config"
-    def config = new EdgeFeatureHubConfig("http://localhost/", "123*abc") {
+    def config = new EdgeFeatureHubConfig("http://localhost/", "${UUID.randomUUID()}/123*abc") {
       @Override
       ClientContext newContext() {
         return clientContext
@@ -176,5 +173,270 @@ class EdgeFeatureHubConfigSpec extends Specification {
       1 * futureContext.get(1, TimeUnit.MILLISECONDS) >> { throw new TimeoutException() }
       1 * clientContext.build() >> futureContext
       0 * _
+  }
+
+  // --- waitForReady tests ---
+
+  def "waitForReady returns true immediately when already ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.Ready
+    when:
+      def result = config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.Ready)
+  }
+
+  def "waitForReady returns false when timeout elapses before ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.NotReady
+    when:
+      def result = config.waitForReady(250, TimeUnit.MILLISECONDS)
+    then:
+      !result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.NotReady)
+  }
+
+  def "waitForReady polls edge service and returns true when readiness transitions to Ready"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      def callCount = 0
+      repo.getReadiness() >> { callCount++ < 2 ? Readiness.NotReady : Readiness.Ready }
+    when:
+      def result = config.waitForReady(2, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.NotReady)
+  }
+
+  def "waitForReady throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "waitForReady creates edge service if newContext has not been called yet"() {
+    given:
+      def repo = Mock(InternalFeatureRepository)
+      config.setRepository(repo)
+      repo.getReadiness() >> Readiness.Ready
+    when: "waitForReady is called without a prior newContext"
+      def result = config.waitForReady(1, TimeUnit.SECONDS)
+    then:
+      result
+      1 * edgeClient.poll() >> CompletableFuture.completedFuture(Readiness.Ready)
+  }
+
+  // --- closed-state tests ---
+
+  def "isClosed is false before close and true after"() {
+    expect:
+      !config.isClosed()
+    when:
+      config.close()
+    then:
+      config.isClosed()
+  }
+
+  def "close is idempotent"() {
+    when:
+      config.close()
+      config.close()
+    then:
+      noExceptionThrown()
+  }
+
+  def "getReadiness returns NotReady after close"() {
+    when:
+      config.close()
+    then:
+      config.getReadiness() == Readiness.NotReady
+  }
+
+  def "getRepository and getInternalRepository return null after close"() {
+    when:
+      config.close()
+    then:
+      config.getRepository() == null
+      config.getInternalRepository() == null
+  }
+
+  def "getEdgeService returns null after close"() {
+    when:
+      config.close()
+    then:
+      config.getEdgeService() == null
+  }
+
+  def "init throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.init()
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "init with timeout throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.init(1, TimeUnit.SECONDS)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "addReadinessListener throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.addReadinessListener({ } as Consumer<Readiness>)
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "registerValueInterceptor throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.registerValueInterceptor(Mock(ExtendedFeatureValueInterceptor))
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "registerRawUpdateFeatureListener throws ConfigurationClosedException after close"() {
+    given:
+      config.close()
+    when:
+      config.registerRawUpdateFeatureListener(Mock(RawUpdateFeatureListener))
+    then:
+      thrown(ConfigurationClosedException)
+  }
+
+  def "fluent configuration setters are silently ignored after close"() {
+    when:
+      config.close()
+    then:
+      config.streaming() == config
+      config.restActive() == config
+      config.restPassive() == config
+      config.setEdgeService({ null }) == config
+      config.setJsonConfigObjectMapper(Mock(JavascriptObjectMapper)) == config
+      config.recordUsageEvent(null) == config
+      noExceptionThrown()
+  }
+
+  def "apiKey, baseUrl and isServerEvaluation still work after close"() {
+    when:
+      config.close()
+    then:
+      config.apiKey() != null
+      config.baseUrl() == 'http://localhost'
+      !config.isServerEvaluation()
+  }
+
+  // --- noop mode tests ---
+
+  def "no-arg constructor creates config in noop mode"() {
+    when:
+      def noop = new EdgeFeatureHubConfig()
+    then:
+      noop.noopMode
+      noop.apiKeys().isEmpty()
+      noop.apiKey() == ''
+      noop.baseUrl() == ''
+      noop.getRealtimeUrl() == ''
+      !noop.isServerEvaluation()
+      noop.getEnvironmentId() != null
+  }
+
+  def "noop mode newContext returns a ClientEvalFeatureContext backed by a NoopEdgeService"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      def ctx = noop.newContext()
+    then:
+      ctx instanceof ClientEvalFeatureContext
+      (ctx as ClientEvalFeatureContext).edgeService instanceof NoopEdgeService
+  }
+
+  def "noop mode does not require a ServiceLoader EdgeService on the classpath"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      // would throw if it tried to find a real edge service via ServiceLoader
+      def ctx = noop.newContext()
+    then:
+      noExceptionThrown()
+  }
+
+  def "noop mode poll returns current readiness without connecting"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    when:
+      def result = noopEdge.poll().get()
+    then:
+      result == Readiness.NotReady
+  }
+
+  def "noop mode contextChange returns current readiness without connecting"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    when:
+      def result = noopEdge.contextChange(null, '0').get()
+    then:
+      result == Readiness.NotReady
+  }
+
+  def "noop mode getConfig returns the config"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      def ctx = noop.newContext()
+      def noopEdge = (ctx as ClientEvalFeatureContext).edgeService as NoopEdgeService
+    expect:
+      noopEdge.getConfig() == noop
+      noopEdge.isClientEvaluation()
+      !noopEdge.isStopped()
+      noopEdge.currentInterval() == 0
+  }
+
+  def "noop mode same NoopEdgeService instance is reused across newContext calls"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+    when:
+      def ctx1 = noop.newContext()
+      def ctx2 = noop.newContext()
+    then:
+      (ctx1 as ClientEvalFeatureContext).edgeService.is((ctx2 as ClientEvalFeatureContext).edgeService)
+  }
+
+  def "noop mode close still works cleanly"() {
+    given:
+      def noop = new EdgeFeatureHubConfig()
+      noop.newContext()
+    when:
+      noop.close()
+    then:
+      noop.isClosed()
+      noExceptionThrown()
+  }
+
+  def "two-arg constructor with empty apiKey list throws"() {
+    when:
+      new EdgeFeatureHubConfig("http://localhost", [])
+    then:
+      thrown(RuntimeException)
   }
 }

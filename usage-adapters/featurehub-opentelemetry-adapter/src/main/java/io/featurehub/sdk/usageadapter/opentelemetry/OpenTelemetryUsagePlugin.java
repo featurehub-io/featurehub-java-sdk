@@ -19,14 +19,21 @@ public class OpenTelemetryUsagePlugin extends UsagePlugin {
   private static final Logger log = LoggerFactory.getLogger(OpenTelemetryUsagePlugin.class);
 
   private final String prefix;
-  private final boolean attachAsSpanEvents = "true".equals(System.getenv("FEATUREHUB_OTEL_SPAN_AS_EVENTS"));
+  private final boolean attachAsSpanEvents;
 
   public OpenTelemetryUsagePlugin(String prefix) {
-    this.prefix = prefix;
+    this(prefix, "true".equals(System.getenv("FEATUREHUB_OTEL_SPAN_AS_EVENTS")));
   }
 
   public OpenTelemetryUsagePlugin() {
     this("featurehub.");
+  }
+
+  /** Package-private constructor for testing; bypasses env-var lookup. */
+  OpenTelemetryUsagePlugin(String prefix, boolean attachAsSpanEvents) {
+    this.prefix = prefix;
+    this.attachAsSpanEvents = attachAsSpanEvents;
+    log.info("[featurehubsdk] open telemetry {} logger enabled", attachAsSpanEvents ? "span" : "event");
   }
 
   @Override
@@ -48,8 +55,8 @@ public class OpenTelemetryUsagePlugin extends UsagePlugin {
 
           current.addEvent(prefix(name), builder.build(), Instant.now());
         } else {
-          defaultEventParams.forEach((k, v) -> putMe(prefix(k), v, builder));
-          usageAttributes.forEach((k, v) -> putMe(prefix(k), v, builder));
+          defaultEventParams.forEach((k, v) -> putMe(k, v, builder));
+          usageAttributes.forEach((k, v) -> putMe(k, v, builder));
 
           current.setAllAttributes(builder.build());
         }

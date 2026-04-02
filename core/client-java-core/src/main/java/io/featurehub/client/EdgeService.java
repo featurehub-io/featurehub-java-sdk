@@ -1,9 +1,8 @@
 package io.featurehub.client;
 
+import java.util.concurrent.Future;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.concurrent.Future;
 
 public interface EdgeService {
   /**

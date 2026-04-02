@@ -1,5 +1,6 @@
 package todo.backend;
 
+import io.featurehub.client.usage.DefaultUsageFeaturesCollection;
 import io.featurehub.client.usage.UsageEventName;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import org.jetbrains.annotations.NotNull;
@@ -7,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class UsageRequestMeasurement extends UsageFeaturesCollection implements UsageEventName {
+public class UsageRequestMeasurement extends DefaultUsageFeaturesCollection implements UsageEventName {
   private final long duration;
   @NotNull
   private final String url;
