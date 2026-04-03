@@ -34,11 +34,35 @@
   </licenses>
 
   <modules>
-    <module>core</module>
-    <module>examples</module>
-    <module>client-implementations</module>
-    <module>support</module>
-    <module>usage-adapters</module>
-<!--    <module>unmaintained</module>-->
+    <!-- support -->
+    <module>support/common-jackson</module>
+    <module>support/common-jacksonv2</module>
+    <module>support/composite-jersey2</module>
+    <module>support/composite-jersey3</module>
+    <module>support/composite-okhttp</module>
+    <module>support/composite-logging</module>
+    <module>support/composite-logging-api</module>
+    <module>support/composite-test</module>
+    <module>support/featurehub-okhttp3-jackson2</module>
+    <!-- core -->
+    <module>core/client-java-api</module>
+    <module>core/client-java-core</module>
+    <module>core/local-yaml</module>
+    <module>core/redis-store</module>
+    <!-- client implementations -->
+    <module>client-implementations/java-client-jersey2</module>
+    <module>client-implementations/java-client-jersey3</module>
+    <module>client-implementations/java-client-okhttp</module>
+    <!-- usage adapters -->
+    <module>usage-adapters/featurehub-segment-adapter</module>
+    <module>usage-adapters/featurehub-opentelemetry-adapter</module>
+    <!-- examples -->
+    <module>examples/todo-java-shared</module>
+    <module>examples/todo-java-jersey2</module>
+    <module>examples/todo-java-jersey3</module>
+<!--    <module>examples/todo-java-quarkus</module>-->
+<!--    <module>examples/todo-java-springboot</module>-->
+    <module>examples/migration-check</module>
+    <module>examples/batch</module>
   </modules>
 </project>

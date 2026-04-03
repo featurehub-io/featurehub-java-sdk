@@ -4,11 +4,11 @@
 
   <groupId>io.featurehub.sdk.common</groupId>
   <artifactId>common-jacksonv2</artifactId>
-  <version>1.2-SNAPSHOT</version>
+  <version>2.1-SNAPSHOT</version>
   <name>common-jacksonv2</name>
 
   <description>
-    implementation for jackson v2
+    implementation for jackson v2, designed for Core 5.x+
   </description>
 
   <url>https://featurehub.io</url>
