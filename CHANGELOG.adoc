@@ -1,8 +1,8 @@
 === Changes
 
-=== 4.3 
+=== 5.0 (core), 4.x (clients) 
 - addition of the environmentId and strategyId (if any) for features from the usage API
-- simplificiation of the polling active/rest so it is more testable, common functionality removed from RestApi clients in each supported platform to make them easier to implement
+- simplificiation of the polling active/rest so it is more testable, common functionality removed from RestApi clients in each supported platform to make them easier to implement. This is a breaking change in the client/core contract so we have bumped the version. 
 - addition of external sources of features using `RawUpdateFeatureListener` and sources
 - addition of a standard Redis and Yaml backing stores
 - support for empty repository for local development (no edge or api keys)
