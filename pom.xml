@@ -40,6 +40,7 @@
     <module>support/composite-jersey2</module>
     <module>support/composite-jersey3</module>
     <module>support/composite-okhttp</module>
+    <module>support/composite-netty</module>
     <module>support/composite-logging</module>
     <module>support/composite-logging-api</module>
     <module>support/composite-test</module>
@@ -53,6 +54,7 @@
     <module>client-implementations/java-client-jersey2</module>
     <module>client-implementations/java-client-jersey3</module>
     <module>client-implementations/java-client-okhttp</module>
+    <module>client-implementations/java-client-netty</module>
     <!-- usage adapters -->
     <module>usage-adapters/featurehub-segment-adapter</module>
     <module>usage-adapters/featurehub-opentelemetry-adapter</module>
