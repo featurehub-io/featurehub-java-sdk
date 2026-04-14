@@ -1,0 +1,1 @@
+core/client-java-core,support/common-jackson,support/common-jacksonv2
