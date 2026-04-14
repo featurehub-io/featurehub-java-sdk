@@ -1,0 +1,1 @@
+examples/todo-java-quarkus,examples/todo-java-springboot,support/common-jacksonv3

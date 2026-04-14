@@ -22,12 +22,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.SocketTimeoutException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 public class SSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(SSEClient.class);
@@ -125,7 +123,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     if (state == SSEResultState.CONFIG) {
                       retryer.edgeConfigInfo(data);
                     } else if (data != null) {
-                      retryer.convertSSEState(state, data, repository);
+                      retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
                     }
 
                     // reset the timer

@@ -1,23 +1,23 @@
 package io.featurehub.client;
 
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
-import io.featurehub.sse.model.RolloutStrategyFieldType;
 import io.featurehub.sse.model.FeatureRolloutStrategy;
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
+import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
+import io.featurehub.sse.model.RolloutStrategyFieldType;
 import io.featurehub.strategies.matchers.MatcherRepository;
 import io.featurehub.strategies.percentage.PercentageCalculator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ApplyFeature {
   private static final Logger log = LoggerFactory.getLogger(ApplyFeature.class);
@@ -38,7 +38,7 @@ public class ApplyFeature {
       String defaultPercentageKey = cac.defaultPercentageKey();
 
       for(FeatureRolloutStrategy rsi : strategies ) {
-        if (rsi.getPercentage() != null && (defaultPercentageKey != null || !rsi.getPercentageAttributes().isEmpty())) {
+        if (rsi.getPercentage() != null && (defaultPercentageKey != null || (rsi.getPercentageAttributes() != null && !rsi.getPercentageAttributes().isEmpty()))) {
           // determine what the percentage key is
           String newPercentageKey = determinePercentageKey(cac, rsi.getPercentageAttributes());
 
@@ -60,10 +60,10 @@ public class ApplyFeature {
           if (percentage <= (useBasePercentage + rsi.getPercentage())) {
             if (rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
               if (matchAttributes(cac, rsi)) {
-                return new Applied(true, rsi.getValue());
+                return new Applied(true, rsi.getValue(), rsi.getId());
               }
             } else {
-              return new Applied(true, rsi.getValue());
+              return new Applied(true, rsi.getValue(), rsi.getId());
             }
           }
 
@@ -76,13 +76,13 @@ public class ApplyFeature {
         if ((rsi.getPercentage() == null || rsi.getPercentage() == 0) &&
           rsi.getAttributes() != null && !rsi.getAttributes().isEmpty()) {
           if (matchAttributes(cac, rsi)) {
-            return new Applied(true, rsi.getValue());
+            return new Applied(true, rsi.getValue(), rsi.getId());
           }
         }
       }
     }
 
-    return new Applied(false, null);
+    return new Applied(false, null, null);
   }
 
   // This applies the rules as an AND. If at any point it fails it jumps out.
@@ -123,8 +123,8 @@ public class ApplyFeature {
     return true;
   }
 
-  private String determinePercentageKey(ClientContext cac, List<String> percentageAttributes) {
-    if (percentageAttributes.isEmpty()) {
+  private String determinePercentageKey(ClientContext cac, @Nullable List<String> percentageAttributes) {
+    if (percentageAttributes == null || percentageAttributes.isEmpty()) {
       return cac.defaultPercentageKey();
     }
 

@@ -36,7 +36,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-okhttp</artifactId>
-      <version>[3, 4)</version>
+      <version>[4, 5)</version>
     </dependency>
 
     <dependency>

@@ -103,10 +103,13 @@
 
   <build>
     <plugins>
+      <!-- this plugin modifies the pom.xml to the shrink the range of dependencies based on what is actually being resolved
+       we use it during release because it reflects what is actually used and compiled again which during a cascade release
+       we would otherwise not get to do. docs at https://github.com/StickySource/bounds-maven-plugin -->
       <plugin>
         <groupId>net.stickycode.plugins</groupId>
         <artifactId>bounds-maven-plugin</artifactId>
-        <version>2.7</version>
+        <version>4.12</version>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

@@ -8,6 +8,7 @@ package io.featurehub.client;
  * By their very nature they are contextual so they never trigger events, they can only be used imperatively. As such
  * they are designed to reflect changes to _local_ state, state local to a method call.
  */
+@Deprecated
 public interface FeatureValueInterceptor {
   /**
    * get the value associated with this key (if any)

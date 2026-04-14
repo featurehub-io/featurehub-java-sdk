@@ -4,11 +4,16 @@ import com.segment.analytics.MessageTransformer;
 import com.segment.analytics.messages.Message;
 import com.segment.analytics.messages.MessageBuilder;
 import io.featurehub.client.ClientContext;
+import io.featurehub.client.usage.DefaultUsageFeaturesCollectionContext;
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
-import org.jetbrains.annotations.Nullable;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Supplier;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * SegmentMessageTransformer is designed to allow an analytics builder to attach the current user's features
@@ -47,13 +52,25 @@ public class SegmentMessageTransformer implements MessageTransformer {
 
     if (context != null && augmentTypes.contains(builder.type())) {
       // create a holder that will collect the user and all the respective data
-      final UsageFeaturesCollectionContext usage = new UsageFeaturesCollectionContext();
+      final UsageFeaturesCollectionContext usage = new DefaultUsageFeaturesCollectionContext();
 
       context.fillUsageCollection(usage);
 
       augmentUser(builder, usage);
+      Map<String, Object> data = new HashMap<>();
 
-      builder.context(usage.toMap());
+      UUID environmentId = null;
+
+      for (FeatureHubUsageValue fv : usage.getFeatureValues()) {
+        data.put(fv.getKey(), fv.getRawValue());
+        environmentId = fv.getEnvironmentId();
+      }
+
+      if (environmentId != null) {
+        data.put("featurehub_env", environmentId.toString());
+      }
+
+      builder.context(data);
     }
 
     return true;

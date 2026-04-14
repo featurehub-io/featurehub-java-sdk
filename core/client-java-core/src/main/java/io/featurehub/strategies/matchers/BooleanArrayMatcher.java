@@ -1,7 +1,7 @@
 package io.featurehub.strategies.matchers;
 
-import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
+import io.featurehub.sse.model.RolloutStrategyAttributeConditional;
 
 public class BooleanArrayMatcher implements StrategyMatcher {
   @Override

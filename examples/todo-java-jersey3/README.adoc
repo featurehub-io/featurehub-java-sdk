@@ -16,3 +16,10 @@ The system properties it honours are:
 - `feature-service.client`, defaultValue = `sse` - valid values are sse, rest (passive poll, poll only if features are evaluated and polling interval has expired) and rest-poll (continuous poll).
 - `feature-service.opentelemetry.enabled`, defaultValue = `false` - you have an otel server and have set the env vars it requires, this turns instrumentation on.
 - `feature-service.poll-interval-seconds`, defaultValue = `1` - how many seconds should expire between polls (or poll expiry interval for passive polls).
+
+== Running Redis tests
+
+It is recommended when running server tests for Redis, run the main one on 8099 and then call `/heath/disable` on it, which will turn off edge but keep Redis alive. Run a second one with a `SERVER.PORT` environment variable of 8100 which
+keeps its edge connection and keeps updating redis. Then run the cukes and they
+will run happily.
+

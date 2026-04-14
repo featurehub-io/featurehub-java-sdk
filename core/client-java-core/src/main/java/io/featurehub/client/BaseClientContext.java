@@ -1,24 +1,22 @@
 package io.featurehub.client;
 
+import io.featurehub.client.usage.FeatureHubUsageValue;
 import io.featurehub.client.usage.UsageEvent;
-import io.featurehub.client.usage.UsageEventWithFeature;
+import java.math.BigDecimal;
 import io.featurehub.client.usage.UsageFeaturesCollection;
 import io.featurehub.client.usage.UsageFeaturesCollectionContext;
-import io.featurehub.client.usage.FeatureHubUsageValue;
-import io.featurehub.sse.model.FeatureValueType;
 import io.featurehub.sse.model.StrategyAttributeCountryName;
 import io.featurehub.sse.model.StrategyAttributeDeviceName;
 import io.featurehub.sse.model.StrategyAttributePlatformName;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class BaseClientContext implements InternalContext {
   private static final Logger log = LoggerFactory.getLogger(BaseClientContext.class);
@@ -123,25 +121,14 @@ class BaseClientContext implements InternalContext {
   }
 
   @Override
-  public void used(@NotNull String key, @NotNull UUID id, @Nullable Object val,
-                             @NotNull FeatureValueType valueType) {
+  public void used(@NotNull EvaluatedFeature value) {
     final HashMap<String, List<String>> attrCopy = new HashMap<>(attributes);
     final String userKey = usageUserKey();
 
-    log.trace("recording usage for key: {}, id: {}, value: {}, valueType: {}, userKey: {}, attributes: {}",
-      key, id, val, valueType, userKey, attrCopy);
+    log.trace("recording usage for value {}, userKey: {}, attributes: {}",
+      value, userKey, attrCopy);
 
-    repository.execute(() -> {
-      try {
-        repository.used(key, id, valueType, val, attrCopy, userKey);
-
-        // a feature has been evaluated, so this allows us to trigger to see if the
-        // time limit has expired on checking for a state update.
-        edgeService.poll().get();
-      } catch (Exception e) {
-        log.error("Failed to poll", e);
-      }
-    });
+    repository.used(value, attrCopy, userKey);
   }
 
   /**
@@ -154,11 +141,16 @@ class BaseClientContext implements InternalContext {
     return getAttr("session", getAttr("userkey"));
   }
 
-
   protected void recordFeatureChangedForUser(FeatureStateBase<?> feature) {
-    repository.recordUsageEvent(new UsageEventWithFeature(
-      new FeatureHubUsageValue(feature.withContext(this)), attributes,
-      usageUserKey()));
+    feature.getValue(Object.class);
+
+    final EvaluatedFeature result = feature.withContext(this).internalGetValue(null, false);
+
+    if (result != null) { // we can't record the usage for a phantom flag
+      repository.recordUsageEvent(repository.getUsageProvider().createUsageEventWithFeature(
+        new FeatureHubUsageValue(result), attributes,
+        usageUserKey()));
+    }
   }
 
   protected void recordRelativeValuesForUser() {
@@ -170,8 +162,10 @@ class BaseClientContext implements InternalContext {
 
     if (event instanceof UsageFeaturesCollection) {
       ((UsageFeaturesCollection)event).setFeatureValues(
-        repository.getFeatureKeys().stream().map((k) ->
-          new FeatureHubUsageValue(repository.getFeat(k))).collect(Collectors.toList()));
+        repository.getFeatureKeys().stream().map((k) -> {
+          final EvaluatedFeature result = repository.getFeat(k).withContext(this).internalGetValue(null, false);
+          return result == null ? null : new FeatureHubUsageValue(result);
+        }).filter(Objects::nonNull).collect(Collectors.toList()));
     }
 
     if (event instanceof UsageFeaturesCollectionContext) {
@@ -256,6 +250,67 @@ class BaseClientContext implements InternalContext {
   public boolean isEnabled(String name) {
     // we use this mechanism as it will return the state within the context (vs repository which might be different)
     return feature(name).isEnabled();
+  }
+
+  @Override
+  public boolean isEnabled(Feature name, boolean defaultValue) {
+    return isEnabled(name.name(), defaultValue);
+  }
+
+  @Override
+  public boolean isEnabled(String name, boolean defaultValue) {
+    return feature(name).isEnabled(defaultValue);
+  }
+
+  @Override
+  public boolean getFlag(Feature name, boolean defaultValue) {
+    return getFlag(name.name(), defaultValue);
+  }
+
+  @Override
+  public boolean getFlag(String name, boolean defaultValue) {
+    return feature(name).getFlag(defaultValue);
+  }
+
+  @Override
+  public @Nullable String getString(Feature name, @Nullable String defaultValue) {
+    return getString(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable String getString(String name, @Nullable String defaultValue) {
+    return feature(name).getString(defaultValue);
+  }
+
+  @Override
+  public @Nullable BigDecimal getNumber(Feature name, @Nullable BigDecimal defaultValue) {
+    return getNumber(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable BigDecimal getNumber(String name, @Nullable BigDecimal defaultValue) {
+    return feature(name).getNumber(defaultValue);
+  }
+
+  @Override
+  public @Nullable String getRawJson(Feature name, @Nullable String defaultValue) {
+    return getRawJson(name.name(), defaultValue);
+  }
+
+  @Override
+  public @Nullable String getRawJson(String name, @Nullable String defaultValue) {
+    return feature(name).getRawJson(defaultValue);
+  }
+
+  @Override
+  public @Nullable <K> K getValue(Feature name, Class<K> clazz, @Nullable K defaultValue) {
+    return getValue(name.name(), clazz, defaultValue);
+  }
+
+  @Override
+  @SuppressWarnings("unchecked")
+  public @Nullable <K> K getValue(String name, Class<K> clazz, @Nullable K defaultValue) {
+    return ((FeatureState<K>) feature(name)).getValue(clazz, defaultValue);
   }
 
   @Override

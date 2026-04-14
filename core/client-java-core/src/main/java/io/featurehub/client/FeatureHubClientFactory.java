@@ -1,9 +1,8 @@
 package io.featurehub.client;
 
+import java.util.function.Supplier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.function.Supplier;
 
 /**
  * allows the creation of a new edge service without knowing about the underlying implementation.
@@ -15,6 +14,7 @@ public interface FeatureHubClientFactory {
 
   @NotNull Supplier<EdgeService> createSSEEdge(@NotNull FeatureHubConfig config);
 
+  // amPollingDelegate is no longer used
   @NotNull Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
                                        @Nullable InternalFeatureRepository repository,
                                        int timeoutInSeconds, boolean amPollingDelegate);

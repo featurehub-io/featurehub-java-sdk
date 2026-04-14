@@ -220,7 +220,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       if (state == SSEResultState.CONFIG) {
         retryer.edgeConfigInfo(data);
       } else {
-        retryer.convertSSEState(state, data, repository);
+        retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
 
       // reset the timer
       if (state == SSEResultState.FEATURES) {

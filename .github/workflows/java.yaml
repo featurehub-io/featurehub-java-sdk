@@ -2,9 +2,20 @@ name: Java CI
 
 on: [push]
 
+# for release use https://github.com/gh-a-sample/github-actions-maven-release-sample
+
 jobs:
+  diff-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: check diff is correct
+        run: git fetch origin main && git checkout main && git reset --hard origin/main && git checkout ${{ github.head_ref || github.ref }} && bash detect_module_changes.sh --diff
   build-java11:
     runs-on: ubuntu-latest
+    needs: diff-check
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK 11
@@ -16,14 +27,17 @@ jobs:
       - name: Install tiles
         run: cd support && mvn -f pom-tiles.xml install
       - name: Install support composites
-        run: mvn install
+        run: mvn install -pl $(cat java11_changed.txt)
   build-java21:
     runs-on: ubuntu-latest
+    needs: diff-check
     strategy:
       matrix:
         java-version: ['17', '21', '25']
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 40
       - name: Set up Java ${{ matrix.java-version }}
         uses: actions/setup-java@v5
         with:
@@ -33,7 +47,7 @@ jobs:
       - name: Install tiles
         run: cd support && mvn -f pom-tiles.xml install
       - name: All other things
-        run: mvn install
+        run: mvn install -pl $(cat java11_changed.txt)
       - name: java17+ only
         working-directory: v17-and-above
-        run: mvn install
+        run: mvn install -pl $(cat java17_changed.txt)

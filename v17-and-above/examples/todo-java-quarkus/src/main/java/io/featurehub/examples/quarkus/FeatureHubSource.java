@@ -57,7 +57,7 @@ public class FeatureHubSource {
     }
     log.info("Initializing FeatureHub");
     config = new EdgeFeatureHubConfig(featureHubUrl, sdkKey)
-      .registerValueInterceptor(true, new SystemPropertyValueInterceptor());
+      .registerValueInterceptor(new SystemPropertyValueInterceptor());
 
     if (segmentWriteKey.isPresent()) {
       final SegmentUsagePlugin segmentUsagePlugin = new SegmentUsagePlugin(segmentWriteKey.get(),

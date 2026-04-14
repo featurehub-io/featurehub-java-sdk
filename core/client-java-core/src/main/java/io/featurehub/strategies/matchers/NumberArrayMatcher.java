@@ -1,14 +1,13 @@
 package io.featurehub.strategies.matchers;
 
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
-import org.jetbrains.annotations.Nullable;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.jetbrains.annotations.Nullable;
 
 public class NumberArrayMatcher implements StrategyMatcher {
   private BigDecimal supplied = null;

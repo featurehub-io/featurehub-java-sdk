@@ -1,0 +1,12 @@
+flagValues:
+  boolTrue: true
+  boolFalse: false
+  myString: "hello world"
+  myNumber: 42
+  myFloat: 3.14
+  myJson:
+    colour: red
+    count: 5
+  myJsonList:
+    - a
+    - b

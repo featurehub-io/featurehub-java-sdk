@@ -33,7 +33,7 @@
     <dependency>
       <groupId>io.featurehub.sdk</groupId>
       <artifactId>java-client-jersey2</artifactId>
-      <version>[3.1-SNAPSHOT, 4)</version>
+      <version>[4, 5)</version>
     </dependency>
 
     <dependency>
@@ -51,7 +51,7 @@
     <dependency>
       <groupId>io.featurehub.sdk.common</groupId>
       <artifactId>common-jacksonv2</artifactId>
-      <version>[1, 2]</version>
+      <version>[2, 3]</version>
     </dependency>
 
     <!-- version of grizzly we use for jersey3 -->

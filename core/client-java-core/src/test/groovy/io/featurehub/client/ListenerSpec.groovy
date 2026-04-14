@@ -7,9 +7,6 @@ import io.featurehub.sse.model.FeatureRolloutStrategy
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute
 import spock.lang.Specification
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Future
-
 import static io.featurehub.client.BaseClientContext.USER_KEY
 
 class ListenerSpec extends Specification {
@@ -31,24 +28,33 @@ class ListenerSpec extends Specification {
           n1 = fs.number
         })
         ctxFeat.addListener({ fs -> n2 = fs.number })
-    when: "i set the feature state"
-        feat.setFeatureState(new io.featurehub.sse.model.FeatureState().id(id).key(key).l(false)
-          .value(16).type(FeatureValueType.NUMBER).addStrategiesItem(new FeatureRolloutStrategy().value(12).addAttributesItem(
+    and: "an environment id"
+        def envId = UUID.randomUUID()
+    and: "i have a feature"
+        def fs = new io.featurehub.sse.model.FeatureState().id(id).key(key).l(false)
+          .environmentId(envId)
+          .value(16).type(FeatureValueType.NUMBER).addStrategiesItem(new FeatureRolloutStrategy().id("orm").value(12).addAttributesItem(
           new FeatureRolloutStrategyAttribute().conditional(RolloutStrategyAttributeConditional.EQUALS)
             .type(RolloutStrategyFieldType.STRING).fieldName(USER_KEY).addValuesItem("fred")
-        )))
+        ))
+    when: "i set the feature state"
+        feat.setFeatureState(fs)
     then:
         n1 == 16
         n2 == 12
-        2 * repo.findIntercept(false, key) >> null  // one for each listener
-        3 * repo.execute({Runnable cmd ->  // 2 for listeners, 1 for firing the "used" on the repo via the context
+        2 * repo.findIntercept(key, fs) >> new ExtendedFeatureValueInterceptor.ValueMatch(false, null)
+        2 * repo.execute({Runnable cmd ->  // 2 for listeners
           cmd.run()
         })
-        1 * repo.applyFeature(_, key, _, ctx) >> new Applied(true, 12)
-//        1 * ctx.used(key, id, 12, FeatureValueType.NUMBER)
-        1 * repo.used(key, id, FeatureValueType.NUMBER, 16, null, null)
-        1 * repo.used(key, id, FeatureValueType.NUMBER, 12, {}, null)
-        1 * edge.poll() >> CompletableFuture.completedFuture(Readiness.Ready)
-        0 * _
+        1 * repo.applyFeature(_, key, _, ctx) >> new Applied(true, 12, "orm")
+        1 * repo.used({ EvaluatedFeature tuple ->
+          assert tuple.value == 16
+          assert tuple.strategyId == null
+        }, _, _)
+        1 * repo.used({ EvaluatedFeature tuple ->
+          assert tuple.value == 12
+          assert tuple.strategyId == "orm"
+        }, _, _)
+//        0 * _
   }
 }

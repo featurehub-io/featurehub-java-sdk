@@ -30,7 +30,7 @@ public class JerseyFeatureHubClientFactory implements FeatureHubClientFactory {
   public Supplier<EdgeService> createRestEdge(@NotNull FeatureHubConfig config,
                                               @Nullable InternalFeatureRepository repository, int timeoutInSeconds, boolean amPollingDelegate) {
     return () -> new RestClient(repository, null, config,
-      EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), timeoutInSeconds, amPollingDelegate);
+      EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), timeoutInSeconds);
   }
 
   @Override

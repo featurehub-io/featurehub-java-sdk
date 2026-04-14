@@ -1,7 +1,6 @@
 package io.featurehub.strategies.matchers;
 
 import io.featurehub.sse.model.FeatureRolloutStrategyAttribute;
-
 import java.util.List;
 import java.util.stream.Collectors;
 

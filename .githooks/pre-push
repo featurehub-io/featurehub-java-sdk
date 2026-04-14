@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Verify that the module change files are up to date before pushing.
+# If they are stale, run ./detect_module_changes.sh to regenerate them,
+# then stage and commit the result before pushing again.
+
+./detect_module_changes.sh --diff
+STATUS=$?
+
+if [[ $STATUS -ne 0 ]]; then
+  echo ""
+  echo "Push blocked: module change files are out of date."
+  echo "Run './detect_module_changes.sh' to regenerate them, then commit and push again."
+  exit 1
+fi

@@ -27,7 +27,8 @@ class JerseySSEClientSpec extends Specification {
     System.setProperty("jersey.config.test.container.port", (10000 + new Random().nextInt(1000)).toString())
     harness = new SSETestHarness()
     harness.setUp()
-    config = harness.getConfig(["123/345*675"], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+    def actualApiKey = "${UUID.randomUUID().toString()}/345*675".toString()
+    config = harness.getConfig([actualApiKey], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
       output = new EventOutput()
       return output
     })
