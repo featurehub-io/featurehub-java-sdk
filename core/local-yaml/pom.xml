@@ -5,7 +5,7 @@
   <groupId>io.featurehub.sdk</groupId>
   <artifactId>local-yaml</artifactId>
   <name>local-yaml</name>
-  <version>1.1-SNAPSHOT</version>
+  <version>1.1</version>
   <description>
     Provides a local yaml interceptor that will watch for changes in the defined file and reload them
     as an extended feature value interceptor.
@@ -40,7 +40,7 @@
     <connection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</connection>
     <developerConnection>scm:git:git@github.com:featurehub-io/featurehub-java-sdk.git</developerConnection>
     <url>git@github.com:featurehub-io/featurehub-java-sdk.git</url>
-    <tag>HEAD</tag>
+    <tag>local-yaml-1.1</tag>
   </scm>
 
 
