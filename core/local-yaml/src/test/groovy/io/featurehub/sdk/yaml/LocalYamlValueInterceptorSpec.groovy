@@ -248,13 +248,14 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       def yamlFile = tempDir.resolve('watched.yaml').toFile()
       yamlFile.text = "flagValues:\n  watchedFlag: false\n"
       def i = interceptor(yamlFile.absolutePath, true)
+      // macOS WatchService polls at 2–10 s intervals, so use a generous timeout
+      def watchConditions = new spock.util.concurrent.PollingConditions(timeout: 15, initialDelay: 0.5, delay: 0.5)
     expect:
       match(i, 'watchedFlag').value == Boolean.FALSE
     when:
-      sleep(100)
       yamlFile.text = "flagValues:\n  watchedFlag: true\n"
     then:
-      conditions.eventually {
+      watchConditions.eventually {
         assert match(i, 'watchedFlag').value == Boolean.TRUE
       }
     cleanup:
@@ -280,5 +281,4 @@ class LocalYamlValueInterceptorSpec extends YamlSpecBase {
       noExceptionThrown()
   }
 
-  def conditions = new spock.util.concurrent.PollingConditions(timeout: 5, initialDelay: 0.2, delay: 0.2)
 }
