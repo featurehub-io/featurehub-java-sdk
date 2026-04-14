@@ -13,6 +13,11 @@ fi
 #    showing only the changes unique to the source branch.
 CHANGED_FILES=$(git diff --name-only $TARGET_BRANCH...$SOURCE_BRANCH)
 
+if [[ "$CHANGED_FILES" == "" ]]; then
+  echo "nothing to process"
+  exit 0
+fi
+
 # 2. Process the list to find the unique Maven project root directories
 CHANGED_MODULES=()
 for file in $CHANGED_FILES; do
