@@ -43,9 +43,10 @@
     <tag>HEAD</tag>
   </scm>
 
+  <!-- 3.0.4 has 2 CVEs at the time of release, so bumping to 3.1.x -->
   <properties>
-    <jackson.version>3.0.3</jackson.version>
-    <jackson.databind.version>3.0.4</jackson.databind.version>
+    <jackson.version>3.1.2</jackson.version>
+    <jackson.databind.version>3.1.2</jackson.databind.version>
     <java.version>17</java.version>
   </properties>
 
