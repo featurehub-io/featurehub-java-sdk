@@ -1,1 +1,0 @@
-client-implementations/java-client-jersey2,client-implementations/java-client-jersey3,client-implementations/java-client-okhttp,core/client-java-core,core/local-yaml,usage-adapters/featurehub-segment-adapter,core/redis-store,usage-adapters/featurehub-opentelemetry-adapter,support/featurehub-okhttp3-jackson2
