@@ -197,10 +197,12 @@ class JerseySSEClientSpec extends Specification {
   def "a context change while connecting discards the old context's connection"() {
     given: "a server evaluated config that records the context of each connection"
       def headers = []
+      def etags = []
       def outputs = [:]
       def raceConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
         def header = featureHubAttrs?.join(",")
         headers.add(header)
+        etags.add(etag)
         def out = new EventOutput()
         outputs[header] = out
         return out
@@ -211,8 +213,8 @@ class JerseySSEClientSpec extends Specification {
       raceEdge = new JerseySSEClient(null, raceConfig,
         EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerDisconnectRetryMs(60000).build()) {
         @Override
-        protected EventInput makeEventSource() {
-          def source = super.makeEventSource()
+        protected EventInput makeEventSource(String header, String lastEventId) {
+          def source = super.makeEventSource(header, lastEventId)
           if (!changed) {
             changed = true
             raceEdge.contextChange("userkey=mary", "2")
@@ -231,6 +233,7 @@ class JerseySSEClientSpec extends Specification {
     then: "we end up connected to the new context only"
       new PollingConditions(timeout: 10).eventually { assert raceConfig.repository.readiness == Readiness.Ready }
       headers == ["userkey=fred", "userkey=mary"]
+      etags == [null, null]
     cleanup: "close from the server first so the client's pending read returns straight away"
       outputs["userkey=mary"]?.close()
       raceEdge.close()
@@ -256,6 +259,35 @@ class JerseySSEClientSpec extends Specification {
       elapsed < 2000
     cleanup:
       output?.close()
+  }
+
+  def "a readiness callback can change context without deadlocking the connection"() {
+    given: "a server evaluated config"
+      def outputs = [:]
+      def callbackConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        def out = new EventOutput()
+        outputs[featureHubAttrs?.join(",")] = out
+        return out
+      })
+      def callbackEdge = new JerseySSEClient(null, callbackConfig, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build())
+    and: "the server sends features"
+      callbackEdge.setNotify { EventInput i ->
+        callbackEdge.setNotify(null)
+        outputs["userkey=fred"].write(new OutboundEvent.Builder().name("features").id("1").data(mapper.writeValueAsString([
+          new FeatureState().id(UUID.randomUUID()).key("key").l(true).value(true).type(FeatureValueType.BOOLEAN).version(1)])).build())
+      }
+    when: "the readiness callback (run on the connection thread) waits for another thread to change context"
+      def finished = new java.util.concurrent.CompletableFuture<Boolean>()
+      callbackEdge.contextChange("userkey=fred", "1").thenRun {
+        def changer = Thread.start { callbackEdge.contextChange("userkey=mary", "2") }
+        changer.join(5000)
+        finished.complete(!changer.alive)
+      }
+    then: "the context change was not blocked by the connection"
+      finished.get(10, java.util.concurrent.TimeUnit.SECONDS)
+    cleanup:
+      outputs.values()*.close()
+      callbackEdge.close()
   }
 
 //  def "basic initialization test works as expect"() {

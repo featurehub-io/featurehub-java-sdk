@@ -49,7 +49,7 @@ public class Application {
         }
       }).register(new LoggingFeature(
         java.util.logging.Logger.getLogger(LoggingFeature.DEFAULT_LOGGER_NAME),
-        Level.INFO,
+        Level.FINE, // debug level, so payloads are only logged when debug logging is turned on
         LoggingFeature.Verbosity.PAYLOAD_ANY,
         10000 // max entity size to log
       ));
@@ -57,7 +57,7 @@ public class Application {
     final HttpServer server = GrizzlyHttpServerFactory.createHttpServer(BASE_URI, config, false);
     NetworkListener listener = server.getListener("grizzly");
 
-// Set the maximum time allowed to read the request payload (in milliseconds)
+    // Set the maximum time allowed to read the request payload
     listener.getTransport().setReadTimeout(5, TimeUnit.MINUTES); // 5 minutes
 
     server.start();

@@ -21,6 +21,8 @@ class SSEClientSpec extends Specification {
   SSEClient client
   Request request
   UUID envId
+  int connections
+  Closure onMakeEventSource
 
   def setup() {
     mockEventSource = Mock(EventSource)
@@ -36,6 +38,8 @@ class SSEClientSpec extends Specification {
         println("returning mock event source")
         esListener = listener
         request = req
+        connections++
+        onMakeEventSource?.call()
         return mockEventSource
       }
     }
@@ -184,9 +188,10 @@ class SSEClientSpec extends Specification {
     given: "the first connection has no last event id"
       client.poll()
       assert request.header("Last-Event-ID") == null
-    when: "we receive an event with an id, then one without, then reconnect"
+    when: "we receive an event with an id, then one without, then the server disconnects and we reconnect"
       esListener.onEvent(mockEventSource, '5', 'ack', 'data')
       esListener.onEvent(mockEventSource, null, 'ack', 'data')
+      esListener.onClosed(mockEventSource)
       client.reconnect()
     then:
       request.header("Last-Event-ID") == "5"
@@ -242,28 +247,54 @@ class SSEClientSpec extends Specification {
       1 * retry.convertSSEState(SSEResultState.FEATURES, 'new-data', repository, _)
   }
 
-  def "a context change waits for an event that is being processed to finish"() {
+  def "a context change is not blocked by an event being processed, so listeners cannot deadlock it"() {
     given: "we are connected with one context"
       config.serverEvaluation >> true
       client.contextChange("header", '0')
       def contextChanger = null
-      def blockedWhileProcessing = false
+      def finishedWhileProcessing = false
     when: "a context change happens on another thread while an event is being applied"
       esListener.onEvent(mockEventSource, '5', 'features', 'data')
-    then:
+    then: "the context change completes without waiting for the event"
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.convertSSEState(SSEResultState.FEATURES, 'data', repository, _) >> {
         contextChanger = Thread.start { client.contextChange("header2", '0') }
-        contextChanger.join(300)
-        blockedWhileProcessing = contextChanger.alive
+        contextChanger.join(5000)
+        finishedWhileProcessing = !contextChanger.alive
       }
-      blockedWhileProcessing
-    when: "the event has finished processing"
-      contextChanger.join(5000)
-    then: "the context change completes"
-      !contextChanger.alive
+      finishedWhileProcessing
       request.header("x-featurehub") == "header2"
       request.header("Last-Event-ID") == null
+  }
+
+  def "a context change while connecting cancels the old context's connection"() {
+    given: "the context changes while the first connection is being made"
+      config.serverEvaluation >> true
+      onMakeEventSource = {
+        onMakeEventSource = null
+        client.contextChange("header2", '0')
+      }
+    when: "we connect with the first context"
+      client.contextChange("header", '0')
+    then: "the old context's connection is cancelled and the new context's one is used"
+      1 * mockEventSource.cancel()
+      connections == 2
+      request.header("x-featurehub") == "header2"
+  }
+
+  def "a reconnect after a context change has already reconnected does nothing"() {
+    given: "we are connected"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+    and: "the connection fails, which schedules a reconnect"
+      esListener.onFailure(mockEventSource, new IOException("dropped"), null)
+    and: "a context change reconnects before the scheduled reconnect runs"
+      client.contextChange("header2", '0')
+    when: "the scheduled reconnect runs"
+      client.reconnect()
+    then: "no further connection is made"
+      connections == 2
+      request.header("x-featurehub") == "header2"
   }
 
   def "callbacks after the client is closed are ignored"() {

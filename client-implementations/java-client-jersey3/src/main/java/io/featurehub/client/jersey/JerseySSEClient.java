@@ -27,11 +27,15 @@ import org.slf4j.LoggerFactory;
 
 import java.net.ConnectException;
 import java.net.SocketException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class JerseySSEClient implements EdgeService, EdgeReconnector {
@@ -45,7 +49,11 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   // guards changes of context (header, last event id, current connection) against the connection thread
   private final Object connectionLock = new Object();
   private final WebTarget target;
-  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
+  // added to by callers' threads and drained by the connection thread
+  private final List<CompletableFuture<Readiness>> waitingClients = new CopyOnWriteArrayList<>();
+  // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a small
+  // shared pool of daemon threads rather than a thread per close
+  private static final ExecutorService closer = makeCloser();
   private Consumer<EventInput> notify;
 
   public JerseySSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
@@ -148,9 +156,20 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       return;
     }
 
-    final Thread closer = new Thread(() -> closeQuietly(source), "featurehub-sse-close");
-    closer.setDaemon(true);
-    closer.start();
+    closer.submit(() -> closeQuietly(source));
+  }
+
+  private static ExecutorService makeCloser() {
+    final ThreadPoolExecutor pool = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
+      r -> {
+        final Thread t = new Thread(r, "featurehub-sse-close");
+        t.setDaemon(true);
+        return t;
+      });
+
+    pool.allowCoreThreadTimeOut(true);
+
+    return pool;
   }
 
   private static void closeQuietly(@Nullable EventInput source) {
@@ -168,11 +187,17 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     return config;
   }
 
-  protected EventInput makeEventSource() {
+  /**
+   * Makes the connection.
+   *
+   * @param header - the x-featurehub header (context) to connect with, if any
+   * @param lastEventId - the last event id received for this context, if any
+   */
+  protected EventInput makeEventSource(@Nullable String header, @Nullable String lastEventId) {
     Invocation.Builder request = target.request();
 
-    if (xFeaturehubHeader != null) {
-      request = request.header("x-featurehub", xFeaturehubHeader);
+    if (header != null) {
+      request = request.header("x-featurehub", header);
     }
 
     if (lastEventId != null) {
@@ -187,11 +212,19 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private void initEventSource() {
-    final String header = xFeaturehubHeader;
+    final String header;
+    final String lastId;
+
+    // read together so we never send one context's header with another context's last event id
+    synchronized (connectionLock) {
+      header = xFeaturehubHeader;
+      lastId = lastEventId;
+    }
+
     final EventInput source;
 
     try {
-      source = makeEventSource();
+      source = makeEventSource(header, lastId);
     } catch (Exception e) {
       onMakeEventSourceException(e);
       return;
@@ -250,8 +283,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         continue;
       }
 
-      // check and process under the lock so a context change cannot happen part way through, otherwise we could
-      // record an id or features for a context that is no longer current
+      // only the check and the id are done under the lock, processing calls into listeners and futures which must
+      // never run while we hold it
       synchronized (connectionLock) {
         if (eventSource != source) {
           // superseded by a context change, anything we received is for the old context
@@ -261,16 +294,22 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         if (event.getId() != null) {
           lastEventId = event.getId();
         }
-
-        connectionSaidBye = processResult(connectionSaidBye, data, event);
       }
+
+      connectionSaidBye = processResult(connectionSaidBye, data, event);
     }
 
     if (retryer.isStopped()) {
       log.trace("[featurehub] event source closed? {} interrupted? {} retryer stopped? {}", source.isClosed(), interrupted, retryer.isStopped());
-      if (!source.isClosed()) {
-        close();
+
+      synchronized (connectionLock) {
+        if (eventSource == source) {
+          eventSource = null;
+        }
       }
+
+      // we are the connection thread, so we can close our own connection directly
+      closeQuietly(source);
 
       checkForUnsatisfactoryConversation();
 
@@ -337,7 +376,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       }
 
       // tell any waiting clients we are now ready
-      if (!waitingClients.isEmpty() && (state != SSEResultState.ACK && state != SSEResultState.CONFIG)) {
+      if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
         notifyWaitingClients();
       }
     } catch (Exception e) {
@@ -348,7 +387,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private void notifyWaitingClients() {
-    waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
+    for (CompletableFuture<Readiness> waiting : waitingClients) {
+      waitingClients.remove(waiting);
+      waiting.complete(repository.getReadiness());
+    }
   }
 
   private void onMakeEventSourceException(Exception e) {

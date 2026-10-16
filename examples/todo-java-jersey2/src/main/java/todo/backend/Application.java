@@ -39,8 +39,7 @@ public class Application {
     ResourceConfig config = new ResourceConfig(
       TodoResource.class,
       HealthResource.class,
-      LocalExceptionMapper.class
-      ,
+      LocalExceptionMapper.class,
       FeatureAnalyticsFilter.class
     )
       .register(new AbstractBinder() {
@@ -50,7 +49,7 @@ public class Application {
         }
       }).register(new LoggingFeature(
         java.util.logging.Logger.getLogger(LoggingFeature.DEFAULT_LOGGER_NAME),
-        Level.INFO,
+        Level.FINE, // debug level, so payloads are only logged when debug logging is turned on
         LoggingFeature.Verbosity.PAYLOAD_ANY,
         10000 // max entity size to log
       ));
