@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -35,8 +36,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
   private volatile EventSource eventSource;
+  // the okhttp client is made on first use. Guarded by clientLock, as two connections can be made at once (e.g. a
+  // context change while a connection is still being made).
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
+  private final Object clientLock = new Object();
   private volatile String xFeaturehubHeader;
   @Nullable private volatile String lastEventId;
   // identifies the connection whose callbacks we act on. A connection that has been replaced (e.g. by a context
@@ -44,9 +48,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Nullable private volatile Object currentConnection;
   private final Object connectionLock = new Object();
   private final EdgeRetryService retryer;
-  // added to by callers' threads and drained by okhttp's threads
+  // added to by callers' threads and drained by okhttp's threads, both under connectionLock
   private final List<CompletableFuture<Readiness>> waitingClients = new CopyOnWriteArrayList<>();
-  // once closed we never connect again
+  // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
 
   public SSEClient(
@@ -87,7 +91,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     // read the context and claim the connection together, so a concurrent context change either happens entirely
     // before (and we connect with the new context) or entirely after (and it replaces us)
     synchronized (connectionLock) {
-      if (closed || currentConnection != null) {
+      if (closed || retryer.isStopped() || currentConnection != null) {
         return;
       }
 
@@ -194,7 +198,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
                       // tell any waiting clients we are now ready
                       if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-                        notifyWaitingClients();
+                        notifyWaitingClients(connection);
                       }
                     }
                   } catch (Exception e) {
@@ -297,7 +301,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
 
     if (wrongLibrary) {
-      notifyWaitingClients();
+      notifyAllWaitingClients();
     } else {
       retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
     }
@@ -321,10 +325,47 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
   }
 
-  private void notifyWaitingClients() {
-    for (CompletableFuture<Readiness> waiting : waitingClients) {
-      waitingClients.remove(waiting);
-      waiting.complete(repository.getReadiness());
+  /**
+   * Tells the waiting clients we are ready, as long as the connection is still current. If a context change has
+   * replaced it, those waiting are waiting for the new context's features, not the ones the old connection just sent.
+   */
+  private void notifyWaitingClients(@NotNull Object connection) {
+    final List<CompletableFuture<Readiness>> waiting;
+
+    synchronized (connectionLock) {
+      if (currentConnection != connection) {
+        return;
+      }
+
+      waiting = takeWaitingClients();
+    }
+
+    complete(waiting);
+  }
+
+  /**
+   * Tells all waiting clients where we are, used when no features are coming.
+   */
+  private void notifyAllWaitingClients() {
+    final List<CompletableFuture<Readiness>> waiting;
+
+    synchronized (connectionLock) {
+      waiting = takeWaitingClients();
+    }
+
+    complete(waiting);
+  }
+
+  private List<CompletableFuture<Readiness>> takeWaitingClients() {
+    final List<CompletableFuture<Readiness>> waiting = new ArrayList<>(waitingClients);
+    waitingClients.clear();
+    return waiting;
+  }
+
+  // done outside the lock, as completing a future runs its callbacks
+  private void complete(List<CompletableFuture<Readiness>> waiting) {
+    for (CompletableFuture<Readiness> future : waiting) {
+      future.complete(repository.getReadiness());
     }
   }
 
@@ -339,29 +380,35 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   protected EventSource makeEventSource(Request request, EventSourceListener listener) {
-    if (eventSourceFactory == null) {
-      client =
-        buildOkHttpClientBuilder(retryer)
-              .eventListener(
-                  new EventListener() {
-                    @Override
-                    public void connectFailed(
-                        @NotNull Call call,
-                        @NotNull InetSocketAddress inetSocketAddress,
-                        @NotNull Proxy proxy,
-                        @Nullable Protocol protocol,
-                        @NotNull IOException ioe) {
-                      super.connectFailed(call, inetSocketAddress, proxy, protocol, ioe);
+    final EventSource.Factory factory;
 
-                      log.error("connected failed");
-                    }
-                  })
-              .build();
+    synchronized (clientLock) {
+      if (eventSourceFactory == null) {
+        client =
+          buildOkHttpClientBuilder(retryer)
+                .eventListener(
+                    new EventListener() {
+                      @Override
+                      public void connectFailed(
+                          @NotNull Call call,
+                          @NotNull InetSocketAddress inetSocketAddress,
+                          @NotNull Proxy proxy,
+                          @Nullable Protocol protocol,
+                          @NotNull IOException ioe) {
+                        super.connectFailed(call, inetSocketAddress, proxy, protocol, ioe);
 
-      eventSourceFactory = EventSources.createFactory(client);
+                        log.error("connected failed");
+                      }
+                    })
+                .build();
+
+        eventSourceFactory = EventSources.createFactory(client);
+      }
+
+      factory = eventSourceFactory;
     }
 
-    return eventSourceFactory.newEventSource(request, listener);
+    return factory.newEventSource(request, listener);
   }
 
   /**
@@ -382,12 +429,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Override
   public @NotNull Future<Readiness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
-
-    if (closed) {
-      change.complete(repository.getReadiness());
-      return change;
-    }
-
     final boolean contextChanged;
     EventSource oldSource = null;
     final boolean needsConnection;
@@ -396,6 +437,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     // and deciding whether to wait for the new one (and so tell the caller we are ready before any of its features
     // have arrived)
     synchronized (connectionLock) {
+      if (closed || retryer.isStopped()) {
+        // we will never connect again, so no new features are coming
+        change.complete(repository.getReadiness());
+        return change;
+      }
+
       contextChanged = config.isServerEvaluation() && !Objects.equals(newHeader, xFeaturehubHeader);
 
       if (contextChanged) {
@@ -445,22 +492,30 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void close() {
-    // don't let it try connecting again
-    closed = true;
-    retryer.close();
-
     final EventSource source;
 
     synchronized (connectionLock) {
+      // don't let it try connecting again
+      closed = true;
       currentConnection = null;
       source = eventSource;
       eventSource = null;
     }
 
+    retryer.close();
+
+    final OkHttpClient okClient;
+
+    synchronized (clientLock) {
+      okClient = client;
+      client = null;
+      eventSourceFactory = null;
+    }
+
     // shut down the pool of okhttp connections
-    if (client != null) {
-      client.dispatcher().executorService().shutdownNow();
-      client.connectionPool().evictAll();
+    if (okClient != null) {
+      okClient.dispatcher().executorService().shutdownNow();
+      okClient.connectionPool().evictAll();
     }
 
     // cancel the event source
@@ -469,13 +524,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       source.cancel();
     }
 
-    // wipe the factory
-    if (eventSourceFactory != null) {
-      eventSourceFactory = null;
-    }
-
     // no features are coming, so don't leave anyone waiting
-    notifyWaitingClients();
+    notifyAllWaitingClients();
   }
 
   @Override

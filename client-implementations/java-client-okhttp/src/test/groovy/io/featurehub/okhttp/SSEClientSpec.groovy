@@ -56,6 +56,7 @@ class SSEClientSpec extends Specification {
       1 * repository.getReadiness() >> Readiness.Ready
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * config.getEnvironmentId() >> envId
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -75,6 +76,7 @@ class SSEClientSpec extends Specification {
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       2 * config.getEnvironmentId() >> envId
       0 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -95,6 +97,7 @@ class SSEClientSpec extends Specification {
       2 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
       2 * config.getEnvironmentId() >> envId
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -112,6 +115,7 @@ class SSEClientSpec extends Specification {
       2 * repository.getReadiness() >> Readiness.NotReady
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * config.getEnvironmentId() >> envId
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -126,6 +130,7 @@ class SSEClientSpec extends Specification {
       3 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -142,6 +147,7 @@ class SSEClientSpec extends Specification {
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       future.get() == Readiness.Failed
       1 * config.getEnvironmentId() >> envId
+      _ * retry.isStopped()
       0 * _
   }
 
@@ -352,6 +358,34 @@ class SSEClientSpec extends Specification {
     then:
       future.done
       connections == 1
+  }
+
+  def "features from a connection replaced while they were being applied don't complete the new context's wait"() {
+    given: "we are connected with one context"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      def newContext = null
+    when: "the context changes while the old connection's features are being applied"
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
+    then: "the new context is still waiting for its own features"
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.convertSSEState(SSEResultState.FEATURES, 'data', repository, _) >> {
+        newContext = client.contextChange("header2", '0')
+      }
+      newContext != null
+      !newContext.done
+  }
+
+  def "once the retryer has stopped, a context change or poll does not connect and completes immediately"() {
+    given:
+      retry.isStopped() >> true
+      config.serverEvaluation >> true
+    when:
+      def future = client.contextChange("header", '0')
+      client.poll()
+    then:
+      future.done
+      connections == 0
   }
 
   def "closing completes anyone waiting for features"() {
