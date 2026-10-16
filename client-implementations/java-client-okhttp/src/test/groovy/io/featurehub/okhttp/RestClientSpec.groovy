@@ -113,6 +113,46 @@ class RestClientSpec extends Specification {
       !client.canMakeRequests()
   }
 
+  def "once the server says our requests are pointless, we stop and ignore any further requests to poll"() {
+    given: "the server rejects us"
+      mockWebServer.enqueue(new MockResponse().with {
+        setResponseCode(status)
+      })
+      client.poll().get()
+    when: "we are asked to poll again, directly or by a context change"
+      def polled = client.poll()
+      def changed = client.contextChange("header1", "sha-value")
+    then: "we are stopped, and no further requests are made"
+      client.isStopped()
+      polled.done
+      changed.done
+      mockWebServer.requestCount == 1
+    where:
+      status << [400, 401, 403, 404]
+  }
+
+  def "once the server says our requests are pointless, active polling stops"() {
+    given: "active polling with no delay between polls"
+      repo.getExecutor() >> java.util.concurrent.Executors.newSingleThreadExecutor()
+      def polling = new io.featurehub.client.ActivePollingDelegateEdgeService(client, repo)
+    and: "the server rejects us, and would answer any further polls"
+      mockWebServer.enqueue(new MockResponse().with {
+        setResponseCode(404)
+      })
+      5.times {
+        mockWebServer.enqueue(new MockResponse().with {
+          setResponseCode(500)
+        })
+      }
+    when:
+      polling.poll().get()
+      Thread.sleep(500)
+    then: "only the rejected request was made"
+      mockWebServer.requestCount == 1
+    cleanup:
+      polling.close()
+  }
+
   def "a 500 does not prevent requests but is ignored"() {
     given: "a response"
       mockWebServer.enqueue(new MockResponse().with {
