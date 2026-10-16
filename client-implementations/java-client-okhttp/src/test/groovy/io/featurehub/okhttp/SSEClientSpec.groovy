@@ -122,16 +122,49 @@ class SSEClientSpec extends Specification {
   def "open then immediate failure"() {
     when: "i poll"
       client.poll()
-//      esListener.onOpen(mockEventSource, Mock(Response))
+      esListener.onOpen(mockEventSource, response(200))
       esListener.onFailure(mockEventSource, null, null)
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * config.baseUrl() >> "http://localhost" // used by trace log
+      2 * config.baseUrl() >> "http://localhost" // used by trace logs
       3 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
       _ * retry.isStopped()
       0 * _
+  }
+
+
+  private static okhttp3.Response response(int status) {
+    return new okhttp3.Response.Builder()
+      .request(new Request.Builder().url("http://localhost").build())
+      .protocol(okhttp3.Protocol.HTTP_1_1)
+      .code(status).message("status").build()
+  }
+
+  def "a failure before the connection ever opened backs off rather than reconnecting immediately"() {
+    given:
+      client.poll()
+    when:
+      esListener.onFailure(mockEventSource, failure, status ? response(status) : null)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+    where:
+      failure                                      | status
+      new UnknownHostException("does-not-exist")   | 0
+      null                                         | 503
+      new IOException("unexpected end of stream")  | 0
+  }
+
+  def "a failure after the connection opened reconnects immediately"() {
+    given:
+      client.poll()
+      esListener.onOpen(mockEventSource, response(200))
+    when:
+      esListener.onFailure(mockEventSource, new IOException("dropped"), null)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
   }
 
   def "when i context change with a client side key, it gives me a future which resolves readyness"() {
