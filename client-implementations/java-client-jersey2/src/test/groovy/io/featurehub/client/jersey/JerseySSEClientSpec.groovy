@@ -200,7 +200,7 @@ class JerseySSEClientSpec extends Specification {
     given: "a server evaluated config that records the context of each connection"
       def headers = []
       def etags = []
-      def outputs = [:]
+      def outputs = new java.util.concurrent.ConcurrentHashMap<String, EventOutput>() // added to by the server's threads
       def raceConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
         def header = featureHubAttrs?.join(",")
         headers.add(header)
@@ -265,7 +265,7 @@ class JerseySSEClientSpec extends Specification {
 
   def "a readiness callback can change context without deadlocking the connection"() {
     given: "a server evaluated config"
-      def outputs = [:]
+      def outputs = new java.util.concurrent.ConcurrentHashMap<String, EventOutput>() // added to by the server's threads
       def callbackConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
         def out = new EventOutput()
         outputs[featureHubAttrs?.join(",")] = out
