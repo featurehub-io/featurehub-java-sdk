@@ -303,23 +303,77 @@ class SSEClientSpec extends Specification {
       request.header("x-featurehub") == "header2"
   }
 
-  def "if we cannot even make the connection, we try again later"() {
+  def "if we cannot even make the connection, we try again later without leaving anyone waiting"() {
     given:
       onMakeEventSource = { throw new RuntimeException("bad url") }
     when:
       def future = client.contextChange("header", '0')
     then:
-      1 * repository.getReadiness() >> Readiness.NotReady
+      repository.getReadiness() >>> [Readiness.NotReady, Readiness.Failed]
       1 * repository.notify(SSEResultState.FAILURE)
       1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
-      !future.done
+      future.get(5, java.util.concurrent.TimeUnit.SECONDS) == Readiness.Failed
     when: "the retry connects and features arrive"
       onMakeEventSource = null
       client.reconnect()
       esListener.onEvent(mockEventSource, '1', 'features', 'data')
     then:
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      connections == 2
+  }
+
+  def "when the connection is lost, anyone waiting is released rather than waiting for the reconnect"() {
+    given: "a caller waiting for features"
+      def future = client.contextChange("header", '0')
+    when: "the connection is lost before any arrive"
+      lose(esListener)
+    then:
       future.done
+    where:
+      lose << [
+        { EventSourceListener l -> l.onFailure(null, new IOException("dropped"), null) },
+        { EventSourceListener l -> l.onClosed(null) }
+      ]
+  }
+
+  def "when the server rejects us, we stop retrying and release anyone waiting"() {
+    given: "a caller waiting for features"
+      def future = client.contextChange("header", '0')
+      def response = new okhttp3.Response.Builder()
+        .request(new Request.Builder().url("http://localhost").build())
+        .protocol(okhttp3.Protocol.HTTP_1_1)
+        .code(status).message("rejected").build()
+    when:
+      esListener.onFailure(null, null, response)
+    then:
+      1 * retry.edgeResult(state, client)
+      0 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      future.done
+    where:
+      status | state
+      401    | EdgeConnectionState.FAILURE
+      403    | EdgeConnectionState.FAILURE
+      404    | EdgeConnectionState.API_KEY_NOT_FOUND
+      400    | EdgeConnectionState.API_KEY_NOT_FOUND
+  }
+
+  def "a context change waits for features from a connection that hasn't sent them yet"() {
+    given: "we have connected, but no features have arrived"
+      client.poll()
+    when: "a context is built"
+      def future = client.contextChange(null, '0')
+    then:
+      !future.done
+    when: "the features arrive"
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
+    then:
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      future.done
+    when: "another context is built"
+      def later = client.contextChange(null, '0')
+    then: "it doesn't need to wait"
+      later.done
+      connections == 1
   }
 
   def "if the wrong version of OKHttp stops us connecting, we don't retry and nobody is left waiting"() {

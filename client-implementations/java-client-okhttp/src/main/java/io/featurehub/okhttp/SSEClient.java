@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -48,8 +47,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Nullable private volatile Object currentConnection;
   private final Object connectionLock = new Object();
   private final EdgeRetryService retryer;
-  // added to by callers' threads and drained by okhttp's threads, both under connectionLock
-  private final List<CompletableFuture<Readiness>> waitingClients = new CopyOnWriteArrayList<>();
+  // has the current connection sent us features (or told us it can't) yet? Until it has, callers must wait. Guarded
+  // by connectionLock.
+  private boolean connectionReady;
+  // added to by callers' threads and drained by okhttp's threads. Guarded by connectionLock.
+  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
 
@@ -100,6 +102,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       previous = eventSource;
       eventSource = null;
       currentConnection = connection;
+      connectionReady = false;
     }
 
     if (previous != null) {
@@ -153,6 +156,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                           ? EdgeConnectionState.SERVER_SAID_BYE
                           : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
                       connector);
+
+                  // don't leave anyone waiting while we reconnect (or if the retryer has stopped, forever)
+                  notifyAllWaitingClients();
                 }
 
                 @Override
@@ -238,7 +244,15 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     repository.notify(SSEResultState.FAILURE);
                   }
 
-                  if (t instanceof java.net.ConnectException) {
+                  final int status = response == null ? 0 : response.code();
+
+                  if (status == 401 || status == 403) {
+                    // we aren't allowed in, retrying won't change that
+                    retryer.edgeResult(EdgeConnectionState.FAILURE, connector);
+                  } else if (status >= 400 && status < 500) {
+                    // the api key doesn't exist, retrying won't change that
+                    retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
+                  } else if (t instanceof java.net.ConnectException) {
                     retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
                   } else if (repository.getReadiness() == Readiness.Failed && t
                       instanceof SocketTimeoutException) {
@@ -247,6 +261,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                   } else {
                     retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
                   }
+
+                  // don't leave anyone waiting while we reconnect (or if the retryer has stopped, forever)
+                  notifyAllWaitingClients();
                 }
 
                 @Override
@@ -293,18 +310,18 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   /**
    * We couldn't even make the connection. Unless it is a problem with the libraries we are using (which retrying won't
-   * fix), try again later. Otherwise tell anyone waiting, as no features are coming.
+   * fix), try again later. Either way don't leave anyone waiting.
    */
   private void failedToConnect(boolean wrongLibrary) {
     if (repository.getReadiness() == Readiness.NotReady) {
       repository.notify(SSEResultState.FAILURE);
     }
 
-    if (wrongLibrary) {
-      notifyAllWaitingClients();
-    } else {
+    if (!wrongLibrary) {
       retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
     }
+
+    notifyAllWaitingClients();
   }
 
   /**
@@ -320,6 +337,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
       currentConnection = null;
       eventSource = null;
+      connectionReady = false;
 
       return true;
     }
@@ -337,6 +355,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
+      connectionReady = true;
       waiting = takeWaitingClients();
     }
 
@@ -432,6 +451,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     final boolean contextChanged;
     EventSource oldSource = null;
     final boolean needsConnection;
+    final boolean waiting;
 
     // done in one step, so a reconnect can't claim the connection between us dropping the old context's connection
     // and deciding whether to wait for the new one (and so tell the caller we are ready before any of its features
@@ -450,13 +470,16 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         currentConnection = null;
+        connectionReady = false;
         oldSource = eventSource;
         eventSource = null;
       }
 
       needsConnection = currentConnection == null;
+      // a connection that hasn't sent us its features yet will tell us when it has
+      waiting = needsConnection || !connectionReady;
 
-      if (needsConnection) {
+      if (waiting) {
         waitingClients.add(change);
       }
     }
@@ -473,7 +496,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     if (needsConnection) {
       // if a reconnect beat us to it, this does nothing and we wait for its features
       initEventSource();
-    } else {
+    } else if (!waiting) {
       change.complete(repository.getReadiness());
     }
 

@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -54,8 +53,11 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
   private final WebTarget target;
-  // added to by callers' threads and drained by the connection thread, both under connectionLock
-  private final List<CompletableFuture<Readiness>> waitingClients = new CopyOnWriteArrayList<>();
+  // has the current connection sent us features (or told us it can't) yet? Until it has, callers must wait. Guarded
+  // by connectionLock.
+  private boolean connectionReady;
+  // added to by callers' threads and drained by the connection thread. Guarded by connectionLock.
+  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a shared pool
   // of daemon threads. Closes must not queue behind each other, or old connections stay open long after being replaced.
   private static final ExecutorService closer = makeCloser();
@@ -112,6 +114,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         lastEventId = null;
         oldSource = eventSource;
         eventSource = null;
+        connectionReady = false;
         waitingClients.add(change);
         // if a connection is already pending it will pick up the new context
         connect = !connectPending;
@@ -268,6 +271,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
           connectPending = false;
         } else if (Objects.equals(header, xFeaturehubHeader)) {
           eventSource = source;
+          connectionReady = false;
           connectPending = false;
           break;
         }
@@ -377,6 +381,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     if (current) {
       retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
         EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+
+      connectionLost();
     } else {
       // superseded, closed by someone else or failed, make sure the connection is not left open
       closeQuietly(source);
@@ -453,6 +459,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
+      connectionReady = true;
       waiting = takeWaitingClients();
     }
 
@@ -494,24 +501,26 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     } else if (e instanceof WebApplicationException) {
       WebApplicationException wae = (WebApplicationException) e;
       final Response response = wae.getResponse();
-      if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
-        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
-        noFeaturesComing();
-      } else if (response != null && (response.getStatusInfo().getStatusCode() == 403 || response.getStatusInfo().getStatusCode() == 401)) {
+      // 401 and 403 are client errors too, so they must be checked first
+      if (response != null && (response.getStatusInfo().getStatusCode() == 403 || response.getStatusInfo().getStatusCode() == 401)) {
         retryer.edgeResult(EdgeConnectionState.FAILURE, this);
-        noFeaturesComing();
+      } else if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
+        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
       } else {
         retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
       }
     } else {
       retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
     }
+
+    connectionLost();
   }
 
   /**
-   * The retryer has given up, so we will never connect again. Don't leave anyone waiting.
+   * We have lost (or never made) the connection. Don't leave anyone waiting while we reconnect, or if the retryer has
+   * given up, forever.
    */
-  private void noFeaturesComing() {
+  private void connectionLost() {
     checkForUnsatisfactoryConversation();
     notifyAllWaitingClients();
   }
@@ -531,19 +540,25 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
    * Asks for a connection unless we are connected, or one is already pending (waiting to run or connecting), in which
    * case asking again would make a duplicate connection.
    *
-   * @param waiting - completed once features arrive, if we are not connected
-   * @return true if we are not connected, so waiting (if any) will be completed once features arrive
+   * @param waiting - completed once features arrive, if we don't have them from the current connection yet
+   * @return true if we don't have features from the current connection yet, so waiting (if any) will be completed
+   * once they arrive (or the connection is lost)
    */
   private boolean connect(@Nullable CompletableFuture<Readiness> waiting) {
     final boolean submit;
 
     synchronized (connectionLock) {
-      if (closed || retryer.isStopped() || eventSource != null) {
+      if (closed || retryer.isStopped() || (eventSource != null && connectionReady)) {
         return false;
       }
 
       if (waiting != null) {
         waitingClients.add(waiting);
+      }
+
+      if (eventSource != null) {
+        // connected, but its features haven't arrived yet, they will release those waiting
+        return true;
       }
 
       submit = !connectPending;

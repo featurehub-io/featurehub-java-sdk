@@ -432,29 +432,104 @@ class JerseySSEClientSpec extends Specification {
       submitted.isEmpty()
   }
 
-  def "if the server rejects our API key, anyone waiting is told we have failed"() {
+  // a client whose connection attempts all fail with the given exception
+  private JerseySSEClient failingClient(List<Runnable> submitted, EdgeRetryService retryer, Exception failure) {
+    def executor = Mock(java.util.concurrent.ExecutorService)
+    executor.submit(_ as Runnable) >> { Runnable r -> submitted.add(r); null }
+    retryer.getExecutorService() >> executor
+    def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+      new EventOutput()
+    })
+
+    return new JerseySSEClient(null, serverEvalConfig, retryer) {
+      @Override
+      protected EventInput makeEventSource(String header, String lastEventId) {
+        throw failure
+      }
+    }
+  }
+
+  def "if the server rejects us, anyone waiting is told we have failed"() {
     given: "a server that rejects us"
       def submitted = []
       def retryer = Mock(EdgeRetryService)
-      def executor = Mock(java.util.concurrent.ExecutorService)
-      executor.submit(_ as Runnable) >> { Runnable r -> submitted.add(r); null }
-      retryer.getExecutorService() >> executor
-      def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
-        new EventOutput()
-      })
-      def client = new JerseySSEClient(null, serverEvalConfig, retryer) {
-        @Override
-        protected EventInput makeEventSource(String header, String lastEventId) {
-          throw new WebApplicationException(Response.status(404).build())
-        }
-      }
+      def client = failingClient(submitted, retryer, new WebApplicationException(Response.status(status).build()))
     when:
       def future = client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then:
-      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND, client)
+      1 * retryer.edgeResult(state, client)
       future.done
       future.get() == Readiness.Failed
+    where:
+      status | state
+      401    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
+      403    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
+      404    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+  }
+
+  def "if we can't connect, anyone waiting is released rather than waiting for the retry"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      future.done
+  }
+
+  def "if the server closes the connection before sending features, anyone waiting is released"() {
+    given: "a connection the server closes straight away"
+      def submitted = []
+      def closed = false
+      def input = Mock(EventInput)
+      input.isClosed() >> { closed }
+      input.read() >> { closed = true; null }
+      def retryer = Mock(EdgeRetryService)
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      future.done
+  }
+
+  def "a poll waits for features from a connection that hasn't sent them yet"() {
+    given: "a connection that sends features after we poll"
+      def submitted = []
+      JerseySSEClient client
+      def polled = null
+      def doneBeforeFeatures = null
+      def doneAfterFeatures = null
+      def reads = 0
+      def stopped = false
+      def input = Mock(EventInput)
+      input.read() >> {
+        reads++
+        if (reads == 1) {
+          polled = client.poll()
+          doneBeforeFeatures = polled.done
+          return Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "data" }
+        }
+        doneAfterFeatures = polled.done
+        stopped = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.isStopped() >> { stopped }
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
+      client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      doneBeforeFeatures == false
+      doneAfterFeatures == true
+      submitted.size() == 1
   }
 
   def "closing several connections does not make them wait for each other"() {
