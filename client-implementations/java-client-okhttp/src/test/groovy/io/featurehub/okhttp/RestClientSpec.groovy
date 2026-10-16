@@ -153,6 +153,21 @@ class RestClientSpec extends Specification {
       polling.close()
   }
 
+  def "closing polling after the server rejected us still shuts down the client"() {
+    given: "polling, where the server has rejected us"
+      repo.getExecutor() >> java.util.concurrent.Executors.newSingleThreadExecutor()
+      def polling = new io.featurehub.client.PassivePollingDelegateEdgeService(client, repo)
+      mockWebServer.enqueue(new MockResponse().with {
+        setResponseCode(404)
+      })
+      polling.poll().get()
+      assert client.isStopped()
+    when:
+      polling.close()
+    then:
+      client.client.dispatcher().executorService().isShutdown()
+  }
+
   def "a 500 does not prevent requests but is ignored"() {
     given: "a response"
       mockWebServer.enqueue(new MockResponse().with {

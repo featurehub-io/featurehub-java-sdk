@@ -159,22 +159,15 @@ class BasePollingDelegateEdgeServiceSpec extends Specification {
       result == false
   }
 
-  def "close() delegates to inner when inner is not already stopped"() {
+  def "close() delegates to inner whether or not it has stopped, so it always releases its resources"() {
     given:
-      inner.isStopped() >> false
+      inner.isStopped() >> stopped
     when:
       service.close()
     then:
       1 * inner.close()
-  }
-
-  def "close() does not call inner close when inner is already stopped"() {
-    given:
-      inner.isStopped() >> true
-    when:
-      service.close()
-    then:
-      0 * inner.close()
+    where:
+      stopped << [false, true]
   }
 
   def "getConfig() delegates to inner service"() {
