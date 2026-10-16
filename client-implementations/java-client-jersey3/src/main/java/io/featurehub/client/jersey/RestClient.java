@@ -11,6 +11,7 @@ import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import jakarta.ws.rs.RedirectionException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import java.io.IOException;
@@ -43,7 +44,9 @@ public class RestClient implements EdgeService {
   // used for breaking the cache
   @NotNull
   private String xContextSha = "0";
-  private boolean stopped = false;
+  // once stopped (the server told us to, our requests are pointless or we are closed) we make no more requests. Set
+  // and read on different threads, so volatile.
+  private volatile boolean stopped = false;
   @Nullable
   private String etag = null;
   private long pollingInterval;
@@ -92,6 +95,11 @@ public class RestClient implements EdgeService {
   }
 
   public Future<Readiness> poll() {
+    if (stopped) {
+      log.trace("[featurehub-sdk] not polling, further requests are pointless or we are closed");
+      return CompletableFuture.completedFuture(repository.getReadiness());
+    }
+
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
     Map<String, String> headers = new HashMap<>();
@@ -111,6 +119,13 @@ public class RestClient implements EdgeService {
       // 304 not modified is fine
       if (re.getResponse().getStatus() != 304) {
         processFailure(re);
+      }
+    } catch (WebApplicationException wae) {
+      // depending on the client, an error status may be thrown rather than returned
+      if (wae.getResponse() != null && requestsArePointless(wae.getResponse().getStatus())) {
+        stopPointlessRequests();
+      } else {
+        processFailure(wae);
       }
     } catch (Exception e) {
       processFailure(e);
@@ -186,15 +201,28 @@ public class RestClient implements EdgeService {
       if (response.getStatusCode() == 236) {
         this.stopped = true; // prevent any further requests
       }
-    } else if (response.getStatusCode() == 400 || response.getStatusCode() == 404) {
-      stopped = true;
-      log.error("Server indicated an error with our requests making future ones pointless.");
-      repository.notify(SSEResultState.FAILURE, "polling");
+    } else if (requestsArePointless(response.getStatusCode())) {
+      stopPointlessRequests();
     } else if (response.getStatusCode() >= 500) {
       log.trace("maybe server is down?");
     }
   }
 
+  // a bad request, an unknown api key or no permission: retrying won't change any of these
+  private static boolean requestsArePointless(int status) {
+    return status == 400 || status == 401 || status == 403 || status == 404;
+  }
+
+  private void stopPointlessRequests() {
+    stopped = true;
+    log.error("Server indicated an error with our requests making future ones pointless.");
+    repository.notify(SSEResultState.FAILURE, "polling");
+  }
+
+  /**
+   * Stopped if the server has told us to stop, our requests are pointless or we have been closed. Polling stops once
+   * we are stopped.
+   */
   public boolean isStopped() { return stopped; }
 
   @Override
@@ -217,6 +245,7 @@ public class RestClient implements EdgeService {
 
   @Override
   public void close() {
+    stopped = true;
     edgeRetryer.close();
 
     log.info("featurehub client closed.");

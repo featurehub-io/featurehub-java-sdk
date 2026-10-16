@@ -52,6 +52,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private boolean connectPending;
   // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
+  private final Client client;
   private final WebTarget target;
   // has the current connection sent us features (or told us it can't) yet? Until it has, callers must wait. Guarded
   // by connectionLock.
@@ -74,7 +75,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         "recommended to use the pure SSE client");
     }
 
-    Client client = ClientBuilder.newBuilder()
+    client = ClientBuilder.newBuilder()
       .register(JacksonFeature.class)
       .register(SseFeature.class).build();
 
@@ -161,6 +162,15 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     // no features are coming, so don't leave anyone waiting
     notifyAllWaitingClients();
+
+    // like the connection, closing the client can block while it is being read, so do it in the background
+    closer.submit(() -> {
+      try {
+        client.close();
+      } catch (Exception e) {
+        log.trace("[featurehub-sdk] failed to close client", e);
+      }
+    });
   }
 
   /**
@@ -258,11 +268,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       try {
         source = makeEventSource(header, lastId);
       } catch (Exception e) {
+        final List<CompletableFuture<Readiness>> waiting;
+
+        // those waiting on this attempt are taken in the same step, so anyone who starts waiting after this waits for
+        // the next attempt
         synchronized (connectionLock) {
           connectPending = false;
+          waiting = takeWaitingClients();
         }
 
-        onMakeEventSourceException(e);
+        onMakeEventSourceException(e, waiting);
         return;
       }
 
@@ -320,6 +335,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
         data = event.readData();
       } catch (Exception e) {
+        final List<CompletableFuture<Readiness>> waiting;
+
         // if we are no longer the current connection we were deliberately closed (e.g. by a context change)
         synchronized (connectionLock) {
           if (eventSource != source) {
@@ -328,9 +345,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
           }
 
           eventSource = null;
+          waiting = takeWaitingClients();
         }
 
-        onMakeEventSourceException(e);
+        onMakeEventSourceException(e, waiting);
         log.error("failed read", e);
         interrupted = true;
         continue;
@@ -368,21 +386,20 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     // a read failure has already given up the connection and told the retryer, so if we are still current the
     // server must have closed the connection on us
-    final boolean current;
+    List<CompletableFuture<Readiness>> waiting = null;
 
     synchronized (connectionLock) {
-      current = eventSource == source;
-
-      if (current) {
+      if (eventSource == source) {
         eventSource = null;
+        waiting = takeWaitingClients();
       }
     }
 
-    if (current) {
+    if (waiting != null) {
       retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
         EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
 
-      connectionLost();
+      connectionLost(waiting);
     } else {
       // superseded, closed by someone else or failed, make sure the connection is not left open
       closeQuietly(source);
@@ -431,6 +448,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       }
     } catch (Exception e) {
       log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
+      // don't leave anyone waiting on an event we couldn't apply
+      notifyWaitingClients(source);
       return connectionSaidBye;
     }
 
@@ -492,7 +511,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
   }
 
-  private void onMakeEventSourceException(Exception e) {
+  /**
+   * @param waiting - those who were waiting on the failed connection (or connection attempt)
+   */
+  private void onMakeEventSourceException(Exception e, List<CompletableFuture<Readiness>> waiting) {
     log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl());
     if (e instanceof ConnectException) {
       retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
@@ -513,16 +535,20 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
     }
 
-    connectionLost();
+    connectionLost(waiting);
   }
 
   /**
-   * We have lost (or never made) the connection. Don't leave anyone waiting while we reconnect, or if the retryer has
-   * given up, forever.
+   * We have lost (or never made) the connection. Don't leave those who were waiting on it waiting for the reconnect,
+   * and if the retryer has given up there won't be one, so don't leave anyone waiting at all.
    */
-  private void connectionLost() {
+  private void connectionLost(List<CompletableFuture<Readiness>> waiting) {
     checkForUnsatisfactoryConversation();
-    notifyAllWaitingClients();
+    complete(waiting);
+
+    if (retryer.isStopped()) {
+      notifyAllWaitingClients();
+    }
   }
 
   @Override

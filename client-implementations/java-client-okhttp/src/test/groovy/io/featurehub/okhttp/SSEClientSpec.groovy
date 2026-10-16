@@ -155,6 +155,46 @@ class SSEClientSpec extends Specification {
       new UnknownHostException("does-not-exist")   | 0
       null                                         | 503
       new IOException("unexpected end of stream")  | 0
+      null                                         | 429 // too many requests may well go away, so don't stop
+      null                                         | 408
+  }
+
+  def "those who start waiting on the replacement connection are not released when the old one is lost"() {
+    given: "a caller waiting on the first connection"
+      def first = client.contextChange(null, '0')
+      def later = null
+    when: "it closes, and before it has finished a reconnect is made and another caller starts waiting on it"
+      esListener.onClosed(mockEventSource)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client) >> {
+        client.reconnect()
+        later = client.contextChange(null, '0')
+      }
+      first.done
+      later != null
+      !later.done
+  }
+
+  def "an event we fail to apply doesn't leave anyone waiting"() {
+    given:
+      def future = client.contextChange("header", '0')
+    when:
+      esListener.onEvent(mockEventSource, '1', 'features', 'bad-data')
+    then:
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.convertSSEState(SSEResultState.FEATURES, 'bad-data', repository, _) >> { throw new RuntimeException("JSON failed") }
+      future.done
+  }
+
+  def "once closed, a connection that was already starting doesn't make a new OKHttp client"() {
+    given: "a client that makes real connections"
+      def realClient = new SSEClient(repository, config, retry)
+    when:
+      realClient.close()
+      def source = realClient.makeEventSource(new Request.Builder().url("http://localhost").build(), Mock(EventSourceListener))
+    then:
+      source == null
+      realClient.client == null
   }
 
   def "a failure after the connection opened reconnects immediately"() {

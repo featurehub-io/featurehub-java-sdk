@@ -532,6 +532,64 @@ class JerseySSEClientSpec extends Specification {
       submitted.size() == 1
   }
 
+  def "those who start waiting on the next attempt are not released when a connection attempt fails"() {
+    given: "a connection attempt that fails, and while the failure is being handled another caller starts waiting"
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      JerseySSEClient client
+      def later = null
+      retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, _) >> { later = client.poll() }
+      client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
+    when:
+      def first = client.poll()
+      submitted[0].run()
+    then: "the first caller is released, but the later one waits for the next attempt"
+      first.done
+      later != null
+      !later.done
+      submitted.size() == 2
+  }
+
+  def "an event we fail to apply doesn't leave anyone waiting"() {
+    given: "a connection that sends an event that fails to apply"
+      def submitted = []
+      def stopped = false
+      def doneAfterFailure = null
+      JerseySSEClient client
+      def future = null
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "bad-data" }
+      ]
+      def input = Mock(EventInput)
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        doneAfterFailure = future.done
+        stopped = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.isStopped() >> { stopped }
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
+      retryer.convertSSEState(*_) >> { throw new RuntimeException("JSON failed") }
+      client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then: "the caller was released straight after the failure, while the connection was still open"
+      doneAfterFailure == true
+  }
+
+  def "closing the client also closes its JAX-RS client"() {
+    given:
+      def sse = new JerseySSEClient(null, config, Mock(EdgeRetryService))
+    when:
+      sse.close()
+    then:
+      new PollingConditions(timeout: 5).eventually { assert sse.client.isClosed() }
+  }
+
   def "closing several connections does not make them wait for each other"() {
     given: "connections whose close blocks, as it does while another thread is reading them"
       def started = new java.util.concurrent.CountDownLatch(3)

@@ -141,7 +141,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
               new EventSourceListener() {
                 @Override
                 public void onClosed(@NotNull EventSource eventSource) {
-                  if (!release(connection)) {
+                  final List<CompletableFuture<Readiness>> waiting = release(connection);
+
+                  if (waiting == null) {
                     log.trace("[featurehub-sdk] superseded connection closed, ignoring");
                     return;
                   }
@@ -159,8 +161,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                           : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
                       connector);
 
-                  // don't leave anyone waiting while we reconnect (or if the retryer has stopped, forever)
-                  notifyAllWaitingClients();
+                  connectionLost(waiting);
                 }
 
                 @Override
@@ -211,6 +212,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     }
                   } catch (Exception e) {
                     log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
+                    // don't leave anyone waiting on an event we couldn't apply
+                    notifyWaitingClients(connection);
                     return;
                   }
 
@@ -230,7 +233,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @NotNull EventSource eventSource,
                     @Nullable Throwable t,
                     @Nullable Response response) {
-                  if (!release(connection)) {
+                  final List<CompletableFuture<Readiness>> waiting = release(connection);
+
+                  if (waiting == null) {
                     // includes the failure caused by cancelling the connection on a context change, which
                     // must not trigger a reconnect as the context change has already made a new connection
                     log.trace("[featurehub-sdk] superseded connection failed, ignoring", t);
@@ -251,8 +256,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                   if (status == 401 || status == 403) {
                     // we aren't allowed in, retrying won't change that
                     retryer.edgeResult(EdgeConnectionState.FAILURE, connector);
-                  } else if (status >= 400 && status < 500) {
-                    // the api key doesn't exist, retrying won't change that
+                  } else if (status == 400 || status == 404) {
+                    // the api key doesn't exist, retrying won't change that. Other 4xx (e.g. 429 too many requests)
+                    // may well go away, so we back off and retry below as we never connected.
                     retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
                   } else if (t instanceof java.net.ConnectException || !opened.get()) {
                     // we never connected (e.g. the host can't be resolved, refused us or answered with a 5xx), so back
@@ -266,8 +272,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
                   }
 
-                  // don't leave anyone waiting while we reconnect (or if the retryer has stopped, forever)
-                  notifyAllWaitingClients();
+                  connectionLost(waiting);
                 }
 
                 @Override
@@ -302,9 +307,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
 
     if (source == null) {
-      log.error("Unable to connect to {}", this.config.getRealtimeUrl());
-
       if (!superseded) {
+        log.error("Unable to connect to {}", this.config.getRealtimeUrl());
         failedToConnect(wrongLibrary);
       }
     } else if (superseded) {
@@ -331,20 +335,35 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   /**
    * Releases the connection if it is still the current one, so that a reconnect (or poll) can make a new one.
+   * Those waiting on it are taken in the same step, so anyone who starts waiting after this waits for the
+   * replacement connection.
    *
-   * @return true if it was the current connection and its close or failure should be acted on
+   * @return those waiting on the connection if it was the current one and its close or failure should be acted on,
+   * otherwise null
    */
-  private boolean release(@NotNull Object connection) {
+  private @Nullable List<CompletableFuture<Readiness>> release(@NotNull Object connection) {
     synchronized (connectionLock) {
       if (currentConnection != connection) {
-        return false;
+        return null;
       }
 
       currentConnection = null;
       eventSource = null;
       connectionReady = false;
 
-      return true;
+      return takeWaitingClients();
+    }
+  }
+
+  /**
+   * The connection has gone. Don't leave those who were waiting on it waiting for the reconnect, and if the retryer
+   * has stopped there won't be one, so don't leave anyone waiting at all.
+   */
+  private void connectionLost(@NotNull List<CompletableFuture<Readiness>> waiting) {
+    complete(waiting);
+
+    if (retryer.isStopped()) {
+      notifyAllWaitingClients();
     }
   }
 
@@ -403,10 +422,15 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     return requestBuilder.build();
   }
 
-  protected EventSource makeEventSource(Request request, EventSourceListener listener) {
+  protected @Nullable EventSource makeEventSource(Request request, EventSourceListener listener) {
     final EventSource.Factory factory;
 
     synchronized (clientLock) {
+      if (closed) {
+        // a connection that started just before we were closed, don't make a client nothing will shut down
+        return null;
+      }
+
       if (eventSourceFactory == null) {
         client =
           buildOkHttpClientBuilder(retryer)
