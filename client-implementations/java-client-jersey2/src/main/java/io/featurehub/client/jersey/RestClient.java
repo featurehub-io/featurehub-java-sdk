@@ -23,7 +23,10 @@ import javax.ws.rs.RedirectionException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import org.glassfish.jersey.client.ClientProperties;
+import org.glassfish.jersey.client.filter.EncodingFeature;
 import org.glassfish.jersey.jackson.JacksonFeature;
+import org.glassfish.jersey.message.DeflateEncoder;
+import org.glassfish.jersey.message.GZipEncoder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -76,7 +79,10 @@ public class RestClient implements EdgeService {
     Client client = ClientBuilder.newBuilder()
       .property(ClientProperties.CONNECT_TIMEOUT, edgeRetryer.getServerConnectTimeoutMs())
       .property(ClientProperties.READ_TIMEOUT, edgeRetryer.getServerReadTimeoutMs())
-      .register(JacksonFeature.class).build();
+      .register(JacksonFeature.class)
+      // ask for compressed responses and transparently decompress them
+      .register(new EncodingFeature(GZipEncoder.class, DeflateEncoder.class))
+      .build();
 
     return new FeatureServiceImpl(new ApiClient(client, config.baseUrl()));
   }

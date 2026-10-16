@@ -180,6 +180,103 @@ class SSEClientSpec extends Specification {
       future2.get() == Readiness.Ready
   }
 
+  def "the last event id is sent when reconnecting and is kept when an event has no id"() {
+    given: "the first connection has no last event id"
+      client.poll()
+      assert request.header("Last-Event-ID") == null
+    when: "we receive an event with an id, then one without, then reconnect"
+      esListener.onEvent(mockEventSource, '5', 'ack', 'data')
+      esListener.onEvent(mockEventSource, null, 'ack', 'data')
+      client.reconnect()
+    then:
+      request.header("Last-Event-ID") == "5"
+  }
+
+  def "a change in the server evaluated context clears the last event id"() {
+    given: "we are connected with one context and have received an event with an id"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      def oldListener = esListener
+      oldListener.onEvent(mockEventSource, '5', 'ack', 'data')
+    when: "the context changes"
+      client.contextChange("header2", '0')
+    and: "a late event arrives on the cancelled connection"
+      oldListener.onEvent(mockEventSource, '6', 'ack', 'data')
+    and: "we reconnect"
+      client.reconnect()
+    then: "no last event id is sent"
+      request.header("x-featurehub") == "header2"
+      request.header("Last-Event-ID") == null
+  }
+
+  def "the okhttp client uses the retryer's timeouts rather than the okhttp 10 second default"() {
+    when: "we build the okhttp client"
+      def okClient = new SSEClient(repository, config, retry).buildOkHttpClientBuilder(retry).build()
+    then:
+      1 * retry.serverConnectTimeoutMs >> 5000
+      1 * retry.serverReadTimeoutMs >> 180000
+      okClient.connectTimeoutMillis() == 5000
+      okClient.readTimeoutMillis() == 180000
+  }
+
+  def "a connection replaced by a context change is ignored, so it cannot update features or reconnect"() {
+    given: "we are connected with one context"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      def oldListener = esListener
+    and: "the context changes, replacing the connection"
+      client.contextChange("header2", '0')
+    when: "the old connection delivers a late event, then fails because it was cancelled, then closes"
+      oldListener.onEvent(mockEventSource, '6', 'features', 'old-data')
+      oldListener.onFailure(mockEventSource, new IOException("Canceled"), null)
+      oldListener.onClosed(mockEventSource)
+    then: "none of it is acted on"
+      0 * retry.fromValue(_)
+      0 * retry.convertSSEState(*_)
+      0 * retry.edgeResult(*_)
+      0 * repository.notify(*_)
+    when: "the new connection delivers an event"
+      esListener.onEvent(mockEventSource, '7', 'features', 'new-data')
+    then: "it is processed"
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.convertSSEState(SSEResultState.FEATURES, 'new-data', repository, _)
+  }
+
+  def "a context change waits for an event that is being processed to finish"() {
+    given: "we are connected with one context"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      def contextChanger = null
+      def blockedWhileProcessing = false
+    when: "a context change happens on another thread while an event is being applied"
+      esListener.onEvent(mockEventSource, '5', 'features', 'data')
+    then:
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.convertSSEState(SSEResultState.FEATURES, 'data', repository, _) >> {
+        contextChanger = Thread.start { client.contextChange("header2", '0') }
+        contextChanger.join(300)
+        blockedWhileProcessing = contextChanger.alive
+      }
+      blockedWhileProcessing
+    when: "the event has finished processing"
+      contextChanger.join(5000)
+    then: "the context change completes"
+      !contextChanger.alive
+      request.header("x-featurehub") == "header2"
+      request.header("Last-Event-ID") == null
+  }
+
+  def "callbacks after the client is closed are ignored"() {
+    given:
+      client.poll()
+    when:
+      client.close()
+      esListener.onFailure(mockEventSource, new IOException("Canceled"), null)
+    then:
+      1 * retry.close()
+      0 * retry.edgeResult(*_)
+  }
+
   def "when config says client evaluated code, this will echo"() {
     when: "i check server vs client"
       def clientSide = client.clientEvaluation

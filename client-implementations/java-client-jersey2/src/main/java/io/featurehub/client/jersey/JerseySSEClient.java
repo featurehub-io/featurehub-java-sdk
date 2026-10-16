@@ -29,6 +29,7 @@ import java.net.ConnectException;
 import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.Consumer;
@@ -37,9 +38,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(JerseySSEClient.class);
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
-  private String xFeaturehubHeader;
+  private volatile String xFeaturehubHeader;
+  @Nullable private volatile String lastEventId;
   private final EdgeRetryService retryer;
-  private EventInput eventSource;
+  private volatile EventInput eventSource;
+  // guards changes of context (header, last event id, current connection) against the connection thread
+  private final Object connectionLock = new Object();
   private final WebTarget target;
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   private Consumer<EventInput> notify;
@@ -51,8 +55,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     this.retryer = retryer;
 
     if (config.isServerEvaluation()) {
-      log.warn("Jersey SSE client hangs on Context attribute changes for up to 30 seconds, it is recommending using " +
-        "the pure SSE client");
+      log.warn("Jersey SSE client can take up to the read timeout to apply Context attribute changes, it is " +
+        "recommended to use the pure SSE client");
     }
 
     Client client = ClientBuilder.newBuilder()
@@ -81,9 +85,17 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
       log.warn("[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
 
-      xFeaturehubHeader = newHeader;
+      final EventInput oldSource;
 
-      close();
+      synchronized (connectionLock) {
+        xFeaturehubHeader = newHeader;
+        // the context has changed, so the server's event stream is no longer the one we were following
+        lastEventId = null;
+        oldSource = eventSource;
+        eventSource = null;
+      }
+
+      closeInBackground(oldSource);
     }
 
     if (eventSource == null) {
@@ -105,14 +117,48 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void close() {
-    if (eventSource != null) {
-      if (!eventSource.isClosed()) {
-        eventSource.close();
-      }
+    closeEventSource();
 
+    // always stop the retryer, even if we are not currently connected, otherwise a pending reconnect will
+    // connect again after we have been closed
+    retryer.close();
+  }
+
+  /**
+   * Drops the current connection (if any) without stopping the retryer, so a new connection can be made.
+   */
+  private void closeEventSource() {
+    final EventInput source;
+
+    synchronized (connectionLock) {
+      source = eventSource;
       eventSource = null;
+    }
 
-      retryer.close();
+    closeInBackground(source);
+  }
+
+  /**
+   * Closing a connection while another thread is blocked reading it blocks until that read returns (up to the read
+   * timeout), so callers other than the connection thread itself close it in the background.
+   */
+  private static void closeInBackground(@Nullable EventInput source) {
+    if (source == null || source.isClosed()) {
+      return;
+    }
+
+    final Thread closer = new Thread(() -> closeQuietly(source), "featurehub-sse-close");
+    closer.setDaemon(true);
+    closer.start();
+  }
+
+  private static void closeQuietly(@Nullable EventInput source) {
+    try {
+      if (source != null && !source.isClosed()) {
+        source.close();
+      }
+    } catch (Exception e) {
+      log.trace("[featurehub-sdk] failed to close connection", e);
     }
   }
 
@@ -128,6 +174,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       request = request.header("x-featurehub", xFeaturehubHeader);
     }
 
+    if (lastEventId != null) {
+      request = request.header("Last-Event-ID", lastEventId);
+    }
+
     request = request.header("X-SDK", SdkVersion.sdkVersionHeader("Java-Jersey2"));
 
     log.trace("[featurehub-sdk] connecting to {}", config.getRealtimeUrl());
@@ -136,11 +186,25 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private void initEventSource() {
+    final String header = xFeaturehubHeader;
+    final EventInput source;
+
     try {
-      eventSource = makeEventSource();
+      source = makeEventSource();
     } catch (Exception e) {
       onMakeEventSourceException(e);
       return;
+    }
+
+    synchronized (connectionLock) {
+      if (!Objects.equals(header, xFeaturehubHeader)) {
+        // the context changed while we were connecting, so this connection is for the wrong context. The
+        // context change will already have scheduled a new connection.
+        closeQuietly(source);
+        return;
+      }
+
+      eventSource = source;
     }
 
     log.trace("[featurehub-sdk] connected to {}", config.getRealtimeUrl());
@@ -150,7 +214,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     boolean interrupted = false;
 
-    while (!eventSource.isClosed() && !retryer.isStopped() && !interrupted) {
+    while (!source.isClosed() && !retryer.isStopped() && !interrupted) {
       if (notify != null) { // this is for testing
         notify.accept(null);
       }
@@ -159,40 +223,77 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       InboundEvent event;
 
       try {
-        event = eventSource.read();
+        event = source.read();
 
         if (event == null) {
-          log.trace("server read timed out");
-
-          if (eventSource.isClosed()) {
-            eventSource = null;
-
-            retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
-          }
-
-
+          // read timed out or the server closed the connection, the loop condition decides which
+          log.trace("server read returned no event");
           continue;
         }
+
         data = event.readData();
       } catch (Exception e) {
+        // if we are no longer the current connection we were deliberately closed (e.g. by a context change)
+        synchronized (connectionLock) {
+          if (eventSource != source) {
+            interrupted = true;
+            continue;
+          }
+
+          eventSource = null;
+        }
+
         onMakeEventSourceException(e);
         log.error("failed read", e);
         interrupted = true;
         continue;
       }
 
-      connectionSaidBye = processResult(connectionSaidBye, data, event);
+      // check and process under the lock so a context change cannot happen part way through, otherwise we could
+      // record an id or features for a context that is no longer current
+      synchronized (connectionLock) {
+        if (eventSource != source) {
+          // superseded by a context change, anything we received is for the old context
+          break;
+        }
+
+        if (event.getId() != null) {
+          lastEventId = event.getId();
+        }
+
+        connectionSaidBye = processResult(connectionSaidBye, data, event);
+      }
     }
 
     if (retryer.isStopped()) {
-      log.trace("[featurehub] event source closed? {} interrupted? {} retryer stopped? {}", eventSource.isClosed(), interrupted, retryer.isStopped());
-      if (!eventSource.isClosed()) {
+      log.trace("[featurehub] event source closed? {} interrupted? {} retryer stopped? {}", source.isClosed(), interrupted, retryer.isStopped());
+      if (!source.isClosed()) {
         close();
       }
 
       checkForUnsatisfactoryConversation();
 
       notifyWaitingClients();
+      return;
+    }
+
+    final boolean current;
+
+    synchronized (connectionLock) {
+      current = eventSource == source;
+
+      if (current && !interrupted) {
+        eventSource = null;
+      }
+    }
+
+    if (!current) {
+      // superseded or closed by someone else, make sure the connection is not left open
+      closeQuietly(source);
+    } else if (!interrupted) {
+      // the server closed the connection on us, so reconnect. Read failures were already handled above.
+      retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
+        EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
     }
   }
 

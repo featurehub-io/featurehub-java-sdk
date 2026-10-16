@@ -3,6 +3,7 @@ package io.featurehub.client.jersey
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.featurehub.client.FeatureHubConfig
 import io.featurehub.client.Readiness
+import io.featurehub.client.edge.EdgeRetryService
 import io.featurehub.client.edge.EdgeRetryer
 import io.featurehub.sse.model.FeatureState
 import io.featurehub.sse.model.FeatureValueType
@@ -12,6 +13,7 @@ import org.glassfish.jersey.media.sse.OutboundEvent
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import spock.lang.Specification
+import spock.util.concurrent.PollingConditions
 
 class JerseySSEClientSpec extends Specification {
   private static final Logger log = LoggerFactory.getLogger(JerseySSEClientSpec.class)
@@ -105,6 +107,155 @@ class JerseySSEClientSpec extends Specification {
     then:
       future.get().repository.readiness == Readiness.Failed
       edge.stopped
+  }
+
+  def "the last event id is preserved across reconnects and cleared when the server evaluated context changes"() {
+    given: "we have a server evaluated config that records the Last-Event-ID header on each connection"
+      def etags = []
+      def headers = []
+      def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        etags.add(etag)
+        headers.add(featureHubAttrs?.join(","))
+        output = new EventOutput()
+        return output
+      })
+      def serverEdge = new JerseySSEClient(null, serverEvalConfig,
+        EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerDisconnectRetryMs(1).withSseReadTimeoutTimeMs(500).build())
+    and: "the server sends a feature event with an id and then disconnects"
+      serverEdge.setNotify { EventInput i ->
+        output.write(new OutboundEvent.Builder().name("features").id("7").data(mapper.writeValueAsString([
+          new FeatureState().id(UUID.randomUUID()).key("key").l(true).value(true).type(FeatureValueType.BOOLEAN).version(1)])).build())
+
+        serverEdge.setNotify { EventInput i1 ->
+          serverEdge.setNotify(null)
+          output.close()
+        }
+      }
+    when: "we connect with one context"
+      serverEdge.contextChange("userkey=fred", "1").get()
+    then: "the reconnect sends back the last event id we received"
+      new PollingConditions(timeout: 10).eventually { assert etags.size() == 2 }
+      etags[0] == null
+      etags[1] == "7"
+      serverEdge.lastEventId == "7"
+    when: "the context changes"
+      serverEdge.contextChange("userkey=mary", "2")
+    then: "the last event id has been cleared"
+      serverEdge.lastEventId == null
+    and: "we reconnect with the new context and no last event id"
+      new PollingConditions(timeout: 10).eventually { assert headers.contains("userkey=mary") }
+      etags[headers.indexOf("userkey=mary")] == null
+      !serverEdge.stopped
+    cleanup:
+      serverEdge.close()
+  }
+
+  def "closing a client that is not connected still stops the retryer so a pending reconnect cannot connect"() {
+    given:
+      def retryer = Mock(EdgeRetryService)
+      def client = new JerseySSEClient(null, config, retryer)
+    when:
+      client.close()
+    then:
+      1 * retryer.close()
+  }
+
+  def "when the server says bye and closes the connection the client reconnects"() {
+    given: "a server that counts connections"
+      def connections = 0
+      def byeConfig = harness.getConfig(["${UUID.randomUUID()}/345*675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        connections++
+        output = new EventOutput()
+        return output
+      })
+    and: "a client that reconnects quickly after a bye, but very slowly after an unexpected disconnect"
+      def byeEdge = new JerseySSEClient(null, byeConfig,
+        EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerByeReconnectMs(1).withServerDisconnectRetryMs(60000).build())
+    and: "the server sends features, says bye and closes the connection"
+      byeEdge.setNotify { EventInput i ->
+        output.write(new OutboundEvent.Builder().name("features").id("1").data(mapper.writeValueAsString([
+          new FeatureState().id(UUID.randomUUID()).key("key").l(true).value(true).type(FeatureValueType.BOOLEAN).version(1)])).build())
+
+        byeEdge.setNotify { EventInput i1 ->
+          output.write(new OutboundEvent.Builder().name("bye").id("2").data("{}").build())
+
+          byeEdge.setNotify { EventInput i2 ->
+            byeEdge.setNotify(null)
+            output.close()
+          }
+        }
+      }
+    when: "we connect"
+      byeEdge.poll().get()
+    then: "we reconnect using the bye timing"
+      new PollingConditions(timeout: 10).eventually { assert connections == 2 }
+    cleanup: "close from the server first so the client's pending read returns straight away"
+      output.close()
+      byeEdge.close()
+  }
+
+  def "a context change while connecting discards the old context's connection"() {
+    given: "a server evaluated config that records the context of each connection"
+      def headers = []
+      def outputs = [:]
+      def raceConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        def header = featureHubAttrs?.join(",")
+        headers.add(header)
+        def out = new EventOutput()
+        outputs[header] = out
+        return out
+      })
+    and: "a client where the context changes just after the first connection is made"
+      JerseySSEClient raceEdge
+      def changed = false
+      raceEdge = new JerseySSEClient(null, raceConfig,
+        EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerDisconnectRetryMs(60000).build()) {
+        @Override
+        protected EventInput makeEventSource() {
+          def source = super.makeEventSource()
+          if (!changed) {
+            changed = true
+            raceEdge.contextChange("userkey=mary", "2")
+          }
+          return source
+        }
+      }
+    and: "only the new context's connection sends features"
+      raceEdge.setNotify { EventInput i ->
+        raceEdge.setNotify(null)
+        outputs["userkey=mary"].write(new OutboundEvent.Builder().name("features").id("3").data(mapper.writeValueAsString([
+          new FeatureState().id(UUID.randomUUID()).key("key").l(true).value(true).type(FeatureValueType.BOOLEAN).version(1)])).build())
+      }
+    when: "we connect with the first context"
+      raceEdge.contextChange("userkey=fred", "1")
+    then: "we end up connected to the new context only"
+      new PollingConditions(timeout: 10).eventually { assert raceConfig.repository.readiness == Readiness.Ready }
+      headers == ["userkey=fred", "userkey=mary"]
+    cleanup: "close from the server first so the client's pending read returns straight away"
+      outputs["userkey=mary"]?.close()
+      raceEdge.close()
+  }
+
+  def "closing the client while it is waiting for data does not block"() {
+    given: "a client that will not reconnect while we are testing"
+      def idleEdge = new JerseySSEClient(null, config,
+        EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerDisconnectRetryMs(60000).withSseReadTimeoutTimeMs(5000).build())
+    and: "the server sends features and then nothing more"
+      idleEdge.setNotify { EventInput i ->
+        idleEdge.setNotify(null)
+        output.write(new OutboundEvent.Builder().name("features").id("1").data(mapper.writeValueAsString([
+          new FeatureState().id(UUID.randomUUID()).key("key").l(true).value(true).type(FeatureValueType.BOOLEAN).version(1)])).build())
+      }
+      idleEdge.poll().get()
+    when: "we close the client while it is blocked reading"
+      Thread.sleep(200)
+      def start = System.currentTimeMillis()
+      idleEdge.close()
+      def elapsed = System.currentTimeMillis() - start
+    then: "close returns straight away rather than waiting for the read to time out"
+      elapsed < 2000
+    cleanup:
+      output?.close()
   }
 
 //  def "basic initialization test works as expect"() {

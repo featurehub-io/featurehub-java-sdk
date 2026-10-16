@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.SocketTimeoutException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -34,7 +35,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private EventSource eventSource;
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
-  private String xFeaturehubHeader;
+  private volatile String xFeaturehubHeader;
+  @Nullable private volatile String lastEventId;
+  // identifies the connection whose callbacks we act on. A connection that has been replaced (e.g. by a context
+  // change) or closed may still deliver events, closes or failures, and these must be ignored.
+  @Nullable private volatile Object currentConnection;
+  private final Object connectionLock = new Object();
   private final EdgeRetryService retryer;
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
 
@@ -72,8 +78,15 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     try {
       Request.Builder reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
 
-      if (xFeaturehubHeader != null) {
-        reqBuilder = reqBuilder.addHeader("x-featurehub", xFeaturehubHeader);
+      // the context this connection is being made for
+      final String header = xFeaturehubHeader;
+
+      if (header != null) {
+        reqBuilder = reqBuilder.addHeader("x-featurehub", header);
+      }
+
+      if (lastEventId != null) {
+        reqBuilder = reqBuilder.addHeader("Last-Event-ID", lastEventId);
       }
 
       reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
@@ -85,12 +98,21 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       connectionSaidBye = false;
       final EdgeReconnector connector = this;
 
+      // set before making the event source as callbacks may arrive before makeEventSource returns
+      final Object connection = new Object();
+      currentConnection = connection;
+
       eventSource =
           makeEventSource(
               request,
               new EventSourceListener() {
                 @Override
                 public void onClosed(@NotNull EventSource eventSource) {
+                  if (currentConnection != connection) {
+                    log.trace("[featurehub-sdk] superseded connection closed, ignoring");
+                    return;
+                  }
+
                   log.trace("[featurehub-sdk] closed");
 
                   if (repository.getReadiness() == Readiness.NotReady) {
@@ -111,41 +133,55 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @Nullable String id,
                     @Nullable String type,
                     @Nullable String data) {
-                  try {
-                    final SSEResultState state = retryer.fromValue(type);
-
-                    if (state == null) { // unknown state
+                  // a context change may have cancelled this connection while events were still arriving, anything
+                  // it sends is for the old context. Check and process under the lock so a context change cannot
+                  // happen part way through, otherwise we could record an id or features for the wrong context.
+                  synchronized (connectionLock) {
+                    if (currentConnection != connection) {
+                      log.trace("[featurehub-sdk] ignoring event {} from superseded connection", type);
                       return;
                     }
 
-                    log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
-
-                    if (state == SSEResultState.CONFIG) {
-                      retryer.edgeConfigInfo(data);
-                    } else if (data != null) {
-                      retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
+                    if (id != null) {
+                      lastEventId = id;
                     }
 
-                    // reset the timer
-                    if (state == SSEResultState.FEATURES) {
-                      retryer.edgeResult(EdgeConnectionState.SUCCESS, connector);
-                    }
+                    try {
+                      final SSEResultState state = retryer.fromValue(type);
 
-                    if (state == SSEResultState.BYE) {
-                      connectionSaidBye = true;
-                    }
+                      if (state == null) { // unknown state
+                        return;
+                      }
 
-                    if (state == SSEResultState.FAILURE) {
-                      retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-                    }
+                      log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
 
-                    // tell any waiting clients we are now ready
-                    if (!waitingClients.isEmpty()
-                        && (state != SSEResultState.ACK && state != SSEResultState.CONFIG)) {
-                      waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
+                      if (state == SSEResultState.CONFIG) {
+                        retryer.edgeConfigInfo(data);
+                      } else if (data != null) {
+                        retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
+                      }
+
+                      // reset the timer
+                      if (state == SSEResultState.FEATURES) {
+                        retryer.edgeResult(EdgeConnectionState.SUCCESS, connector);
+                      }
+
+                      if (state == SSEResultState.BYE) {
+                        connectionSaidBye = true;
+                      }
+
+                      if (state == SSEResultState.FAILURE) {
+                        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
+                      }
+
+                      // tell any waiting clients we are now ready
+                      if (!waitingClients.isEmpty()
+                          && (state != SSEResultState.ACK && state != SSEResultState.CONFIG)) {
+                        waitingClients.forEach(wc -> wc.complete(repository.getReadiness()));
+                      }
+                    } catch (Exception e) {
+                      log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
                     }
-                  } catch (Exception e) {
-                    log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
                   }
                 }
 
@@ -154,6 +190,13 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @NotNull EventSource eventSource,
                     @Nullable Throwable t,
                     @Nullable Response response) {
+                  if (currentConnection != connection) {
+                    // includes the failure caused by cancelling the connection on a context change, which
+                    // must not trigger a reconnect as the context change has already made a new connection
+                    log.trace("[featurehub-sdk] superseded connection failed, ignoring", t);
+                    return;
+                  }
+
                   if (repository.getReadiness() == Readiness.NotReady) {
                     log.trace(
                       "[featurehub-sdk] failed to connect to {} - {}",
@@ -221,9 +264,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                       log.error("connected failed");
                     }
                   })
-              //              .readTimeout(retryer.getServerReadTimeoutMs(), TimeUnit.MILLISECONDS)
-              //
-              // .connectTimeout(Duration.ofMillis(retryer.getServerConnectTimeoutMs()))
               .build();
 
       eventSourceFactory = EventSources.createFactory(client);
@@ -240,7 +280,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
    */
   @NotNull
   protected OkHttpClient.Builder buildOkHttpClientBuilder(@NotNull EdgeRetryService edgeRetryService) {
-    return new OkHttpClient.Builder();
+    // the read timeout must be long, otherwise OKHttp's 10 second default drops the connection whenever
+    // there is no traffic on the stream. The server is expected to disconnect us.
+    return new OkHttpClient.Builder()
+      .connectTimeout(Duration.ofMillis(edgeRetryService.getServerConnectTimeoutMs()))
+      .readTimeout(Duration.ofMillis(edgeRetryService.getServerReadTimeoutMs()));
   }
 
   @Override
@@ -254,7 +298,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       log.warn(
           "[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
 
-      xFeaturehubHeader = newHeader;
+      synchronized (connectionLock) {
+        xFeaturehubHeader = newHeader;
+        // the context has changed, so the server's event stream is no longer the one we were following
+        lastEventId = null;
+        currentConnection = null;
+      }
 
       if (eventSource != null) {
         eventSource.cancel();
@@ -287,6 +336,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   public void close() {
     // don't let it try connecting again
     retryer.close();
+
+    currentConnection = null;
 
     // shut down the pool of okhttp connections
     if (client != null) {

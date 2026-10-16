@@ -517,7 +517,7 @@ New in this version is also considerable control over server connection connecti
 set using environment variables or system properties.
 
 - `featurehub.edge.server-connect-timeout-ms` - defaults to 5000
-- `featurehub.edge.server-sse-read-timeout-ms` - defaults to 1800000 - 3m (180 seconds), should be higher if the server is configured for longer by default
+- `featurehub.edge.server-sse-read-timeout-ms` - defaults to 180000 - 3m (180 seconds), should be higher if the server is configured for longer by default
 - `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process
 - `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
 - `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to wait before reconnecting

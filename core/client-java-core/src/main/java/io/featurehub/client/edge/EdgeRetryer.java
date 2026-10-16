@@ -278,7 +278,7 @@ public class EdgeRetryer implements EdgeRetryService {
       // 5s by default, shouldn't be longer than that just to connect
       serverConnectTimeoutMs = propertyOrEnv("featurehub.edge.server-connect-timeout-ms", "5000");
       // 3m (180 seconds), should be higher if the server is configured for longer by default
-      serverSseReadTimeoutMs = propertyOrEnv("featurehub.edge.server-sse-read-timeout-ms", "1800000");
+      serverSseReadTimeoutMs = propertyOrEnv("featurehub.edge.server-sse-read-timeout-ms", "180000");
       // 15s - should be very fast for a REST request as its a connect, read and disconnect process
       serverRestReadTimeoutMs = propertyOrEnv("featurehub.edge.server-rest-read-timeout-ms", "150000");
 
