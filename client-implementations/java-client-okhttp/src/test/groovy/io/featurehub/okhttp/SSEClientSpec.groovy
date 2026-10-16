@@ -137,7 +137,7 @@ class SSEClientSpec extends Specification {
       1 * config.getRealtimeUrl() >> "http://localhost"
       1 * retry.convertSSEState(SSEResultState.FEATURES, "data", repository,envId)
       1 * config.isServerEvaluation() >> false
-      2 * repository.getReadiness() >> Readiness.Failed
+      1 * repository.getReadiness() >> Readiness.Failed
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       future.get() == Readiness.Failed
@@ -175,7 +175,7 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, '1', 'features', 'data')
     then:
       2 * config.serverEvaluation >> true
-      4 * repository.getReadiness() >> Readiness.Ready
+      2 * repository.getReadiness() >> Readiness.Ready
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       request.header("x-featurehub") == "header2"
       future1.done
@@ -295,6 +295,72 @@ class SSEClientSpec extends Specification {
     then: "no further connection is made"
       connections == 2
       request.header("x-featurehub") == "header2"
+  }
+
+  def "if we cannot even make the connection, we try again later"() {
+    given:
+      onMakeEventSource = { throw new RuntimeException("bad url") }
+    when:
+      def future = client.contextChange("header", '0')
+    then:
+      1 * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.notify(SSEResultState.FAILURE)
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      !future.done
+    when: "the retry connects and features arrive"
+      onMakeEventSource = null
+      client.reconnect()
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
+    then:
+      1 * retry.fromValue('features') >> SSEResultState.FEATURES
+      future.done
+  }
+
+  def "if the wrong version of OKHttp stops us connecting, we don't retry and nobody is left waiting"() {
+    given:
+      onMakeEventSource = { throw new NoSuchFieldError("wrong okhttp") }
+    when:
+      def future = client.contextChange("header", '0')
+    then:
+      0 * retry.edgeResult(*_)
+      future.done
+  }
+
+  def "an event we fail to apply does not move the last event id on, so the server sends it again"() {
+    given:
+      client.poll()
+      esListener.onEvent(mockEventSource, '5', 'ack', 'data')
+    when: "an event fails to apply, then the server disconnects and we reconnect"
+      esListener.onEvent(mockEventSource, '6', 'features', 'bad-data')
+      esListener.onClosed(mockEventSource)
+      client.reconnect()
+    then:
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      1 * retry.convertSSEState(SSEResultState.FEATURES, 'bad-data', repository, _) >> { throw new RuntimeException("JSON failed") }
+      request.header("Last-Event-ID") == "5"
+  }
+
+  def "once closed, a context change or poll does not connect again and completes immediately"() {
+    given:
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      client.close()
+    when:
+      def future = client.contextChange("header2", '0')
+      client.poll()
+      client.reconnect()
+    then:
+      future.done
+      connections == 1
+  }
+
+  def "closing completes anyone waiting for features"() {
+    given:
+      def future = client.contextChange("header", '0')
+    when:
+      client.close()
+    then:
+      future.done
   }
 
   def "callbacks after the client is closed are ignored"() {

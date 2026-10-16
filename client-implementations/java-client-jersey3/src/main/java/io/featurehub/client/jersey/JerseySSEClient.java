@@ -32,10 +32,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class JerseySSEClient implements EdgeService, EdgeReconnector {
@@ -48,11 +46,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private volatile EventInput eventSource;
   // guards changes of context (header, last event id, current connection) against the connection thread
   private final Object connectionLock = new Object();
+  // a connection has been asked for and is waiting to run or is connecting, so asking again would make a duplicate.
+  // Guarded by connectionLock.
+  private boolean connectPending;
+  // once closed we never connect again
+  private volatile boolean closed;
   private final WebTarget target;
   // added to by callers' threads and drained by the connection thread
   private final List<CompletableFuture<Readiness>> waitingClients = new CopyOnWriteArrayList<>();
-  // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a small
-  // shared pool of daemon threads rather than a thread per close
+  // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a shared pool
+  // of daemon threads. Closes must not queue behind each other, or old connections stay open long after being replaced.
   private static final ExecutorService closer = makeCloser();
   private Consumer<EventInput> notify;
 
@@ -86,32 +89,46 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @Nullable String contextSha) {
-    if (config.isServerEvaluation() &&
-      (
-        (newHeader != null && !newHeader.equals(xFeaturehubHeader)) ||
-          (xFeaturehubHeader != null && !xFeaturehubHeader.equals(newHeader))
-      )) {
+    if (closed) {
+      return CompletableFuture.completedFuture(repository.getReadiness());
+    }
 
-      log.warn("[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
+    final boolean contextChanged;
+    EventInput oldSource = null;
+    boolean connect = false;
 
-      final EventInput oldSource;
+    // done in one step, so a connection made for the new context can't complete between us dropping the old one and
+    // deciding whether to wait (and so tell the caller we are ready before any of its features have arrived)
+    synchronized (connectionLock) {
+      contextChanged = config.isServerEvaluation() && !Objects.equals(newHeader, xFeaturehubHeader);
 
-      synchronized (connectionLock) {
+      if (contextChanged) {
         xFeaturehubHeader = newHeader;
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         oldSource = eventSource;
         eventSource = null;
+        waitingClients.add(change);
+        // if a connection is already pending it will pick up the new context
+        connect = !connectPending;
+        connectPending = true;
       }
-
-      closeInBackground(oldSource);
     }
 
-    if (eventSource == null) {
+    if (!contextChanged) {
       return poll();
     }
 
-    return CompletableFuture.completedFuture(repository.getReadiness());
+    log.warn("[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
+
+    closeInBackground(oldSource);
+
+    if (connect) {
+      retryer.getExecutorService().submit(this::initEventSource);
+    }
+
+    return change;
   }
 
   @Override
@@ -126,11 +143,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void close() {
+    closed = true;
+
     closeEventSource();
 
     // always stop the retryer, even if we are not currently connected, otherwise a pending reconnect will
     // connect again after we have been closed
     retryer.close();
+
+    // no features are coming, so don't leave anyone waiting
+    notifyWaitingClients();
   }
 
   /**
@@ -160,16 +182,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private static ExecutorService makeCloser() {
-    final ThreadPoolExecutor pool = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS, new LinkedBlockingQueue<>(),
-      r -> {
-        final Thread t = new Thread(r, "featurehub-sse-close");
-        t.setDaemon(true);
-        return t;
-      });
-
-    pool.allowCoreThreadTimeOut(true);
-
-    return pool;
+    // threads only exist while a close is blocked, and there is at most one per connection being closed
+    return Executors.newCachedThreadPool(r -> {
+      final Thread t = new Thread(r, "featurehub-sse-close");
+      t.setDaemon(true);
+      return t;
+    });
   }
 
   private static void closeQuietly(@Nullable EventInput source) {
@@ -212,33 +230,52 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   }
 
   private void initEventSource() {
-    final String header;
-    final String lastId;
+    EventInput source;
 
-    // read together so we never send one context's header with another context's last event id
-    synchronized (connectionLock) {
-      header = xFeaturehubHeader;
-      lastId = lastEventId;
-    }
+    while (true) {
+      final String header;
+      final String lastId;
 
-    final EventInput source;
+      // read together so we never send one context's header with another context's last event id
+      synchronized (connectionLock) {
+        if (closed) {
+          connectPending = false;
+          return;
+        }
 
-    try {
-      source = makeEventSource(header, lastId);
-    } catch (Exception e) {
-      onMakeEventSourceException(e);
-      return;
-    }
+        header = xFeaturehubHeader;
+        lastId = lastEventId;
+      }
 
-    synchronized (connectionLock) {
-      if (!Objects.equals(header, xFeaturehubHeader)) {
-        // the context changed while we were connecting, so this connection is for the wrong context. The
-        // context change will already have scheduled a new connection.
-        closeQuietly(source);
+      try {
+        source = makeEventSource(header, lastId);
+      } catch (Exception e) {
+        synchronized (connectionLock) {
+          connectPending = false;
+        }
+
+        onMakeEventSourceException(e);
         return;
       }
 
-      eventSource = source;
+      synchronized (connectionLock) {
+        if (closed) {
+          connectPending = false;
+        } else if (Objects.equals(header, xFeaturehubHeader)) {
+          eventSource = source;
+          connectPending = false;
+          break;
+        }
+      }
+
+      // closed, or the context changed while we were connecting so this connection is for the wrong context
+      closeQuietly(source);
+
+      if (closed) {
+        return;
+      }
+
+      // the context change left the connection to us (we were pending), so connect again with the new context
     }
 
     log.trace("[featurehub-sdk] connected to {}", config.getRealtimeUrl());
@@ -260,7 +297,14 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         event = source.read();
 
         if (event == null) {
-          // read timed out or the server closed the connection, the loop condition decides which
+          // read timed out or the server closed the connection, the loop condition decides which. If we have been
+          // replaced (e.g. by a context change) stop now, otherwise we hold up the new connection for another read.
+          synchronized (connectionLock) {
+            if (eventSource != source) {
+              break;
+            }
+          }
+
           log.trace("server read returned no event");
           continue;
         }
@@ -283,20 +327,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         continue;
       }
 
-      // only the check and the id are done under the lock, processing calls into listeners and futures which must
-      // never run while we hold it
+      // only the check is done under the lock, processing calls into listeners and futures which must never run
+      // while we hold it
       synchronized (connectionLock) {
         if (eventSource != source) {
           // superseded by a context change, anything we received is for the old context
           break;
         }
-
-        if (event.getId() != null) {
-          lastEventId = event.getId();
-        }
       }
 
-      connectionSaidBye = processResult(connectionSaidBye, data, event);
+      connectionSaidBye = processResult(source, connectionSaidBye, data, event);
     }
 
     if (retryer.isStopped()) {
@@ -344,7 +384,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
   }
 
-  private boolean processResult(boolean connectionSaidBye, String data, InboundEvent event) {
+  private boolean processResult(EventInput source, boolean connectionSaidBye, String data, InboundEvent event) {
     try {
       final SSEResultState state = retryer.fromValue(event.getName());
 
@@ -352,35 +392,44 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         log.trace("[featurehub-sdk] decode packet (state {}) {}:{}", state, event.getName(), data);
       }
 
-      if (state == null) { // unknown state
-        return connectionSaidBye;
-      }
+      if (state != null) { // ignore unknown states
+        if (state == SSEResultState.CONFIG) {
+          retryer.edgeConfigInfo(data);
+        } else {
+          retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
 
-      if (state == SSEResultState.CONFIG) {
-        retryer.edgeConfigInfo(data);
-      } else {
-        retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
+          // reset the timer
+          if (state == SSEResultState.FEATURES) {
+            retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
+          }
 
-      // reset the timer
-      if (state == SSEResultState.FEATURES) {
-        retryer.edgeResult(EdgeConnectionState.SUCCESS, this);
-      }
+          if (state == SSEResultState.BYE) {
+            connectionSaidBye = true;
+          }
 
-      if (state == SSEResultState.BYE) {
-        connectionSaidBye = true;
-      }
+          if (state == SSEResultState.FAILURE) {
+            retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+          }
+        }
 
-      if (state == SSEResultState.FAILURE) {
-        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
-      }
-      }
-
-      // tell any waiting clients we are now ready
-      if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-        notifyWaitingClients();
+        // tell any waiting clients we are now ready
+        if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
+          notifyWaitingClients();
+        }
       }
     } catch (Exception e) {
       log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
+      return connectionSaidBye;
+    }
+
+    // only record the id once the event has been applied, so if we failed to apply it a reconnect has the server
+    // send it again
+    if (event.getId() != null) {
+      synchronized (connectionLock) {
+        if (eventSource == source) {
+          lastEventId = event.getId();
+        }
+      }
     }
 
     return connectionSaidBye;
@@ -416,17 +465,43 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public Future<Readiness> poll() {
-    if (eventSource == null) {
-      final CompletableFuture<Readiness> change = new CompletableFuture<>();
+    final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-      waitingClients.add(change);
-
-      retryer.getExecutorService().submit(this::initEventSource);
-
+    if (connect(change)) {
       return change;
     }
 
     return CompletableFuture.completedFuture(repository.getReadiness());
+  }
+
+  /**
+   * Asks for a connection unless we are connected, or one is already pending (waiting to run or connecting), in which
+   * case asking again would make a duplicate connection.
+   *
+   * @param waiting - completed once features arrive, if we are not connected
+   * @return true if we are not connected, so waiting (if any) will be completed once features arrive
+   */
+  private boolean connect(@Nullable CompletableFuture<Readiness> waiting) {
+    final boolean submit;
+
+    synchronized (connectionLock) {
+      if (closed || eventSource != null) {
+        return false;
+      }
+
+      if (waiting != null) {
+        waitingClients.add(waiting);
+      }
+
+      submit = !connectPending;
+      connectPending = true;
+    }
+
+    if (submit) {
+      retryer.getExecutorService().submit(this::initEventSource);
+    }
+
+    return true;
   }
 
   @Override
@@ -436,7 +511,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void reconnect() {
-    poll();
+    connect(null);
   }
 
   public void setNotify(Consumer<EventInput> notify) {
