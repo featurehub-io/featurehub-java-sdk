@@ -276,7 +276,7 @@ public class RestClient implements EdgeService {
 
     reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
 
-    Request request = reqBuilder.build();
+    Request request = buildRequest(reqBuilder);
 
     log.trace("polling");
     final CompletableFuture<Readiness> change = new CompletableFuture<>();

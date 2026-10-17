@@ -54,9 +54,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private volatile boolean closed;
   private final Client client;
   private final WebTarget target;
-  // has the current connection sent us features (or told us it can't) yet? Until it has, callers must wait. Guarded
-  // by connectionLock.
-  private boolean connectionReady;
+  // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
+  // A reconnect doesn't change this, the features we have are still for this context. Guarded by connectionLock.
+  private boolean contextHasFeatures;
+  // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then.
+  // Guarded by connectionLock.
+  private boolean retryPending;
   // added to by callers' threads and drained by the connection thread. Guarded by connectionLock.
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a shared pool
@@ -115,7 +118,9 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         lastEventId = null;
         oldSource = eventSource;
         eventSource = null;
-        connectionReady = false;
+        contextHasFeatures = false;
+        // the new context needs its features now, rather than once the retryer has backed off
+        retryPending = false;
         waitingClients.add(change);
         // if a connection is already pending it will pick up the new context
         connect = !connectPending;
@@ -274,6 +279,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         // the next attempt
         synchronized (connectionLock) {
           connectPending = false;
+          // the retryer is told below, so leave the reconnect to it
+          retryPending = true;
           waiting = takeWaitingClients();
         }
 
@@ -286,7 +293,6 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
           connectPending = false;
         } else if (Objects.equals(header, xFeaturehubHeader)) {
           eventSource = source;
-          connectionReady = false;
           connectPending = false;
           break;
         }
@@ -306,6 +312,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     // we have connected, now what to do?
     boolean connectionSaidBye = false;
+    // has the server sent us anything? If so the stream is working, and losing it is not a failure to connect
+    boolean receivedEvent = false;
 
     boolean interrupted = false;
 
@@ -345,11 +353,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
           }
 
           eventSource = null;
+          retryPending = true;
           waiting = takeWaitingClients();
         }
 
-        onMakeEventSourceException(e, waiting);
         log.error("failed read", e);
+        onReadException(e, receivedEvent, waiting);
         interrupted = true;
         continue;
       }
@@ -363,6 +372,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         }
       }
 
+      receivedEvent = true;
       connectionSaidBye = processResult(source, connectionSaidBye, data, event);
     }
 
@@ -391,6 +401,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     synchronized (connectionLock) {
       if (eventSource == source) {
         eventSource = null;
+        retryPending = true;
         waiting = takeWaitingClients();
       }
     }
@@ -478,7 +489,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
-      connectionReady = true;
+      contextHasFeatures = true;
       waiting = takeWaitingClients();
     }
 
@@ -523,11 +534,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     } else if (e instanceof WebApplicationException) {
       WebApplicationException wae = (WebApplicationException) e;
       final Response response = wae.getResponse();
-      // 401 and 403 are client errors too, so they must be checked first
-      if (response != null && (response.getStatusInfo().getStatusCode() == 403 || response.getStatusInfo().getStatusCode() == 401)) {
+      final int status = response == null ? 0 : response.getStatus();
+      if (status == 401 || status == 403) {
+        // we aren't allowed in, retrying won't change that
         retryer.edgeResult(EdgeConnectionState.FAILURE, this);
-      } else if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
+      } else if (status == 400 || status == 404) {
+        // the api key doesn't exist, retrying won't change that
         retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
+      } else if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
+        // other client errors (e.g. 429 too many requests) may well go away, so back off and try again
+        retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
       } else {
         retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
       }
@@ -536,6 +552,23 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     connectionLost(waiting);
+  }
+
+  /**
+   * Reading from a connection we made failed. If the stream was working (it had sent us something) this is no
+   * different to the server disconnecting us, e.g. it has been idle for the read timeout, so reconnect straight away
+   * as the OKHttp client does. Otherwise treat it as a failure to connect, and back off.
+   *
+   * @param waiting - those who were waiting on the connection
+   */
+  private void onReadException(Exception e, boolean receivedEvent,
+                               List<CompletableFuture<Readiness>> waiting) {
+    if (receivedEvent && repository.getReadiness() != Readiness.Failed) {
+      retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+      connectionLost(waiting);
+    } else {
+      onMakeEventSourceException(e, waiting);
+    }
   }
 
   /**
@@ -555,7 +588,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   public Future<Readiness> poll() {
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
-    if (connect(change)) {
+    if (connect(change, false)) {
       return change;
     }
 
@@ -564,38 +597,49 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   /**
    * Asks for a connection unless we are connected, or one is already pending (waiting to run or connecting), in which
-   * case asking again would make a duplicate connection.
+   * case asking again would make a duplicate connection, or the retryer is backing off before reconnecting.
    *
-   * @param waiting - completed once features arrive, if we don't have them from the current connection yet
-   * @return true if we don't have features from the current connection yet, so waiting (if any) will be completed
-   * once they arrive (or the connection is lost)
+   * @param waiting - completed once features arrive, if we don't have them for the current context yet
+   * @param retrying - true if this is the retryer reconnecting once it has backed off
+   * @return true if we don't have features for the current context yet, so waiting (if any) will be completed once
+   * they arrive (or the connection is lost)
    */
-  private boolean connect(@Nullable CompletableFuture<Readiness> waiting) {
+  private boolean connect(@Nullable CompletableFuture<Readiness> waiting, boolean retrying) {
     final boolean submit;
+    final boolean wait;
 
     synchronized (connectionLock) {
-      if (closed || retryer.isStopped() || (eventSource != null && connectionReady)) {
+      if (closed || retryer.isStopped()) {
         return false;
       }
 
-      if (waiting != null) {
+      if (retrying) {
+        retryPending = false;
+      }
+
+      // while the retryer is backing off we leave the reconnect to it, connecting now would ignore the backoff
+      final boolean needsConnection = eventSource == null && !connectPending && !retryPending;
+      // until we have features for this context, a connection (current, pending or about to be made) will tell us when
+      // we have. Once we have them, a reconnect doesn't make them any less valid. While backing off no features are
+      // coming.
+      wait = !contextHasFeatures && (eventSource != null || connectPending || needsConnection);
+
+      if (wait && waiting != null) {
         waitingClients.add(waiting);
       }
 
-      if (eventSource != null) {
-        // connected, but its features haven't arrived yet, they will release those waiting
-        return true;
-      }
+      submit = needsConnection;
 
-      submit = !connectPending;
-      connectPending = true;
+      if (submit) {
+        connectPending = true;
+      }
     }
 
     if (submit) {
       submitConnect();
     }
 
-    return true;
+    return wait;
   }
 
   private void submitConnect() {
@@ -618,7 +662,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void reconnect() {
-    connect(null);
+    connect(null, true);
   }
 
   public void setNotify(Consumer<EventInput> notify) {

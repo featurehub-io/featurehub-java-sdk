@@ -168,6 +168,27 @@ class RestClientSpec extends Specification {
       client.client.dispatcher().executorService().isShutdown()
   }
 
+  def "polling uses the buildRequest hook, so subclasses can add to the request"() {
+    given: "a client that adds a header"
+      def hooked = new RestClient(config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().rest().build(), 0) {
+        @Override
+        protected okhttp3.Request buildRequest(okhttp3.Request.Builder requestBuilder) {
+          return requestBuilder.addHeader("Authorization", "Bearer token").build()
+        }
+      }
+      mockWebServer.enqueue(new MockResponse().with {
+        setResponseCode(500)
+      })
+    when:
+      def future = hooked.poll()
+      def req = mockWebServer.takeRequest()
+      future.get()
+    then:
+      req.getHeader("Authorization") == "Bearer token"
+    cleanup:
+      hooked.close()
+  }
+
   def "a 500 does not prevent requests but is ignored"() {
     given: "a response"
       mockWebServer.enqueue(new MockResponse().with {

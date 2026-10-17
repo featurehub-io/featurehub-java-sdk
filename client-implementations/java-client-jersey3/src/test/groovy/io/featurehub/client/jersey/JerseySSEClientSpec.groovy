@@ -466,6 +466,129 @@ class JerseySSEClientSpec extends Specification {
       401    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
       403    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
       404    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+      400    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+  }
+
+  def "client errors that may go away, such as too many requests, back off and retry rather than stopping"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, new WebApplicationException(Response.status(status).build()))
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND, client)
+      future.done
+    where:
+      status << [429, 408]
+  }
+
+  def "while the retryer is backing off, a poll or context build does not connect early"() {
+    given: "a connection attempt that failed, so the retryer is backing off"
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    when: "we are polled and a context is built before the retryer reconnects"
+      def built = client.contextChange("userkey=fred", "1")
+      def polled = client.poll()
+    then: "nothing connects, and the callers aren't held up as no features are coming yet"
+      submitted.size() == 1
+      built.done
+      polled.done
+    when: "the retryer reconnects"
+      client.reconnect()
+    then:
+      submitted.size() == 2
+  }
+
+  def "a server evaluated context change while the retryer is backing off connects straight away for the new context"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    when:
+      def future = client.contextChange("userkey=mary", "2")
+    then:
+      submitted.size() == 2
+      !future.done
+    when: "the scheduled reconnect runs"
+      client.reconnect()
+    then: "it doesn't ask for another connection"
+      submitted.size() == 2
+  }
+
+  def "once we have features, a reconnect doesn't make polls wait for the new connection to send them again"() {
+    given: "a connection that sends features and then the server closes it"
+      def submitted = []
+      def closed = false
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "data" }
+      ]
+      def input = Mock(EventInput)
+      input.isClosed() >> { closed }
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        closed = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    when: "the retryer reconnects, and before the new connection has sent anything we are polled"
+      client.reconnect()
+      def polled = client.poll()
+    then:
+      submitted.size() == 2
+      polled.done
+  }
+
+  def "if a working stream times out while idle, we reconnect straight away rather than backing off"() {
+    given: "a connection that has sent us something, then times out"
+      def submitted = []
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "1"; readData() >> "data" }
+      ]
+      def input = Mock(EventInput)
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        throw new jakarta.ws.rs.ProcessingException(new java.net.SocketTimeoutException("Read timed out"))
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.fromValue("ack") >> io.featurehub.sse.model.SSEResultState.ACK
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_READ_TIMEOUT, client)
+  }
+
+  def "if a stream fails before it has sent us anything, we back off"() {
+    given:
+      def submitted = []
+      def input = Mock(EventInput)
+      input.read() >> { throw new jakarta.ws.rs.ProcessingException(new java.net.SocketTimeoutException("Read timed out")) }
+      def retryer = Mock(EdgeRetryService)
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_READ_TIMEOUT, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
   }
 
   def "if we can't connect, anyone waiting is released rather than waiting for the retry"() {
@@ -538,7 +661,10 @@ class JerseySSEClientSpec extends Specification {
       def retryer = Mock(EdgeRetryService)
       JerseySSEClient client
       def later = null
-      retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, _) >> { later = client.poll() }
+      retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, _) >> {
+        client.reconnect()
+        later = client.poll()
+      }
       client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
     when:
       def first = client.poll()

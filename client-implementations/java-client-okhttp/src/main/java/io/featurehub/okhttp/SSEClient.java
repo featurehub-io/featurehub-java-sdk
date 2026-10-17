@@ -47,9 +47,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Nullable private volatile Object currentConnection;
   private final Object connectionLock = new Object();
   private final EdgeRetryService retryer;
-  // has the current connection sent us features (or told us it can't) yet? Until it has, callers must wait. Guarded
-  // by connectionLock.
-  private boolean connectionReady;
+  // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
+  // A reconnect doesn't change this, the features we have are still for this context. Guarded by connectionLock.
+  private boolean contextHasFeatures;
+  // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then.
+  // Guarded by connectionLock.
+  private boolean retryPending;
   // added to by callers' threads and drained by okhttp's threads. Guarded by connectionLock.
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under connectionLock.
@@ -71,7 +74,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public Future<Readiness> poll() {
-    initEventSource();
+    initEventSource(false);
 
     return CompletableFuture.completedFuture(repository.getReadiness());
   }
@@ -82,9 +85,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   /**
-   * Makes a new connection unless one is already current (connecting or connected).
+   * Makes a new connection unless one is already current (connecting or connected), or the retryer is backing off
+   * before reconnecting.
+   *
+   * @param retrying - true if this is the retryer reconnecting once it has backed off
    */
-  private void initEventSource() {
+  private void initEventSource(boolean retrying) {
     final Object connection = new Object();
     final String header;
     final String lastId;
@@ -93,7 +99,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     // read the context and claim the connection together, so a concurrent context change either happens entirely
     // before (and we connect with the new context) or entirely after (and it replaces us)
     synchronized (connectionLock) {
-      if (closed || retryer.isStopped() || currentConnection != null) {
+      if (closed || retryer.isStopped() || currentConnection != null || (retryPending && !retrying)) {
         return;
       }
 
@@ -102,7 +108,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       previous = eventSource;
       eventSource = null;
       currentConnection = connection;
-      connectionReady = false;
+      retryPending = false;
     }
 
     if (previous != null) {
@@ -298,8 +304,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         eventSource = source;
 
         if (source == null) {
-          // we failed to even create the connection, release it so a later poll can try again
+          // we failed to even create the connection, release it so the retry can try again
           currentConnection = null;
+          retryPending = !wrongLibrary;
         }
       } else {
         superseded = true;
@@ -334,9 +341,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   /**
-   * Releases the connection if it is still the current one, so that a reconnect (or poll) can make a new one.
+   * Releases the connection if it is still the current one, so that the retryer's reconnect can make a new one.
    * Those waiting on it are taken in the same step, so anyone who starts waiting after this waits for the
-   * replacement connection.
+   * replacement connection. The caller always tells the retryer, so until it reconnects nothing else may.
    *
    * @return those waiting on the connection if it was the current one and its close or failure should be acted on,
    * otherwise null
@@ -349,7 +356,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
       currentConnection = null;
       eventSource = null;
-      connectionReady = false;
+      retryPending = true;
 
       return takeWaitingClients();
     }
@@ -379,7 +386,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
-      connectionReady = true;
+      contextHasFeatures = true;
       waiting = takeWaitingClients();
     }
 
@@ -499,14 +506,18 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         currentConnection = null;
-        connectionReady = false;
+        contextHasFeatures = false;
+        // the new context needs its features now, rather than once the retryer has backed off
+        retryPending = false;
         oldSource = eventSource;
         eventSource = null;
       }
 
-      needsConnection = currentConnection == null;
-      // a connection that hasn't sent us its features yet will tell us when it has
-      waiting = needsConnection || !connectionReady;
+      // while the retryer is backing off we leave the reconnect to it, connecting now would ignore the backoff
+      needsConnection = currentConnection == null && !retryPending;
+      // until we have features for this context, a connection (current or about to be made) will tell us when we have.
+      // Once we have them, a reconnect doesn't make them any less valid. While backing off no features are coming.
+      waiting = !contextHasFeatures && (currentConnection != null || needsConnection);
 
       if (waiting) {
         waitingClients.add(change);
@@ -524,8 +535,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
     if (needsConnection) {
       // if a reconnect beat us to it, this does nothing and we wait for its features
-      initEventSource();
-    } else if (!waiting) {
+      initEventSource(false);
+    }
+
+    if (!waiting) {
       change.complete(repository.getReadiness());
     }
 
@@ -588,6 +601,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Override
   public void reconnect() {
     // does nothing if something else (e.g. a context change) has already made a new connection
-    initEventSource();
+    initEventSource(true);
   }
 }

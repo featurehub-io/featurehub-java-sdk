@@ -449,6 +449,76 @@ class SSEClientSpec extends Specification {
       connections == 1
   }
 
+  def "while the retryer is backing off, a context change or poll does not connect early"() {
+    given: "we were connected, and the connection was lost"
+      client.poll()
+      lose(esListener)
+    when: "contexts are built and we are polled before the retryer reconnects"
+      def future = client.contextChange(null, '0')
+      client.poll()
+    then: "nothing connects, and the caller isn't held up as no features are coming yet"
+      connections == 1
+      future.done
+    when: "the retryer reconnects"
+      client.reconnect()
+    then:
+      connections == 2
+    where:
+      lose << [
+        { EventSourceListener l -> l.onFailure(null, new UnknownHostException("does-not-exist"), null) },
+        { EventSourceListener l -> l.onFailure(null, new IOException("dropped"), null) },
+        { EventSourceListener l -> l.onClosed(null) }
+      ]
+  }
+
+  def "while the retryer is backing off after we couldn't make the connection, a context change does not connect early"() {
+    given:
+      onMakeEventSource = { throw new RuntimeException("bad url") }
+      client.poll()
+      onMakeEventSource = null
+    when:
+      def future = client.contextChange(null, '0')
+    then:
+      connections == 1
+      future.done
+  }
+
+  def "a server evaluated context change while the retryer is backing off connects straight away for the new context"() {
+    given:
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      esListener.onFailure(null, new IOException("dropped"), null)
+    when:
+      def future = client.contextChange("header2", '0')
+    then:
+      connections == 2
+      request.header("x-featurehub") == "header2"
+      !future.done
+    when: "the scheduled reconnect runs"
+      client.reconnect()
+    then: "it doesn't make another connection"
+      connections == 2
+  }
+
+  def "once we have features, a reconnect doesn't make contexts wait for the new connection to send them again"() {
+    given: "we have features"
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      retry.fromValue('bye') >> SSEResultState.BYE
+      retry.fromValue('ack') >> SSEResultState.ACK
+      client.poll()
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
+    and: "the server says bye and we reconnect, but the new connection sends nothing new"
+      esListener.onEvent(mockEventSource, '2', 'bye', null)
+      esListener.onClosed(mockEventSource)
+      client.reconnect()
+      esListener.onEvent(mockEventSource, null, 'ack', null)
+    when:
+      def future = client.contextChange(null, '0')
+    then:
+      connections == 2
+      future.done
+  }
+
   def "if the wrong version of OKHttp stops us connecting, we don't retry and nobody is left waiting"() {
     given:
       onMakeEventSource = { throw new NoSuchFieldError("wrong okhttp") }
