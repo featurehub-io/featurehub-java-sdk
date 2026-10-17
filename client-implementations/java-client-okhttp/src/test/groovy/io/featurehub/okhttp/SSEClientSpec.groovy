@@ -517,6 +517,25 @@ class SSEClientSpec extends Specification {
       connections == 2
   }
 
+  def "a reconnect left over from an earlier backoff doesn't cut a later backoff short"() {
+    given: "the connection fails, so the retryer starts backing off"
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+      esListener.onFailure(null, new IOException("dropped"), null)
+    and: "the context changes, connecting straight away, and that connection fails too, so a second backoff starts"
+      client.contextChange("header2", '0')
+      esListener.onFailure(null, new IOException("dropped"), null)
+    when: "the first backoff finishes"
+      client.reconnect()
+    then: "it leaves the reconnect to the second"
+      connections == 2
+    when: "the second backoff finishes"
+      client.reconnect()
+    then:
+      connections == 3
+      request.header("x-featurehub") == "header2"
+  }
+
   def "once we have features, a reconnect doesn't make contexts wait for the new connection to send them again"() {
     given: "we have features"
       retry.fromValue('features') >> SSEResultState.FEATURES

@@ -58,7 +58,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private int contextGeneration;
   // connections are made and read on this thread rather than the retryer's. The retryer's thread sleeps while backing
   // off, and would hold up the connection for a new context until it had finished.
-  private final ExecutorService connector = Executors.newSingleThreadExecutor(r -> new Thread(r, "featurehub-sse-connect"));
+  private final ExecutorService connector = Executors.newSingleThreadExecutor(r -> {
+    final Thread t = new Thread(r, "featurehub-sse-connect");
+    // like the retryer's thread was, this must not keep the application running if it is never closed
+    t.setDaemon(true);
+    return t;
+  });
   private final Client client;
   private final WebTarget target;
   // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
@@ -67,6 +72,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then.
   // Guarded by connectionLock.
   private boolean retryPending;
+  // how many reconnects we have asked the retryer for that it hasn't made yet. A context change can connect while one
+  // is still backing off, and if that connection fails too, only the last reconnect may connect, otherwise the earlier
+  // one cuts the later backoff short. Guarded by connectionLock.
+  private int scheduledRetries;
   // added to by callers' threads and drained by the connection thread. Guarded by connectionLock.
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a shared pool
@@ -294,6 +303,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
           connectPending = false;
           // the retryer is told below, so leave the reconnect to it
           retryPending = true;
+          scheduledRetries++;
           waiting = takeWaitingClients();
         }
 
@@ -367,6 +377,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
           eventSource = null;
           retryPending = true;
+          scheduledRetries++;
           waiting = takeWaitingClients();
         }
 
@@ -415,6 +426,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       if (eventSource == source) {
         eventSource = null;
         retryPending = true;
+        scheduledRetries++;
         waiting = takeWaitingClients();
       }
     }
@@ -695,6 +707,17 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void reconnect() {
+    synchronized (connectionLock) {
+      if (scheduledRetries > 0) {
+        scheduledRetries--;
+      }
+
+      if (scheduledRetries > 0) {
+        // a later reconnect is still backing off, leave it to that one
+        return;
+      }
+    }
+
     connect(null, true);
   }
 

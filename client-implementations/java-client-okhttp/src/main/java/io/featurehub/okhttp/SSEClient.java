@@ -53,6 +53,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then.
   // Guarded by connectionLock.
   private boolean retryPending;
+  // how many reconnects we have asked the retryer for that it hasn't made yet. A context change can connect while one
+  // is still backing off, and if that connection fails too, only the last reconnect may connect, otherwise the earlier
+  // one cuts the later backoff short. Guarded by connectionLock.
+  private int scheduledRetries;
   // added to by callers' threads and drained by okhttp's threads. Guarded by connectionLock.
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under connectionLock.
@@ -312,7 +316,11 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         if (source == null) {
           // we failed to even create the connection, release it so the retry can try again
           currentConnection = null;
-          retryPending = !wrongLibrary;
+
+          if (!wrongLibrary) {
+            retryPending = true;
+            scheduledRetries++;
+          }
         }
       } else {
         superseded = true;
@@ -363,6 +371,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       currentConnection = null;
       eventSource = null;
       retryPending = true;
+      scheduledRetries++;
 
       return takeWaitingClients();
     }
@@ -606,6 +615,17 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void reconnect() {
+    synchronized (connectionLock) {
+      if (scheduledRetries > 0) {
+        scheduledRetries--;
+      }
+
+      if (scheduledRetries > 0) {
+        // a later reconnect is still backing off, leave it to that one
+        return;
+      }
+    }
+
     // does nothing if something else (e.g. a context change) has already made a new connection
     initEventSource(true);
   }

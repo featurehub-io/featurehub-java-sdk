@@ -710,6 +710,47 @@ class JerseySSEClientSpec extends Specification {
       submitted.size() == 1
   }
 
+  def "a reconnect left over from an earlier backoff doesn't cut a later backoff short"() {
+    given: "the connection fails, so the retryer starts backing off"
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    and: "the context changes, connecting straight away, and that connection fails too, so a second backoff starts"
+      client.contextChange("userkey=mary", "2")
+      submitted[1].run()
+    when: "the first backoff finishes"
+      client.reconnect()
+    then: "it leaves the reconnect to the second"
+      submitted.size() == 2
+    when: "the second backoff finishes"
+      client.reconnect()
+    then:
+      submitted.size() == 3
+  }
+
+  def "connections run on a daemon thread, so a client that is never closed doesn't keep the application running"() {
+    given:
+      def daemon = new java.util.concurrent.CompletableFuture<Boolean>()
+      def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        new EventOutput()
+      })
+      def client = new JerseySSEClient(null, serverEvalConfig, Mock(EdgeRetryService)) {
+        @Override
+        protected EventInput makeEventSource(String header, String lastEventId) {
+          daemon.complete(Thread.currentThread().daemon)
+          throw new java.net.ConnectException("refused")
+        }
+      }
+    when:
+      client.contextChange("userkey=mary", "2")
+    then:
+      daemon.get(5, java.util.concurrent.TimeUnit.SECONDS)
+    cleanup:
+      client.close()
+  }
+
   def "connections are not held up behind the retryer while it is backing off"() {
     given: "a retryer whose thread is busy backing off"
       def retryer = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()
