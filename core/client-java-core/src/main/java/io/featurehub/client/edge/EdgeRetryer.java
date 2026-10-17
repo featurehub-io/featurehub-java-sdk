@@ -50,8 +50,9 @@ public class EdgeRetryer implements EdgeRetryService {
 
   // if this is set, then we stop recognizing any further requests from the connection,
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
-  private boolean notFoundState = false;
-  private boolean stopped = false;
+  // Set on connection threads and read on callers' threads, so volatile.
+  private volatile boolean notFoundState = false;
+  private volatile boolean stopped = false;
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {

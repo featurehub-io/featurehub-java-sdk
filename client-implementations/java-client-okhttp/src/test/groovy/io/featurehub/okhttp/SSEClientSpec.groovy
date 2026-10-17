@@ -127,9 +127,9 @@ class SSEClientSpec extends Specification {
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
       2 * config.baseUrl() >> "http://localhost" // used by trace logs
-      3 * repository.getReadiness() >> Readiness.NotReady
+      2 * repository.getReadiness() >> Readiness.NotReady
       1 * repository.notify(SSEResultState.FAILURE)
-      1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
       _ * retry.isStopped()
       0 * _
   }
@@ -166,7 +166,7 @@ class SSEClientSpec extends Specification {
     when: "it closes, and before it has finished a reconnect is made and another caller starts waiting on it"
       esListener.onClosed(mockEventSource)
     then:
-      1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client) >> {
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client) >> {
         client.reconnect()
         later = client.contextChange(null, '0')
       }
@@ -197,14 +197,31 @@ class SSEClientSpec extends Specification {
       realClient.client == null
   }
 
-  def "a failure after the connection opened reconnects immediately"() {
+  def "a failure after the stream has sent us something reconnects immediately"() {
     given:
       client.poll()
       esListener.onOpen(mockEventSource, response(200))
+      esListener.onEvent(mockEventSource, '1', 'ack', null)
     when:
       esListener.onFailure(mockEventSource, new IOException("dropped"), null)
     then:
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+  }
+
+  def "a stream that is accepted and then dropped before sending anything backs off rather than reconnecting immediately"() {
+    given:
+      client.poll()
+      esListener.onOpen(mockEventSource, response(200))
+    when:
+      lose(esListener)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+    where:
+      lose << [
+        { EventSourceListener l -> l.onClosed(null) },
+        { EventSourceListener l -> l.onFailure(null, new IOException("connection reset"), null) }
+      ]
   }
 
   def "when i context change with a client side key, it gives me a future which resolves readyness"() {

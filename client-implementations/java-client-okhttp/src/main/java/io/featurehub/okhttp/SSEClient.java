@@ -137,8 +137,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       // we need to know if the connection already said "bye" so as to pass the right reconnection
       // event
       final AtomicBoolean connectionSaidBye = new AtomicBoolean(false);
-      // did we ever get a successful response? If not, a failure means we couldn't connect at all
-      final AtomicBoolean opened = new AtomicBoolean(false);
+      // has the server sent us anything? If not, the stream never worked (we couldn't connect, or something accepted
+      // the connection and then dropped it), so losing it must back off rather than reconnect straight away
+      final AtomicBoolean receivedEvent = new AtomicBoolean(false);
       final EdgeReconnector connector = this;
 
       source =
@@ -160,11 +161,14 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     repository.notify(SSEResultState.FAILURE);
                   }
 
-                  // send this once we are actually disconnected and not before
+                  // send this once we are actually disconnected and not before. A stream that closed before sending
+                  // anything never worked, and reconnecting straight away would loop as fast as it is closed.
                   retryer.edgeResult(
-                      connectionSaidBye.get()
-                          ? EdgeConnectionState.SERVER_SAID_BYE
-                          : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
+                      !receivedEvent.get()
+                          ? EdgeConnectionState.CONNECTION_FAILURE
+                          : connectionSaidBye.get()
+                              ? EdgeConnectionState.SERVER_SAID_BYE
+                              : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
                       connector);
 
                   connectionLost(waiting);
@@ -185,6 +189,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                       return;
                     }
                   }
+
+                  receivedEvent.set(true);
 
                   try {
                     final SSEResultState state = retryer.fromValue(type);
@@ -266,9 +272,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     // the api key doesn't exist, retrying won't change that. Other 4xx (e.g. 429 too many requests)
                     // may well go away, so we back off and retry below as we never connected.
                     retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-                  } else if (t instanceof java.net.ConnectException || !opened.get()) {
-                    // we never connected (e.g. the host can't be resolved, refused us or answered with a 5xx), so back
-                    // off before trying again rather than reconnecting immediately as we do when a working stream drops
+                  } else if (!receivedEvent.get()) {
+                    // the stream never worked (e.g. the host can't be resolved, refused us, answered with a 5xx, or
+                    // accepted us and then dropped the connection), so back off before trying again rather than
+                    // reconnecting immediately as we do when a working stream drops
                     retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
                   } else if (repository.getReadiness() == Readiness.Failed && t
                       instanceof SocketTimeoutException) {
@@ -283,7 +290,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
                 @Override
                 public void onOpen(@NotNull EventSource eventSource, @NotNull Response response) {
-                  opened.set(true);
                   log.trace("[featurehub-sdk] connected to {}", config.baseUrl());
                 }
               });

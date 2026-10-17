@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.ConnectException;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -52,6 +53,12 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   private boolean connectPending;
   // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
+  // changes on every change of context, so a connection made for an earlier context is never kept, even if the context
+  // has since changed back. Guarded by connectionLock.
+  private int contextGeneration;
+  // connections are made and read on this thread rather than the retryer's. The retryer's thread sleeps while backing
+  // off, and would hold up the connection for a new context until it had finished.
+  private final ExecutorService connector = Executors.newSingleThreadExecutor(r -> new Thread(r, "featurehub-sse-connect"));
   private final Client client;
   private final WebTarget target;
   // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
@@ -115,6 +122,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
       if (contextChanged) {
         xFeaturehubHeader = newHeader;
+        contextGeneration++;
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         oldSource = eventSource;
@@ -161,6 +169,9 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     closeEventSource();
+
+    // stops the connection thread, interrupting any read in progress
+    connector.shutdownNow();
 
     // always stop the retryer, even if we are not currently connected, otherwise a pending reconnect will
     // connect again after we have been closed
@@ -259,6 +270,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     while (true) {
       final String header;
       final String lastId;
+      final int generation;
 
       // read together so we never send one context's header with another context's last event id
       synchronized (connectionLock) {
@@ -269,6 +281,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
         header = xFeaturehubHeader;
         lastId = lastEventId;
+        generation = contextGeneration;
       }
 
       try {
@@ -292,7 +305,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
       synchronized (connectionLock) {
         if (closed) {
           connectPending = false;
-        } else if (Objects.equals(header, xFeaturehubHeader)) {
+        } else if (generation == contextGeneration) {
           eventSource = source;
           connectPending = false;
           break;
@@ -408,8 +421,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     if (waiting != null) {
-      retryer.edgeResult(connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE :
-        EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
+      // a stream that closed before sending anything never worked, and reconnecting straight away would loop as fast as
+      // it is closed
+      retryer.edgeResult(!receivedEvent ? EdgeConnectionState.CONNECTION_FAILURE :
+        connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE : EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
 
       connectionLost(waiting);
     } else {
@@ -528,9 +543,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
    */
   private void onMakeEventSourceException(Exception e, List<CompletableFuture<Readiness>> waiting) {
     log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl());
-    if (e instanceof ConnectException) {
+    // Jersey wraps network failures (e.g. in a ProcessingException), so look at the causes as well
+    if (causedBy(e, ConnectException.class) || causedBy(e, UnknownHostException.class)) {
       retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
-    } else if (e instanceof SocketException) {
+    } else if (causedBy(e, SocketException.class)) {
       retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
     } else if (e instanceof WebApplicationException) {
       WebApplicationException wae = (WebApplicationException) e;
@@ -553,6 +569,16 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     connectionLost(waiting);
+  }
+
+  private static boolean causedBy(@Nullable Throwable e, Class<? extends Throwable> type) {
+    for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+      if (type.isInstance(t)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -645,15 +671,22 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
   private void submitConnect() {
     try {
-      retryer.getExecutorService().submit(this::initEventSource);
+      connectExecutor().submit(this::initEventSource);
     } catch (RejectedExecutionException e) {
-      // we were closed in the meantime, which shut the retryer down
+      // we were closed in the meantime, which shut the connection thread down
       synchronized (connectionLock) {
         connectPending = false;
       }
 
       notifyAllWaitingClients();
     }
+  }
+
+  /**
+   * @return where connections are made and read, overrideable for testing
+   */
+  protected ExecutorService connectExecutor() {
+    return connector;
   }
 
   @Override
