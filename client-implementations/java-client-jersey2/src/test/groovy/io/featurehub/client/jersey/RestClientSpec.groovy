@@ -10,6 +10,7 @@ import io.featurehub.sse.model.SSEResultState
 import spock.lang.Specification
 
 import javax.ws.rs.RedirectionException
+import javax.ws.rs.WebApplicationException
 import javax.ws.rs.core.Response
 
 class RestClientSpec extends Specification {
@@ -117,6 +118,48 @@ class RestClientSpec extends Specification {
       0 * _
       client.stopped
       result == Readiness.Failed
+  }
+
+  def "a pointless request stops the client and notifies failure, whether its status is returned or thrown"() {
+    when:
+      client.poll().get()
+    then:
+      1 * config.apiKeys() >> apiKeys
+      1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> { thrown ? { throw new WebApplicationException(Response.status(status).build()) }() : build(status) }
+      1 * repo.notify(SSEResultState.FAILURE, "polling")
+      client.stopped
+    where:
+      status | thrown
+      400    | false
+      401    | false
+      403    | false
+      404    | false
+      400    | true
+      401    | true
+      403    | true
+      404    | true
+  }
+
+  def "once stopped, a poll makes no further requests"() {
+    given: "the server rejected us"
+      config.apiKeys() >> apiKeys
+      featureService.getFeatureStates(*_) >> build(401)
+      client.poll().get()
+    when:
+      def result = client.poll().get()
+    then:
+      0 * featureService.getFeatureStates(*_)
+      1 * repo.readiness >> Readiness.Failed
+      result == Readiness.Failed
+  }
+
+  def "once closed, the client is stopped and a poll makes no requests"() {
+    when:
+      client.close()
+      client.poll().get()
+    then:
+      client.stopped
+      0 * featureService.getFeatureStates(*_)
   }
 
   // ---------------------------------------------------------------------------

@@ -20,10 +20,14 @@ import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.ws.rs.RedirectionException;
+import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import org.glassfish.jersey.client.ClientProperties;
+import org.glassfish.jersey.client.filter.EncodingFeature;
 import org.glassfish.jersey.jackson.JacksonFeature;
+import org.glassfish.jersey.message.DeflateEncoder;
+import org.glassfish.jersey.message.GZipEncoder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -40,7 +44,9 @@ public class RestClient implements EdgeService {
   // used for breaking the cache
   @NotNull
   private String xContextSha = "0";
-  private boolean stopped = false;
+  // once stopped (the server told us to, our requests are pointless or we are closed) we make no more requests. Set
+  // and read on different threads, so volatile.
+  private volatile boolean stopped = false;
   @Nullable
   private String etag = null;
   private long pollingInterval;
@@ -76,7 +82,10 @@ public class RestClient implements EdgeService {
     Client client = ClientBuilder.newBuilder()
       .property(ClientProperties.CONNECT_TIMEOUT, edgeRetryer.getServerConnectTimeoutMs())
       .property(ClientProperties.READ_TIMEOUT, edgeRetryer.getServerReadTimeoutMs())
-      .register(JacksonFeature.class).build();
+      .register(JacksonFeature.class)
+      // ask for compressed responses and transparently decompress them
+      .register(new EncodingFeature(GZipEncoder.class, DeflateEncoder.class))
+      .build();
 
     return new FeatureServiceImpl(new ApiClient(client, config.baseUrl()));
   }
@@ -86,6 +95,11 @@ public class RestClient implements EdgeService {
   }
 
   public Future<Readiness> poll() {
+    if (stopped) {
+      log.trace("[featurehub-sdk] not polling, further requests are pointless or we are closed");
+      return CompletableFuture.completedFuture(repository.getReadiness());
+    }
+
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
 
     Map<String, String> headers = new HashMap<>();
@@ -105,6 +119,13 @@ public class RestClient implements EdgeService {
       // 304 not modified is fine
       if (re.getResponse().getStatus() != 304) {
         processFailure(re);
+      }
+    } catch (WebApplicationException wae) {
+      // depending on the client, an error status may be thrown rather than returned
+      if (wae.getResponse() != null && requestsArePointless(wae.getResponse().getStatus())) {
+        stopPointlessRequests();
+      } else {
+        processFailure(wae);
       }
     } catch (Exception e) {
       processFailure(e);
@@ -181,15 +202,28 @@ public class RestClient implements EdgeService {
         log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         this.stopped = true; // prevent any further requests
       }
-    } else if (response.getStatusCode() == 400 || response.getStatusCode() == 404) {
-      stopped = true;
-      log.error("Server indicated an error with our requests making future ones pointless.");
-      repository.notify(SSEResultState.FAILURE, "polling");
+    } else if (requestsArePointless(response.getStatusCode())) {
+      stopPointlessRequests();
     } else if (response.getStatusCode() >= 500) {
       log.trace("maybe server is down?");
     }
   }
 
+  // a bad request, an unknown api key or no permission: retrying won't change any of these
+  private static boolean requestsArePointless(int status) {
+    return status == 400 || status == 401 || status == 403 || status == 404;
+  }
+
+  private void stopPointlessRequests() {
+    stopped = true;
+    log.error("Server indicated an error with our requests making future ones pointless.");
+    repository.notify(SSEResultState.FAILURE, "polling");
+  }
+
+  /**
+   * Stopped if the server has told us to stop, our requests are pointless or we have been closed. Polling stops once
+   * we are stopped.
+   */
   public boolean isStopped() { return stopped; }
 
   @Override
@@ -212,6 +246,7 @@ public class RestClient implements EdgeService {
 
   @Override
   public void close() {
+    stopped = true;
     edgeRetryer.close();
     log.info("featurehub client closed.");
   }

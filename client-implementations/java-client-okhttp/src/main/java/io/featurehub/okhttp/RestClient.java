@@ -38,7 +38,9 @@ public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
   @NotNull private final InternalFeatureRepository repository;
   @NotNull private final OkHttpClient client;
-  private boolean makeRequests;
+  // false once the server has told us our requests are pointless (e.g. a bad API key) or we are closed, after which
+  // we make no more requests. Set on okhttp's threads, so volatile.
+  private volatile boolean makeRequests;
   @NotNull private final String url;
   private final JavascriptObjectMapper mapper;
   @Nullable
@@ -46,7 +48,7 @@ public class RestClient implements EdgeService {
   // used for breaking the cache
   @NotNull
   private String xContextSha = "0";
-  private boolean stopped = false;
+  private volatile boolean stopped = false;
   @Nullable
   private String etag = null;
   private long pollingInterval;
@@ -208,7 +210,11 @@ public class RestClient implements EdgeService {
     return makeRequests && !stopped;
   }
 
-  public boolean isStopped() { return stopped; }
+  /**
+   * Stopped if the server has told us to stop, our requests are pointless or we have been closed. Polling stops once
+   * we are stopped.
+   */
+  public boolean isStopped() { return !canMakeRequests(); }
 
   @Override
   public boolean needsContextChange(@Nullable String newHeader, @NotNull String contextSha) {
@@ -251,6 +257,11 @@ public class RestClient implements EdgeService {
 
   @Override
   public Future<Readiness> poll() {
+    if (!canMakeRequests()) {
+      log.trace("[featurehub-sdk] not polling, further requests are pointless or we are closed");
+      return CompletableFuture.completedFuture(repository.getReadiness());
+    }
+
     String url = this.url + "&contextSha=" + xContextSha;
     log.trace("request url is {}", url);
     Request.Builder reqBuilder = new Request.Builder().url(url);
@@ -265,7 +276,7 @@ public class RestClient implements EdgeService {
 
     reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
 
-    Request request = reqBuilder.build();
+    Request request = buildRequest(reqBuilder);
 
     log.trace("polling");
     final CompletableFuture<Readiness> change = new CompletableFuture<>();

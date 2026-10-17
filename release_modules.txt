@@ -1,0 +1,1 @@
+client-implementations/java-client-jersey2,client-implementations/java-client-jersey3,client-implementations/java-client-okhttp,core/client-java-core,support/composite-logging,usage-adapters/featurehub-opentelemetry-adapter

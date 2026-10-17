@@ -122,9 +122,8 @@ abstract public class BasePollingDelegateEdgeService implements EdgeService {
 
   @Override
   public void close() {
-    if(!edgeService.isStopped()) {
-      edgeService.close();
-    }
+    // always close, even if stopped (e.g. the server rejected our requests), so the client releases its resources
+    edgeService.close();
   }
 
   @Override
