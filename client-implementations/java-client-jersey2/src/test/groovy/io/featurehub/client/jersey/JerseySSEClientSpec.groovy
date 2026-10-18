@@ -368,7 +368,7 @@ class JerseySSEClientSpec extends Specification {
     given: "a connection that sends an event that applies and then one that fails"
       def submitted = []
       def events = [
-        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "5"; readData() >> "data" },
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "5"; readData() >> "data" },
         Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "6"; readData() >> "bad-data" }
       ]
       def stopped = false
@@ -477,6 +477,256 @@ class JerseySSEClientSpec extends Specification {
       400    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
   }
 
+  def "failures to connect that may go away back off from the connect timeout, as OKHttp does"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, failure)
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_READ_TIMEOUT, client)
+    where:
+      failure << [
+        new WebApplicationException(Response.status(503).build()),
+        new javax.ws.rs.ProcessingException(new java.net.SocketTimeoutException("connect timed out")),
+        new javax.ws.rs.ProcessingException(new java.net.NoRouteToHostException("no route")),
+        new RuntimeException("something else")
+      ]
+  }
+
+  def "a connection attempt for an earlier context that fails doesn't count against the new context"() {
+    given: "while connecting, the context changes and then the old context's attempt is rejected"
+      def submitted = []
+      def headers = []
+      def stopped = false
+      def input = Mock(EventInput)
+      input.read() >> { stopped = true; null }
+      def retryer = Mock(EdgeRetryService)
+      retryer.isStopped() >> { stopped }
+      JerseySSEClient client
+      client = customClient(submitted, retryer) { String header, String lastEventId ->
+        headers.add(header)
+        if (headers.size() == 1) {
+          client.contextChange("userkey=mary", "2")
+          throw new WebApplicationException(Response.status(404).build())
+        }
+        return input
+      }
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then: "the failure is ignored and we connect straight away for the new context"
+      headers == ["userkey=fred", "userkey=mary"]
+      0 * retryer.edgeResult(*_)
+      submitted.size() == 1
+  }
+
+  def "closing the client while it is connecting is not reported as a failure"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      JerseySSEClient client
+      client = customClient(submitted, retryer) { String header, String lastEventId ->
+        client.close()
+        throw new javax.ws.rs.ProcessingException(new InterruptedException("closed"))
+      }
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      0 * retryer.edgeResult(*_)
+      client.config.repository.readiness == Readiness.NotReady
+  }
+
+  def "closing the client stops the executor its connections actually run on"() {
+    given:
+      def executor = Mock(java.util.concurrent.ExecutorService)
+      def client = new JerseySSEClient(null, config, Mock(EdgeRetryService)) {
+        @Override
+        protected java.util.concurrent.ExecutorService connectExecutor() {
+          return executor
+        }
+      }
+    when:
+      client.close()
+    then:
+      1 * executor.shutdownNow()
+  }
+
+  def "a resumed stream that is quiet until our read timeout, or until the server drops it, reconnects straight away"() {
+    given: "a first connection that sends features and is closed, then a resumed one the server sends nothing on"
+      def submitted = []
+      def lastEventIds = []
+      def firstClosed = false
+      def firstEvents = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "5"; readData() >> "data" }
+      ]
+      def first = Mock(EventInput)
+      first.isClosed() >> { firstClosed }
+      first.read() >> {
+        if (firstEvents) {
+          return firstEvents.remove(0)
+        }
+        firstClosed = true
+        null
+      }
+      def secondClosed = false
+      def second = Mock(EventInput)
+      second.isClosed() >> { secondClosed }
+      second.read() >> {
+        if (serverDrops) {
+          secondClosed = true
+          return null
+        }
+        throw new javax.ws.rs.ProcessingException(new java.net.SocketTimeoutException("Read timed out"))
+      }
+      def inputs = [first, second]
+      def retryer = Mock(EdgeRetryService)
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
+      // the features arrive, so the repository is ready
+      retryer.convertSSEState(*_) >> { args -> args[2].updateFeatures([], "streaming") }
+      def client = customClient(submitted, retryer, 0) { String header, String lastEventId ->
+        lastEventIds.add(lastEventId)
+        inputs.remove(0)
+      }
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    when: "we reconnect, resuming from the last event id, and the stream stays open long enough to count as working"
+      client.reconnect()
+      submitted[1].run()
+    then:
+      lastEventIds == [null, "5"]
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      client.config.repository.readiness == Readiness.Ready
+    where:
+      serverDrops << [false, true] // otherwise our read times out
+  }
+
+  def "a stream that only sends an ack and is then dropped straight away backs off"() {
+    given:
+      def submitted = []
+      def closed = false
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "1"; readData() >> "data" }
+      ]
+      def input = Mock(EventInput)
+      input.isClosed() >> { closed }
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        closed = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.fromValue("ack") >> io.featurehub.sse.model.SSEResultState.ACK
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+  }
+
+  def "we don't resume with a last event id until we have the context's features"() {
+    given: "a stream that sent an ack with an id, then was closed before any features"
+      def submitted = []
+      def closed = false
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "5"; readData() >> "data" }
+      ]
+      def input = Mock(EventInput)
+      input.isClosed() >> { closed }
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        closed = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.fromValue("ack") >> io.featurehub.sse.model.SSEResultState.ACK
+      def lastEventIds = []
+      def client = recordingClient(submitted, ["userkey=fred": input], [], retryer, lastEventIds)
+      client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    when:
+      client.reconnect()
+      submitted[1].run()
+    then: "the server sends us everything rather than thinking we are up to date"
+      lastEventIds == [null, null]
+  }
+
+  def "an event that isn't the features releases those waiting, but later callers still wait for the features"() {
+    given:
+      def submitted = []
+      def stopped = false
+      def laterDone = null
+      JerseySSEClient client
+      def first = null
+      def events = [
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> name; getId() >> "1"; readData() >> data }
+      ]
+      def input = Mock(EventInput)
+      input.read() >> {
+        if (events) {
+          return events.remove(0)
+        }
+        laterDone = client.poll().done
+        stopped = true
+        null
+      }
+      def retryer = Mock(EdgeRetryService)
+      retryer.isStopped() >> { stopped }
+      retryer.fromValue("bye") >> io.featurehub.sse.model.SSEResultState.BYE
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
+      retryer.convertSSEState(io.featurehub.sse.model.SSEResultState.FEATURES, "bad-data", _, _) >> { throw new RuntimeException("JSON failed") }
+      client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
+    when:
+      first = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      first.done
+      laterDone == false
+    where:
+      name       | data
+      "bye"      | "{}"
+      "features" | "bad-data"
+  }
+
+  // a server evaluated client whose connections are made by the given closure, and whose connection executor just
+  // records what it is asked to run
+  private JerseySSEClient customClient(List<Runnable> submitted, EdgeRetryService retryer, Long workingMs = null,
+                                       Closure<EventInput> connect) {
+    def executor = Mock(java.util.concurrent.ExecutorService)
+    executor.submit(_ as Runnable) >> { Runnable r -> submitted.add(r); null }
+    def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+      new EventOutput()
+    })
+
+    return new JerseySSEClient(null, serverEvalConfig, retryer) {
+      @Override
+      protected java.util.concurrent.ExecutorService connectExecutor() {
+        return executor
+      }
+
+      @Override
+      protected long workingStreamMs() {
+        return workingMs != null ? workingMs : super.workingStreamMs()
+      }
+
+      @Override
+      protected EventInput makeEventSource(String header, String lastEventId) {
+        return connect.call(header, lastEventId)
+      }
+    }
+  }
+
   def "client errors that may go away, such as too many requests, back off and retry rather than stopping"() {
     given:
       def submitted = []
@@ -564,7 +814,7 @@ class JerseySSEClientSpec extends Specification {
     given: "a connection that has sent us something, then times out"
       def submitted = []
       def events = [
-        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "1"; readData() >> "data" }
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "data" }
       ]
       def input = Mock(EventInput)
       input.read() >> {
@@ -574,17 +824,17 @@ class JerseySSEClientSpec extends Specification {
         throw new javax.ws.rs.ProcessingException(new java.net.SocketTimeoutException("Read timed out"))
       }
       def retryer = Mock(EdgeRetryService)
-      retryer.fromValue("ack") >> io.featurehub.sse.model.SSEResultState.ACK
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
       def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
     when:
       client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then:
       1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
-      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_READ_TIMEOUT, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
   }
 
-  def "if a stream fails before it has sent us anything, we back off"() {
+  def "if a stream fails straight away before it has sent us anything, we back off"() {
     given:
       def submitted = []
       def input = Mock(EventInput)
@@ -595,7 +845,7 @@ class JerseySSEClientSpec extends Specification {
       client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then:
-      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_READ_TIMEOUT, client)
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
       0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
   }
 
@@ -635,7 +885,7 @@ class JerseySSEClientSpec extends Specification {
       def submitted = []
       def closed = false
       def events = [
-        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "ack"; getId() >> "1"; readData() >> "data" }
+        Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "data" }
       ]
       def input = Mock(EventInput)
       input.isClosed() >> { closed }
@@ -647,7 +897,7 @@ class JerseySSEClientSpec extends Specification {
         null
       }
       def retryer = Mock(EdgeRetryService)
-      retryer.fromValue("ack") >> io.featurehub.sse.model.SSEResultState.ACK
+      retryer.fromValue("features") >> io.featurehub.sse.model.SSEResultState.FEATURES
       def client = recordingClient(submitted, ["userkey=fred": input], [], retryer)
     when:
       client.contextChange("userkey=fred", "1")

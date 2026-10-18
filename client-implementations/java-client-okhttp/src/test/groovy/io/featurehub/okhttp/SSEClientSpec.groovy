@@ -23,6 +23,8 @@ class SSEClientSpec extends Specification {
   UUID envId
   int connections
   Closure onMakeEventSource
+  // if set, how long a stream must stay open to count as working
+  Long workingMs
 
   def setup() {
     mockEventSource = Mock(EventSource)
@@ -41,6 +43,11 @@ class SSEClientSpec extends Specification {
         connections++
         onMakeEventSource?.call()
         return mockEventSource
+      }
+
+      @Override
+      protected long workingStreamMs() {
+        return workingMs != null ? workingMs : super.workingStreamMs()
       }
     }
   }
@@ -199,9 +206,10 @@ class SSEClientSpec extends Specification {
 
   def "a failure after the stream has sent us something reconnects immediately"() {
     given:
+      retry.fromValue('features') >> SSEResultState.FEATURES
       client.poll()
       esListener.onOpen(mockEventSource, response(200))
-      esListener.onEvent(mockEventSource, '1', 'ack', null)
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
     when:
       esListener.onFailure(mockEventSource, new IOException("dropped"), null)
     then:
@@ -221,6 +229,95 @@ class SSEClientSpec extends Specification {
       lose << [
         { EventSourceListener l -> l.onClosed(null) },
         { EventSourceListener l -> l.onFailure(null, new IOException("connection reset"), null) }
+      ]
+  }
+
+  def "a resumed stream that is quiet until our read timeout, or until the server drops it, reconnects straight away"() {
+    given: "we have features, and have reconnected with the last event id the server is up to date with"
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      client.poll()
+      esListener.onEvent(mockEventSource, '5', 'features', 'data')
+      esListener.onClosed(mockEventSource)
+      client.reconnect()
+      assert request.header("Last-Event-ID") == "5"
+    and: "the new stream opens, and stays open long enough to count as working while sending nothing"
+      workingMs = 0
+      esListener.onOpen(mockEventSource, response(200))
+    when: "a context is built while it is quiet"
+      def built = client.contextChange(null, '0')
+    then: "it doesn't wait, we already have the features"
+      built.done
+    when:
+      lose(esListener)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+      0 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+    where:
+      lose << [
+        { EventSourceListener l -> l.onFailure(null, new SocketTimeoutException("timeout"), null) },
+        { EventSourceListener l -> l.onClosed(null) }
+      ]
+  }
+
+  def "a quiet stream the server says bye on straight away reconnects straight away"() {
+    given:
+      retry.fromValue('bye') >> SSEResultState.BYE
+      client.poll()
+      esListener.onOpen(mockEventSource, response(200))
+    when:
+      esListener.onEvent(mockEventSource, null, 'bye', null)
+      esListener.onClosed(mockEventSource)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
+  }
+
+  def "a stream that only sends an ack and is then dropped straight away backs off"() {
+    given:
+      retry.fromValue('ack') >> SSEResultState.ACK
+      client.poll()
+      esListener.onOpen(mockEventSource, response(200))
+      esListener.onEvent(mockEventSource, '1', 'ack', null)
+    when:
+      lose(esListener)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
+    where:
+      lose << [
+        { EventSourceListener l -> l.onClosed(null) },
+        { EventSourceListener l -> l.onFailure(null, new IOException("connection reset"), null) }
+      ]
+  }
+
+  def "we don't resume with a last event id until we have the context's features"() {
+    given: "a stream that sent an ack with an id, then dropped before any features"
+      retry.fromValue('ack') >> SSEResultState.ACK
+      client.poll()
+      esListener.onEvent(mockEventSource, '5', 'ack', null)
+      esListener.onClosed(mockEventSource)
+    when:
+      client.reconnect()
+    then: "the server sends us everything rather than thinking we are up to date"
+      connections == 2
+      request.header("Last-Event-ID") == null
+  }
+
+  def "an event that isn't the features releases those waiting, but later callers still wait for the features"() {
+    given:
+      retry.fromValue('bye') >> SSEResultState.BYE
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      retry.convertSSEState(SSEResultState.FEATURES, 'bad-data', repository, _) >> { throw new RuntimeException("JSON failed") }
+      def first = client.contextChange(null, '0')
+    when:
+      deliver(esListener)
+      def later = client.contextChange(null, '0')
+    then:
+      first.done
+      !later.done
+    where:
+      deliver << [
+        { EventSourceListener l -> l.onEvent(null, null, 'bye', null) },
+        { EventSourceListener l -> l.onEvent(null, '1', 'features', 'bad-data') }
       ]
   }
 
@@ -282,10 +379,11 @@ class SSEClientSpec extends Specification {
 
   def "the last event id is sent when reconnecting and is kept when an event has no id"() {
     given: "the first connection has no last event id"
+      retry.fromValue('features') >> SSEResultState.FEATURES
       client.poll()
       assert request.header("Last-Event-ID") == null
     when: "we receive an event with an id, then one without, then the server disconnects and we reconnect"
-      esListener.onEvent(mockEventSource, '5', 'ack', 'data')
+      esListener.onEvent(mockEventSource, '5', 'features', 'data')
       esListener.onEvent(mockEventSource, null, 'ack', 'data')
       esListener.onClosed(mockEventSource)
       client.reconnect()
@@ -314,7 +412,7 @@ class SSEClientSpec extends Specification {
     when: "we build the okhttp client"
       def okClient = new SSEClient(repository, config, retry).buildOkHttpClientBuilder(retry).build()
     then:
-      1 * retry.serverConnectTimeoutMs >> 5000
+      retry.serverConnectTimeoutMs >> 5000
       1 * retry.serverReadTimeoutMs >> 180000
       okClient.connectTimeoutMillis() == 5000
       okClient.readTimeoutMillis() == 180000
@@ -567,14 +665,14 @@ class SSEClientSpec extends Specification {
 
   def "an event we fail to apply does not move the last event id on, so the server sends it again"() {
     given:
+      retry.fromValue('features') >> SSEResultState.FEATURES
       client.poll()
-      esListener.onEvent(mockEventSource, '5', 'ack', 'data')
+      esListener.onEvent(mockEventSource, '5', 'features', 'data')
     when: "an event fails to apply, then the server disconnects and we reconnect"
       esListener.onEvent(mockEventSource, '6', 'features', 'bad-data')
       esListener.onClosed(mockEventSource)
       client.reconnect()
     then:
-      retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.convertSSEState(SSEResultState.FEATURES, 'bad-data', repository, _) >> { throw new RuntimeException("JSON failed") }
       request.header("Last-Event-ID") == "5"
   }

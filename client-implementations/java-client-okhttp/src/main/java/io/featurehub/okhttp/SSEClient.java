@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class SSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(SSEClient.class);
@@ -61,6 +62,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under connectionLock.
   private volatile boolean closed;
+  // see workingStreamMs()
+  private final long workingStreamMs;
 
   public SSEClient(
       @Nullable InternalFeatureRepository repository,
@@ -70,6 +73,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
+    this.workingStreamMs = Math.max(1000L, retryer.getServerConnectTimeoutMs());
   }
 
   public SSEClient(@NotNull FeatureHubConfig config, @NotNull EdgeRetryService retryer) {
@@ -108,7 +112,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       }
 
       header = xFeaturehubHeader;
-      lastId = lastEventId;
+      // only resume if we have this context's features. If we don't, a server that thinks we are up to date sends
+      // nothing at all, and callers would wait for features that never come.
+      lastId = contextHasFeatures ? lastEventId : null;
       previous = eventSource;
       eventSource = null;
       currentConnection = connection;
@@ -141,9 +147,9 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       // we need to know if the connection already said "bye" so as to pass the right reconnection
       // event
       final AtomicBoolean connectionSaidBye = new AtomicBoolean(false);
-      // has the server sent us anything? If not, the stream never worked (we couldn't connect, or something accepted
-      // the connection and then dropped it), so losing it must back off rather than reconnect straight away
-      final AtomicBoolean receivedEvent = new AtomicBoolean(false);
+      // has the server sent us anything other than an ack or config, and when did the stream open? See streamWorked.
+      final AtomicBoolean meaningfulEvent = new AtomicBoolean(false);
+      final AtomicLong openedAt = new AtomicLong(0);
       final EdgeReconnector connector = this;
 
       source =
@@ -165,10 +171,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     repository.notify(SSEResultState.FAILURE);
                   }
 
-                  // send this once we are actually disconnected and not before. A stream that closed before sending
-                  // anything never worked, and reconnecting straight away would loop as fast as it is closed.
+                  // send this once we are actually disconnected and not before. A stream that never worked would
+                  // loop as fast as it is closed if we reconnected straight away.
                   retryer.edgeResult(
-                      !receivedEvent.get()
+                      !streamWorked(meaningfulEvent, openedAt)
                           ? EdgeConnectionState.CONNECTION_FAILURE
                           : connectionSaidBye.get()
                               ? EdgeConnectionState.SERVER_SAID_BYE
@@ -194,13 +200,15 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     }
                   }
 
-                  receivedEvent.set(true);
-
                   try {
                     final SSEResultState state = retryer.fromValue(type);
 
                     if (state != null) { // ignore unknown states
                       log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
+
+                      if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
+                        meaningfulEvent.set(true);
+                      }
 
                       if (state == SSEResultState.CONFIG) {
                         retryer.edgeConfigInfo(data);
@@ -223,13 +231,13 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
                       // tell any waiting clients we are now ready
                       if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-                        notifyWaitingClients(connection);
+                        notifyWaitingClients(connection, hasContextFeatures(state));
                       }
                     }
                   } catch (Exception e) {
                     log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
-                    // don't leave anyone waiting on an event we couldn't apply
-                    notifyWaitingClients(connection);
+                    // don't leave anyone waiting on an event we couldn't apply, but we still don't have the features
+                    notifyWaitingClients(connection, false);
                     return;
                   }
 
@@ -276,7 +284,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     // the api key doesn't exist, retrying won't change that. Other 4xx (e.g. 429 too many requests)
                     // may well go away, so we back off and retry below as we never connected.
                     retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-                  } else if (!receivedEvent.get()) {
+                  } else if (!streamWorked(meaningfulEvent, openedAt)) {
                     // the stream never worked (e.g. the host can't be resolved, refused us, answered with a 5xx, or
                     // accepted us and then dropped the connection), so back off before trying again rather than
                     // reconnecting immediately as we do when a working stream drops
@@ -294,6 +302,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
                 @Override
                 public void onOpen(@NotNull EventSource eventSource, @NotNull Response response) {
+                  openedAt.set(System.nanoTime());
                   log.trace("[featurehub-sdk] connected to {}", config.baseUrl());
                 }
               });
@@ -336,6 +345,38 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       // the context changed or we were closed while connecting
       source.cancel();
     }
+  }
+
+  /**
+   * Did the stream work? If it did, losing it is normal (e.g. the server's bye, or our read timeout on a quiet stream)
+   * and we reconnect straight away. If not, reconnecting straight away would loop as fast as it is dropped, so we back
+   * off. A stream that is resumed with a Last-Event-ID the server is up to date with legitimately sends nothing until
+   * it says bye or is disconnected, so staying open long enough counts as working too. One that sends nothing (or only
+   * an ack or config) and is dropped quickly never worked.
+   */
+  private boolean streamWorked(AtomicBoolean meaningfulEvent, AtomicLong openedAt) {
+    if (meaningfulEvent.get()) {
+      return true;
+    }
+
+    final long opened = openedAt.get();
+
+    return opened != 0 && (System.nanoTime() - opened) / 1_000_000L >= workingStreamMs();
+  }
+
+  /**
+   * @return how long a stream must stay open, even sending nothing, to count as having worked. At least a second, and
+   * at least the connect timeout.
+   */
+  protected long workingStreamMs() {
+    return workingStreamMs;
+  }
+
+  /**
+   * @return true if this event means we have the context's features (or have been told we can't have them)
+   */
+  private static boolean hasContextFeatures(SSEResultState state) {
+    return state == SSEResultState.FEATURES || state == SSEResultState.FAILURE;
   }
 
   /**
@@ -392,8 +433,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   /**
    * Tells the waiting clients we are ready, as long as the connection is still current. If a context change has
    * replaced it, those waiting are waiting for the new context's features, not the ones the old connection just sent.
+   *
+   * @param features - true if we now have the context's features, so later callers needn't wait for them
    */
-  private void notifyWaitingClients(@NotNull Object connection) {
+  private void notifyWaitingClients(@NotNull Object connection, boolean features) {
     final List<CompletableFuture<Readiness>> waiting;
 
     synchronized (connectionLock) {
@@ -401,7 +444,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
-      contextHasFeatures = true;
+      if (features) {
+        contextHasFeatures = true;
+      }
+
       waiting = takeWaitingClients();
     }
 

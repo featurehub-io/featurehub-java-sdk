@@ -25,9 +25,6 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.ConnectException;
-import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -66,6 +63,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   });
   private final Client client;
   private final WebTarget target;
+  // see workingStreamMs()
+  private final long workingStreamMs;
   // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
   // A reconnect doesn't change this, the features we have are still for this context. Guarded by connectionLock.
   private boolean contextHasFeatures;
@@ -88,6 +87,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     this.repository = repository == null ? config.getInternalRepository() : repository;
     this.config = config;
     this.retryer = retryer;
+    this.workingStreamMs = Math.max(1000L, retryer.getServerConnectTimeoutMs());
 
     if (config.isServerEvaluation()) {
       log.warn("Jersey SSE client can take up to the read timeout to apply Context attribute changes, it is " +
@@ -179,7 +179,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     closeEventSource();
 
     // stops the connection thread, interrupting any read in progress
-    connector.shutdownNow();
+    connectExecutor().shutdownNow();
 
     // always stop the retryer, even if we are not currently connected, otherwise a pending reconnect will
     // connect again after we have been closed
@@ -288,26 +288,47 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         }
 
         header = xFeaturehubHeader;
-        lastId = lastEventId;
+        // only resume if we have this context's features. If we don't, a server that thinks we are up to date sends
+        // nothing at all, and callers would wait for features that never come.
+        lastId = contextHasFeatures ? lastEventId : null;
         generation = contextGeneration;
       }
 
       try {
         source = makeEventSource(header, lastId);
       } catch (Exception e) {
-        final List<CompletableFuture<Readiness>> waiting;
+        List<CompletableFuture<Readiness>> waiting = null;
+        boolean superseded = false;
 
         // those waiting on this attempt are taken in the same step, so anyone who starts waiting after this waits for
         // the next attempt
         synchronized (connectionLock) {
-          connectPending = false;
-          // the retryer is told below, so leave the reconnect to it
-          retryPending = true;
-          scheduledRetries++;
-          waiting = takeWaitingClients();
+          if (closed) {
+            // we were closed while connecting (which may be why it failed), that's not a failure to report or retry,
+            // and closing has released anyone waiting
+            connectPending = false;
+          } else if (generation != contextGeneration) {
+            // the context changed while we were connecting, so this failure was for the old context. The context
+            // change left the connection to us (we are still pending), so connect again with the new context.
+            superseded = true;
+          } else {
+            connectPending = false;
+            // the retryer is told below, so leave the reconnect to it
+            retryPending = true;
+            scheduledRetries++;
+            waiting = takeWaitingClients();
+          }
         }
 
-        onMakeEventSourceException(e, waiting);
+        if (superseded) {
+          log.trace("[featurehub-sdk] connection for an earlier context failed, connecting for the new one", e);
+          continue;
+        }
+
+        if (waiting != null) {
+          onMakeEventSourceException(e, waiting);
+        }
+
         return;
       }
 
@@ -335,8 +356,9 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
     // we have connected, now what to do?
     boolean connectionSaidBye = false;
-    // has the server sent us anything? If so the stream is working, and losing it is not a failure to connect
-    boolean receivedEvent = false;
+    // has the server sent us anything other than an ack or config, and when did the stream open? See streamWorked.
+    boolean meaningfulEvent = false;
+    final long openedAt = System.nanoTime();
 
     boolean interrupted = false;
 
@@ -382,7 +404,7 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         }
 
         log.error("failed read", e);
-        onReadException(e, receivedEvent, waiting);
+        onReadException(e, streamWorked(meaningfulEvent, openedAt), waiting);
         interrupted = true;
         continue;
       }
@@ -396,8 +418,13 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         }
       }
 
-      receivedEvent = true;
-      connectionSaidBye = processResult(source, connectionSaidBye, data, event);
+      final SSEResultState state = retryer.fromValue(event.getName());
+
+      if (state != null && state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
+        meaningfulEvent = true;
+      }
+
+      connectionSaidBye = processResult(source, connectionSaidBye, data, event, state);
     }
 
     if (retryer.isStopped()) {
@@ -432,9 +459,8 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
 
     if (waiting != null) {
-      // a stream that closed before sending anything never worked, and reconnecting straight away would loop as fast as
-      // it is closed
-      retryer.edgeResult(!receivedEvent ? EdgeConnectionState.CONNECTION_FAILURE :
+      // a stream that never worked would loop as fast as it is closed if we reconnected straight away
+      retryer.edgeResult(!streamWorked(meaningfulEvent, openedAt) ? EdgeConnectionState.CONNECTION_FAILURE :
         connectionSaidBye ? EdgeConnectionState.SERVER_SAID_BYE : EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
 
       connectionLost(waiting);
@@ -451,10 +477,35 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
     }
   }
 
-  private boolean processResult(EventInput source, boolean connectionSaidBye, String data, InboundEvent event) {
-    try {
-      final SSEResultState state = retryer.fromValue(event.getName());
+  /**
+   * Did the stream work? If it did, losing it is normal (e.g. the server's bye, or our read timeout on a quiet stream)
+   * and we reconnect straight away. If not, reconnecting straight away would loop as fast as it is dropped, so we back
+   * off. A stream that is resumed with a Last-Event-ID the server is up to date with legitimately sends nothing until
+   * it says bye or is disconnected, so staying open long enough counts as working too. One that sends nothing (or only
+   * an ack or config) and is dropped quickly never worked.
+   */
+  private boolean streamWorked(boolean meaningfulEvent, long openedAt) {
+    return meaningfulEvent || (System.nanoTime() - openedAt) / 1_000_000L >= workingStreamMs();
+  }
 
+  /**
+   * @return how long a stream must stay open, even sending nothing, to count as having worked. At least a second, and
+   * at least the connect timeout.
+   */
+  protected long workingStreamMs() {
+    return workingStreamMs;
+  }
+
+  /**
+   * @return true if this event means we have the context's features (or have been told we can't have them)
+   */
+  private static boolean hasContextFeatures(SSEResultState state) {
+    return state == SSEResultState.FEATURES || state == SSEResultState.FAILURE;
+  }
+
+  private boolean processResult(EventInput source, boolean connectionSaidBye, String data, InboundEvent event,
+                                @Nullable SSEResultState state) {
+    try {
       if (log.isTraceEnabled()) {
         log.trace("[featurehub-sdk] decode packet (state {}) {}:{}", state, event.getName(), data);
       }
@@ -481,13 +532,13 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
 
         // tell any waiting clients we are now ready
         if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-          notifyWaitingClients(source);
+          notifyWaitingClients(source, hasContextFeatures(state));
         }
       }
     } catch (Exception e) {
       log.error("[featurehub-sdk] failed to decode packet {}:{}", event.getName(), data, e);
-      // don't leave anyone waiting on an event we couldn't apply
-      notifyWaitingClients(source);
+      // don't leave anyone waiting on an event we couldn't apply, but we still don't have the features
+      notifyWaitingClients(source, false);
       return connectionSaidBye;
     }
 
@@ -507,8 +558,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
   /**
    * Tells the waiting clients we are ready, as long as the connection is still current. If a context change has
    * replaced it, those waiting are waiting for the new context's features, not the ones the old connection just sent.
+   *
+   * @param features - true if we now have the context's features, so later callers needn't wait for them
    */
-  private void notifyWaitingClients(@NotNull EventInput source) {
+  private void notifyWaitingClients(@NotNull EventInput source, boolean features) {
     final List<CompletableFuture<Readiness>> waiting;
 
     synchronized (connectionLock) {
@@ -516,7 +569,10 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
         return;
       }
 
-      contextHasFeatures = true;
+      if (features) {
+        contextHasFeatures = true;
+      }
+
       waiting = takeWaitingClients();
     }
 
@@ -554,54 +610,36 @@ public class JerseySSEClient implements EdgeService, EdgeReconnector {
    */
   private void onMakeEventSourceException(Exception e, List<CompletableFuture<Readiness>> waiting) {
     log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl());
-    // Jersey wraps network failures (e.g. in a ProcessingException), so look at the causes as well
-    if (causedBy(e, ConnectException.class) || causedBy(e, UnknownHostException.class)) {
-      retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
-    } else if (causedBy(e, SocketException.class)) {
-      retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
-    } else if (e instanceof WebApplicationException) {
-      WebApplicationException wae = (WebApplicationException) e;
-      final Response response = wae.getResponse();
-      final int status = response == null ? 0 : response.getStatus();
-      if (status == 401 || status == 403) {
-        // we aren't allowed in, retrying won't change that
-        retryer.edgeResult(EdgeConnectionState.FAILURE, this);
-      } else if (status == 400 || status == 404) {
-        // the api key doesn't exist, retrying won't change that
-        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
-      } else if (response != null && response.getStatusInfo().getFamily() == Response.Status.Family.CLIENT_ERROR) {
-        // other client errors (e.g. 429 too many requests) may well go away, so back off and try again
-        retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
-      } else {
-        retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
-      }
+    final Response response = e instanceof WebApplicationException ? ((WebApplicationException) e).getResponse() : null;
+    final int status = response == null ? 0 : response.getStatus();
+
+    if (status == 401 || status == 403) {
+      // we aren't allowed in, retrying won't change that
+      retryer.edgeResult(EdgeConnectionState.FAILURE, this);
+    } else if (status == 400 || status == 404) {
+      // the api key doesn't exist, retrying won't change that
+      retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, this);
     } else {
-      retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, this);
+      // anything else (we couldn't connect or resolve the host, it timed out, too many requests, a 5xx, a stream that
+      // never worked, whether or not Jersey wraps it) may well go away, so back off from the connect timeout and try
+      // again, as the OKHttp client does
+      retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
     }
 
     connectionLost(waiting);
   }
 
-  private static boolean causedBy(@Nullable Throwable e, Class<? extends Throwable> type) {
-    for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
-      if (type.isInstance(t)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   /**
-   * Reading from a connection we made failed. If the stream was working (it had sent us something) this is no
-   * different to the server disconnecting us, e.g. it has been idle for the read timeout, so reconnect straight away
-   * as the OKHttp client does. Otherwise treat it as a failure to connect, and back off.
+   * Reading from a connection we made failed. If the stream was working (see streamWorked) this is no different to
+   * the server disconnecting us, e.g. it has been quiet for the read timeout, so reconnect straight away as the OKHttp
+   * client does. Otherwise treat it as a failure to connect, and back off.
    *
+   * @param streamWorked - see streamWorked
    * @param waiting - those who were waiting on the connection
    */
-  private void onReadException(Exception e, boolean receivedEvent,
+  private void onReadException(Exception e, boolean streamWorked,
                                List<CompletableFuture<Readiness>> waiting) {
-    if (receivedEvent && repository.getReadiness() != Readiness.Failed) {
+    if (streamWorked && repository.getReadiness() != Readiness.Failed) {
       retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, this);
       connectionLost(waiting);
     } else {
