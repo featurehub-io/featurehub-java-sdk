@@ -103,4 +103,32 @@ class EdgeRetryerSpec extends Specification {
       0 * reconnector.reconnect()
 
   }
+
+  def "a cancelled reconnect doesn't reconnect, even once it has backed off"() {
+    given: "a reconnect waiting to run"
+      Runnable task = null
+      mockExecutor.submit(_ as Runnable) >> { Runnable r -> task = r; Mock(java.util.concurrent.Future) }
+      retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+    when:
+      retryer.cancelReconnects()
+      task.run()
+    then:
+      0 * reconnector.reconnect()
+  }
+
+  def "cancelling interrupts a reconnect that is backing off, so later reconnects aren't held up behind it"() {
+    given: "a real single threaded retryer, with a long backoff in progress"
+      def real = new EdgeRetryer(100, 100, 100, 10, 60000, 60000)
+      def reconnected = new java.util.concurrent.CountDownLatch(1)
+      def stale = Mock(EdgeReconnector)
+      real.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, stale)
+    when: "it is cancelled and a reconnect that doesn't back off is asked for"
+      real.cancelReconnects()
+      real.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, { reconnected.countDown() } as EdgeReconnector)
+    then: "it happens straight away"
+      reconnected.await(5, java.util.concurrent.TimeUnit.SECONDS)
+      0 * stale.reconnect()
+    cleanup:
+      real.close()
+  }
 }

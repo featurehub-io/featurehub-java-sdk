@@ -101,8 +101,7 @@ class SSEClientSpec extends Specification {
       1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * retry.fromValue('bye') >> SSEResultState.BYE
-      2 * repository.getReadiness() >> Readiness.NotReady
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.getReadiness() >> Readiness.NotReady
       2 * config.getEnvironmentId() >> envId
       _ * retry.isStopped()
       0 * _
@@ -118,8 +117,7 @@ class SSEClientSpec extends Specification {
       1 * retry.convertSSEState(SSEResultState.FEATURES, "sausage", repository,envId)
       1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
       1 * retry.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, client)
-      1 * repository.notify(SSEResultState.FAILURE)
-      2 * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.getReadiness() >> Readiness.NotReady
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * config.getEnvironmentId() >> envId
       _ * retry.isStopped()
@@ -134,8 +132,7 @@ class SSEClientSpec extends Specification {
     then:
       1 * config.getRealtimeUrl() >> "http://localhost"
       2 * config.baseUrl() >> "http://localhost" // used by trace logs
-      2 * repository.getReadiness() >> Readiness.NotReady
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.getReadiness() >> Readiness.NotReady
       1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
       _ * retry.isStopped()
       0 * _
@@ -164,10 +161,53 @@ class SSEClientSpec extends Specification {
       new IOException("unexpected end of stream")  | 0
       null                                         | 429 // too many requests may well go away, so don't stop
       null                                         | 408
+      null                                         | 401 // only a 400 or 404 means retrying is pointless
+      null                                         | 403
+  }
+
+  def "a failure we will retry doesn't mark us as failed, even if we never had features"() {
+    given:
+      config.serverEvaluation >> true
+      def future = client.contextChange("header", '0')
+    when:
+      esListener.onFailure(mockEventSource, new UnknownHostException("does-not-exist"), null)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      _ * repository.getReadiness() >> Readiness.NotReady
+      0 * repository.notify(*_)
+      future.get() == Readiness.NotReady
+  }
+
+  def "once the retryer has stopped after we lost the connection, having never had features means we failed"() {
+    given:
+      config.serverEvaluation >> true
+      def future = client.contextChange("header", '0')
+    when:
+      esListener.onFailure(mockEventSource, null, response(404))
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, client)
+      _ * retry.isStopped() >> true
+      _ * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.notify(SSEResultState.FAILURE)
+      future.done
+  }
+
+  def "a failure event with no data is still recorded, and stops the retryer"() {
+    given:
+      config.serverEvaluation >> true
+      def future = client.contextChange("header", '0')
+    when:
+      esListener.onEvent(mockEventSource, null, 'failure', null)
+    then:
+      1 * retry.fromValue('failure') >> SSEResultState.FAILURE
+      1 * retry.convertSSEState(SSEResultState.FAILURE, null, repository, _)
+      1 * retry.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, client)
+      future.done
   }
 
   def "those who start waiting on the replacement connection are not released when the old one is lost"() {
     given: "a caller waiting on the first connection"
+      config.serverEvaluation >> true
       def first = client.contextChange(null, '0')
       def later = null
     when: "it closes, and before it has finished a reconnect is made and another caller starts waiting on it"
@@ -307,6 +347,7 @@ class SSEClientSpec extends Specification {
       retry.fromValue('bye') >> SSEResultState.BYE
       retry.fromValue('features') >> SSEResultState.FEATURES
       retry.convertSSEState(SSEResultState.FEATURES, 'bad-data', repository, _) >> { throw new RuntimeException("JSON failed") }
+      config.serverEvaluation >> true
       def first = client.contextChange(null, '0')
     when:
       deliver(esListener)
@@ -321,21 +362,18 @@ class SSEClientSpec extends Specification {
       ]
   }
 
-  def "when i context change with a client side key, it gives me a future which resolves readyness"() {
+  def "a client side key's context change doesn't wait for features, it only makes sure we are connecting"() {
     when: "i change context"
       def future = client.contextChange("header", '0')
-      esListener.onEvent(mockEventSource, "1", "features", "data")
-    then:
+    then: "it is done straight away, and the header isn't sent as client side contexts never change the connection"
       1 * config.getRealtimeUrl() >> "http://localhost"
-      1 * retry.convertSSEState(SSEResultState.FEATURES, "data", repository,envId)
       1 * config.isServerEvaluation() >> false
-      1 * repository.getReadiness() >> Readiness.Failed
-      1 * retry.edgeResult(EdgeConnectionState.SUCCESS, client)
-      1 * retry.fromValue('features') >> SSEResultState.FEATURES
-      future.get() == Readiness.Failed
-      1 * config.getEnvironmentId() >> envId
+      1 * repository.getReadiness() >> Readiness.NotReady
       _ * retry.isStopped()
       0 * _
+      future.get() == Readiness.NotReady
+      connections == 1
+      request.header("x-featurehub") == null
   }
 
   def "when i context change with a server side key, it creates a request with the header"() {
@@ -493,14 +531,15 @@ class SSEClientSpec extends Specification {
 
   def "if we cannot even make the connection, we try again later without leaving anyone waiting"() {
     given:
+      config.serverEvaluation >> true
       onMakeEventSource = { throw new RuntimeException("bad url") }
     when:
       def future = client.contextChange("header", '0')
     then:
-      repository.getReadiness() >>> [Readiness.NotReady, Readiness.Failed]
-      1 * repository.notify(SSEResultState.FAILURE)
+      _ * repository.getReadiness() >> Readiness.NotReady
+      0 * repository.notify(*_)
       1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
-      future.get(5, java.util.concurrent.TimeUnit.SECONDS) == Readiness.Failed
+      future.get(5, java.util.concurrent.TimeUnit.SECONDS) == Readiness.NotReady
     when: "the retry connects and features arrive"
       onMakeEventSource = null
       client.reconnect()
@@ -512,6 +551,7 @@ class SSEClientSpec extends Specification {
 
   def "when the connection is lost, anyone waiting is released rather than waiting for the reconnect"() {
     given: "a caller waiting for features"
+      config.serverEvaluation >> true
       def future = client.contextChange("header", '0')
     when: "the connection is lost before any arrive"
       lose(esListener)
@@ -524,8 +564,9 @@ class SSEClientSpec extends Specification {
       ]
   }
 
-  def "when the server rejects us, we stop retrying and release anyone waiting"() {
+  def "when the server tells us the api key doesn't exist, we stop retrying and release anyone waiting"() {
     given: "a caller waiting for features"
+      config.serverEvaluation >> true
       def future = client.contextChange("header", '0')
       def response = new okhttp3.Response.Builder()
         .request(new Request.Builder().url("http://localhost").build())
@@ -539,14 +580,13 @@ class SSEClientSpec extends Specification {
       future.done
     where:
       status | state
-      401    | EdgeConnectionState.FAILURE
-      403    | EdgeConnectionState.FAILURE
       404    | EdgeConnectionState.API_KEY_NOT_FOUND
       400    | EdgeConnectionState.API_KEY_NOT_FOUND
   }
 
-  def "a context change waits for features from a connection that hasn't sent them yet"() {
+  def "a server evaluated context change waits for features from a connection that hasn't sent them yet"() {
     given: "we have connected, but no features have arrived"
+      config.serverEvaluation >> true
       client.poll()
     when: "a context is built"
       def future = client.contextChange(null, '0')
@@ -615,23 +655,26 @@ class SSEClientSpec extends Specification {
       connections == 2
   }
 
-  def "a reconnect left over from an earlier backoff doesn't cut a later backoff short"() {
+  def "a server evaluated context change while the retryer is backing off cancels the retryer's reconnect"() {
     given: "the connection fails, so the retryer starts backing off"
       config.serverEvaluation >> true
       client.contextChange("header", '0')
       esListener.onFailure(null, new IOException("dropped"), null)
-    and: "the context changes, connecting straight away, and that connection fails too, so a second backoff starts"
+    when: "the context changes, connecting straight away"
       client.contextChange("header2", '0')
-      esListener.onFailure(null, new IOException("dropped"), null)
-    when: "the first backoff finishes"
-      client.reconnect()
-    then: "it leaves the reconnect to the second"
+    then: "the old backoff can't cut a later one short, or hold a later reconnect up behind it"
+      1 * retry.cancelReconnects()
       connections == 2
-    when: "the second backoff finishes"
-      client.reconnect()
+  }
+
+  def "a context change that doesn't override a backoff doesn't cancel reconnects"() {
+    given:
+      config.serverEvaluation >> true
+      client.contextChange("header", '0')
+    when:
+      client.contextChange("header2", '0')
     then:
-      connections == 3
-      request.header("x-featurehub") == "header2"
+      0 * retry.cancelReconnects()
   }
 
   def "once we have features, a reconnect doesn't make contexts wait for the new connection to send them again"() {
@@ -653,13 +696,16 @@ class SSEClientSpec extends Specification {
       future.done
   }
 
-  def "if the wrong version of OKHttp stops us connecting, we don't retry and nobody is left waiting"() {
+  def "if the wrong version of OKHttp stops us connecting, we don't retry, we have failed and nobody is left waiting"() {
     given:
+      config.serverEvaluation >> true
       onMakeEventSource = { throw new NoSuchFieldError("wrong okhttp") }
     when:
       def future = client.contextChange("header", '0')
     then:
       0 * retry.edgeResult(*_)
+      _ * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.notify(SSEResultState.FAILURE)
       future.done
   }
 
@@ -721,6 +767,7 @@ class SSEClientSpec extends Specification {
 
   def "closing completes anyone waiting for features"() {
     given:
+      config.serverEvaluation >> true
       def future = client.contextChange("header", '0')
     when:
       client.close()

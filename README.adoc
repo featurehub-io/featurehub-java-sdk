@@ -80,6 +80,10 @@ and reconnect again, ensuring it has received all feature updates in the meantim
 
 - *Active REST* - This is where the client will make a request for updated state every X seconds regardless if anyone is using it. You specify this in code by choosing `fhConfig.restActive().init()`.
 
+With *Client Evaluated* keys and streaming, `init()` (and building any `ClientContext`) starts the connection but does
+not wait for features to arrive, as every context is evaluated locally against the same repository. Use `waitForReady()`, a
+readiness listener or `getReadiness()` if you need to know when features have arrived.
+
 If you are using *Server Evaluated* keys, you do not want to call `init()`. You need to create your first
 `ClientContext` (see below) and call `build()` - which will trigger a connection, passing all the requisite
 data to the FeatureHub server for evaluation.
@@ -555,16 +559,19 @@ a custom `EdgeService` or diagnosing connectivity problems from logs:
 
 |`CONNECTION_FAILURE`
 |SSE + REST
-|Low-level failure (e.g. unknown host, refused connection). Retried with exponential backoff.
+|Any failure that may go away (e.g. unknown host, refused connection, a stream that never worked, or Edge answering
+with a 401, 403, 429 or 5xx). Retried with exponential backoff. The repository's readiness is left as it is, so
+it stays `NotReady` until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`
 |SSE + REST
-|Terminal — the API key is not recognised by the server. The repository transitions to `Failed` and
-the SDK stops retrying.
+|Terminal — Edge answered with a 400 or 404 (the API key is not recognised), or sent a `failure` event. These are the
+only responses the SDK treats as permanent, whichever client you use. If no features had arrived, the repository
+transitions to `Failed`, and the SDK stops retrying.
 
 |`FAILURE`
 |SSE + REST
-|Terminal failure (e.g. 401/403 from Edge). The SDK stops retrying.
+|Terminal failure. The SDK stops retrying. The supplied clients no longer use it for any HTTP status.
 |===
 
 == Feature Interceptors

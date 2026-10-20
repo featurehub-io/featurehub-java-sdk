@@ -20,6 +20,13 @@ public interface EdgeRetryService {
   void convertSSEState(@NotNull SSEResultState state, String data, @NotNull InternalFeatureRepository
                        repository, UUID environmentId);
 
+  /**
+   * Any reconnects that are waiting to happen (e.g. backing off) are no longer wanted, so they must not reconnect.
+   * Used when a client has already connected again for a new context.
+   */
+  default void cancelReconnects() {
+  }
+
   void close();
 
   ExecutorService getExecutorService();

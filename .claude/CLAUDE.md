@@ -73,7 +73,7 @@ client-java-api   (OpenAPI-generated models)
 ```java
 FeatureHubConfig fhConfig = new EdgeFeatureHubConfig(edgeUrl, apiKey);
 fhConfig.streaming();          // or .restActive() / .restPassive()
-fhConfig.init();               // blocks until first feature fetch
+fhConfig.init();               // starts the connection; with streaming, client evaluated keys don't wait for features
 
 ClientContext ctx = fhConfig.newContext()
   .userKey("user-123")
@@ -82,6 +82,35 @@ ClientContext ctx = fhConfig.newContext()
 
 boolean enabled = ctx.isEnabled("MY_FEATURE");
 ```
+
+### Client vs Server Evaluation — isolation model
+
+The two `ClientContext` implementations have fundamentally different sharing rules. Do not design
+code that blurs them.
+
+- **`ClientEvalFeatureContext`** (client-evaluated API key) — all strategy evaluation happens locally
+  in the SDK. The repository holds the full feature set with strategies, so **one `FeatureRepository`
+  and one `EdgeService` are shared by any number of contexts**, each just a bag of attributes read
+  against the same repository state. `build()` only calls `contextChange(null, "0")` to make sure the
+  connection has started; it never changes the context on the Edge, and evaluation does not wait on it.
+  `newContext()` returns a new instance every call.
+
+- **`ServerEvalFeatureContext`** (server-evaluated API key) — the context's attributes are sent to the
+  Edge server (`contextChange(header, sha)`), which evaluates and returns values for that one context
+  only. The repository therefore holds **one context's** values. Each server-evaluated context needs
+  its **own, completely isolated set**: its own `FeatureHubConfig`, `FeatureRepository`, `EdgeService`
+  (polling or SSE) and `ServerEvalFeatureContext`. `EdgeFeatureHubConfig.newContext()` returns the
+  same single `ServerEvalFeatureContext` every time for this reason. Changing the attributes and calling
+  `build()` replaces that one context's state; it is not a way to serve several users at once.
+
+**Rules when writing or modifying code:**
+
+1. Never try to make one repository/Edge serve several server-evaluated contexts at once (per-context
+   caches, multiplexed connections, per-user feature maps, etc.). That is not a supported model.
+2. Never add `contextChange` handling, waiting or readiness logic to the client-evaluated path. It
+   doesn't need it.
+3. Concurrency in an `EdgeService`'s `contextChange` only has to handle a single context replacing its
+   own previous attributes (and the connection being superseded), not several contexts interleaving.
 
 ### Jackson Abstraction Pattern
 

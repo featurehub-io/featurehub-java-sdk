@@ -4,11 +4,10 @@ import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
-import io.featurehub.client.edge.EdgeConnectionState;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.StreamingConnectionTracker;
 import io.featurehub.client.utils.SdkVersion;
-import io.featurehub.sse.model.SSEResultState;
 import okhttp3.*;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
@@ -21,47 +20,21 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
-import java.net.SocketTimeoutException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class SSEClient implements EdgeService, EdgeReconnector {
   private static final Logger log = LoggerFactory.getLogger(SSEClient.class);
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
-  private volatile EventSource eventSource;
   // the okhttp client is made on first use. Guarded by clientLock, as two connections can be made at once (e.g. a
   // context change while a connection is still being made).
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
   private final Object clientLock = new Object();
-  private volatile String xFeaturehubHeader;
-  @Nullable private volatile String lastEventId;
-  // identifies the connection whose callbacks we act on. A connection that has been replaced (e.g. by a context
-  // change) or closed may still deliver events, closes or failures, and these must be ignored.
-  @Nullable private volatile Object currentConnection;
-  private final Object connectionLock = new Object();
   private final EdgeRetryService retryer;
-  // have we had features (or been told we can't have them) for the current context? Until we have, callers must wait.
-  // A reconnect doesn't change this, the features we have are still for this context. Guarded by connectionLock.
-  private boolean contextHasFeatures;
-  // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then.
-  // Guarded by connectionLock.
-  private boolean retryPending;
-  // how many reconnects we have asked the retryer for that it hasn't made yet. A context change can connect while one
-  // is still backing off, and if that connection fails too, only the last reconnect may connect, otherwise the earlier
-  // one cuts the later backoff short. Guarded by connectionLock.
-  private int scheduledRetries;
-  // added to by callers' threads and drained by okhttp's threads. Guarded by connectionLock.
-  private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
-  // once closed we never connect again. Set under connectionLock.
-  private volatile boolean closed;
+  private final StreamingConnectionTracker<EventSource> connections;
   // see workingStreamMs()
   private final long workingStreamMs;
 
@@ -73,7 +46,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
         repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
     this.config = config;
     this.retryer = retryer;
-    this.workingStreamMs = Math.max(1000L, retryer.getServerConnectTimeoutMs());
+    this.connections = new StreamingConnectionTracker<>(this.repository, config, retryer);
+    this.workingStreamMs = StreamingConnectionTracker.workingStreamMs(retryer);
   }
 
   public SSEClient(@NotNull FeatureHubConfig config, @NotNull EdgeRetryService retryer) {
@@ -82,7 +56,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public Future<Readiness> poll() {
-    initEventSource(false);
+    connect(connections.claim(false));
 
     return CompletableFuture.completedFuture(repository.getReadiness());
   }
@@ -93,63 +67,30 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   /**
-   * Makes a new connection unless one is already current (connecting or connected), or the retryer is backing off
-   * before reconnecting.
-   *
-   * @param retrying - true if this is the retryer reconnecting once it has backed off
+   * Makes the connection we have claimed, if any.
    */
-  private void initEventSource(boolean retrying) {
-    final Object connection = new Object();
-    final String header;
-    final String lastId;
-    final EventSource previous;
-
-    // read the context and claim the connection together, so a concurrent context change either happens entirely
-    // before (and we connect with the new context) or entirely after (and it replaces us)
-    synchronized (connectionLock) {
-      if (closed || retryer.isStopped() || currentConnection != null || (retryPending && !retrying)) {
-        return;
-      }
-
-      header = xFeaturehubHeader;
-      // only resume if we have this context's features. If we don't, a server that thinks we are up to date sends
-      // nothing at all, and callers would wait for features that never come.
-      lastId = contextHasFeatures ? lastEventId : null;
-      previous = eventSource;
-      eventSource = null;
-      currentConnection = connection;
-      retryPending = false;
-    }
-
-    if (previous != null) {
-      // should already be gone, but make sure we never leave a connection open. Its callbacks are ignored.
-      previous.cancel();
+  private void connect(@Nullable StreamingConnectionTracker.Connection<EventSource> connection) {
+    if (connection == null) {
+      return;
     }
 
     EventSource source = null;
-    boolean wrongLibrary = false;
 
     try {
       Request.Builder reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
 
-      if (header != null) {
-        reqBuilder = reqBuilder.addHeader("x-featurehub", header);
+      if (connection.getHeader() != null) {
+        reqBuilder = reqBuilder.addHeader("x-featurehub", connection.getHeader());
       }
 
-      if (lastId != null) {
-        reqBuilder = reqBuilder.addHeader("Last-Event-ID", lastId);
+      if (connection.getLastEventId() != null) {
+        reqBuilder = reqBuilder.addHeader("Last-Event-ID", connection.getLastEventId());
       }
 
       reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
 
       Request request = buildRequest(reqBuilder);
 
-      // we need to know if the connection already said "bye" so as to pass the right reconnection
-      // event
-      final AtomicBoolean connectionSaidBye = new AtomicBoolean(false);
-      // has the server sent us anything other than an ack or config, and when did the stream open? See streamWorked.
-      final AtomicBoolean meaningfulEvent = new AtomicBoolean(false);
-      final AtomicLong openedAt = new AtomicLong(0);
       final EdgeReconnector connector = this;
 
       source =
@@ -158,30 +99,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
               new EventSourceListener() {
                 @Override
                 public void onClosed(@NotNull EventSource eventSource) {
-                  final List<CompletableFuture<Readiness>> waiting = release(connection);
-
-                  if (waiting == null) {
+                  // send this once we are actually disconnected and not before
+                  if (!connections.connectionLost(connection, 0, workingStreamMs(), connector)) {
                     log.trace("[featurehub-sdk] superseded connection closed, ignoring");
-                    return;
                   }
-
-                  log.trace("[featurehub-sdk] closed");
-
-                  if (repository.getReadiness() == Readiness.NotReady) {
-                    repository.notify(SSEResultState.FAILURE);
-                  }
-
-                  // send this once we are actually disconnected and not before. A stream that never worked would
-                  // loop as fast as it is closed if we reconnected straight away.
-                  retryer.edgeResult(
-                      !streamWorked(meaningfulEvent, openedAt)
-                          ? EdgeConnectionState.CONNECTION_FAILURE
-                          : connectionSaidBye.get()
-                              ? EdgeConnectionState.SERVER_SAID_BYE
-                              : EdgeConnectionState.SERVER_WAS_DISCONNECTED,
-                      connector);
-
-                  connectionLost(waiting);
                 }
 
                 @Override
@@ -190,66 +111,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @Nullable String id,
                     @Nullable String type,
                     @Nullable String data) {
-                  // a context change may have replaced this connection while events were still arriving, anything
-                  // it sends is for the old context. Only the check and the id are done under the lock, processing
-                  // calls into listeners and futures which must never run while we hold it.
-                  synchronized (connectionLock) {
-                    if (currentConnection != connection) {
-                      log.trace("[featurehub-sdk] ignoring event {} from superseded connection", type);
-                      return;
-                    }
-                  }
-
-                  try {
-                    final SSEResultState state = retryer.fromValue(type);
-
-                    if (state != null) { // ignore unknown states
-                      log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
-
-                      if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-                        meaningfulEvent.set(true);
-                      }
-
-                      if (state == SSEResultState.CONFIG) {
-                        retryer.edgeConfigInfo(data);
-                      } else if (data != null) {
-                        retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
-                      }
-
-                      // reset the timer
-                      if (state == SSEResultState.FEATURES) {
-                        retryer.edgeResult(EdgeConnectionState.SUCCESS, connector);
-                      }
-
-                      if (state == SSEResultState.BYE) {
-                        connectionSaidBye.set(true);
-                      }
-
-                      if (state == SSEResultState.FAILURE) {
-                        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-                      }
-
-                      // tell any waiting clients we are now ready
-                      if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
-                        notifyWaitingClients(connection, hasContextFeatures(state));
-                      }
-                    }
-                  } catch (Exception e) {
-                    log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
-                    // don't leave anyone waiting on an event we couldn't apply, but we still don't have the features
-                    notifyWaitingClients(connection, false);
-                    return;
-                  }
-
-                  // only record the id once the event has been applied, so if we failed to apply it a reconnect
-                  // has the server send it again
-                  if (id != null) {
-                    synchronized (connectionLock) {
-                      if (currentConnection == connection) {
-                        lastEventId = id;
-                      }
-                    }
-                  }
+                  connections.process(connection, connector, type, id, data);
                 }
 
                 @Override
@@ -257,52 +119,19 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @NotNull EventSource eventSource,
                     @Nullable Throwable t,
                     @Nullable Response response) {
-                  final List<CompletableFuture<Readiness>> waiting = release(connection);
-
-                  if (waiting == null) {
-                    // includes the failure caused by cancelling the connection on a context change, which
-                    // must not trigger a reconnect as the context change has already made a new connection
-                    log.trace("[featurehub-sdk] superseded connection failed, ignoring", t);
-                    return;
-                  }
-
-                  if (repository.getReadiness() == Readiness.NotReady) {
-                    log.trace(
-                      "[featurehub-sdk] failed to connect to {} - {}",
-                      config.baseUrl(),
-                      response,
-                      t);
-                    repository.notify(SSEResultState.FAILURE);
-                  }
-
-                  final int status = response == null ? 0 : response.code();
-
-                  if (status == 401 || status == 403) {
-                    // we aren't allowed in, retrying won't change that
-                    retryer.edgeResult(EdgeConnectionState.FAILURE, connector);
-                  } else if (status == 400 || status == 404) {
-                    // the api key doesn't exist, retrying won't change that. Other 4xx (e.g. 429 too many requests)
-                    // may well go away, so we back off and retry below as we never connected.
-                    retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, connector);
-                  } else if (!streamWorked(meaningfulEvent, openedAt)) {
-                    // the stream never worked (e.g. the host can't be resolved, refused us, answered with a 5xx, or
-                    // accepted us and then dropped the connection), so back off before trying again rather than
-                    // reconnecting immediately as we do when a working stream drops
-                    retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, connector);
-                  } else if (repository.getReadiness() == Readiness.Failed && t
-                      instanceof SocketTimeoutException) {
-                    // if it connects yet times out while still failed, lets back off
-                    retryer.edgeResult(EdgeConnectionState.SERVER_READ_TIMEOUT, connector);
+                  // a superseded connection includes the failure caused by cancelling the connection on a context
+                  // change, which must not trigger a reconnect as the context change has already made a new connection
+                  if (connections.connectionLost(connection, response == null ? 0 : response.code(), workingStreamMs(),
+                    connector)) {
+                    log.trace("[featurehub-sdk] failed to connect to {} - {}", config.baseUrl(), response, t);
                   } else {
-                    retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, connector);
+                    log.trace("[featurehub-sdk] superseded connection failed, ignoring", t);
                   }
-
-                  connectionLost(waiting);
                 }
 
                 @Override
                 public void onOpen(@NotNull EventSource eventSource, @NotNull Response response) {
-                  openedAt.set(System.nanoTime());
+                  connection.opened();
                   log.trace("[featurehub-sdk] connected to {}", config.baseUrl());
                 }
               });
@@ -311,57 +140,22 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       log.error(
           "You appear to have the wrong version of OKHttp in your classpath or a conflicting version and FeatureHub cannot start",
           noClassDefFoundError);
-      wrongLibrary = true;
+      // retrying won't fix this
+      connections.abandon(connection);
+      return;
     } catch (Throwable e) {
       log.error("failed", e);
     }
 
-    boolean superseded = false;
-
-    synchronized (connectionLock) {
-      if (currentConnection == connection) {
-        eventSource = source;
-
-        if (source == null) {
-          // we failed to even create the connection, release it so the retry can try again
-          currentConnection = null;
-
-          if (!wrongLibrary) {
-            retryPending = true;
-            scheduledRetries++;
-          }
-        }
-      } else {
-        superseded = true;
-      }
-    }
-
     if (source == null) {
-      if (!superseded) {
+      // we failed to even create the connection, try again later
+      if (connections.connectionLost(connection, 0, workingStreamMs(), this)) {
         log.error("Unable to connect to {}", this.config.getRealtimeUrl());
-        failedToConnect(wrongLibrary);
       }
-    } else if (superseded) {
+    } else if (!connections.attach(connection, source)) {
       // the context changed or we were closed while connecting
       source.cancel();
     }
-  }
-
-  /**
-   * Did the stream work? If it did, losing it is normal (e.g. the server's bye, or our read timeout on a quiet stream)
-   * and we reconnect straight away. If not, reconnecting straight away would loop as fast as it is dropped, so we back
-   * off. A stream that is resumed with a Last-Event-ID the server is up to date with legitimately sends nothing until
-   * it says bye or is disconnected, so staying open long enough counts as working too. One that sends nothing (or only
-   * an ack or config) and is dropped quickly never worked.
-   */
-  private boolean streamWorked(AtomicBoolean meaningfulEvent, AtomicLong openedAt) {
-    if (meaningfulEvent.get()) {
-      return true;
-    }
-
-    final long opened = openedAt.get();
-
-    return opened != 0 && (System.nanoTime() - opened) / 1_000_000L >= workingStreamMs();
   }
 
   /**
@@ -370,114 +164,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
    */
   protected long workingStreamMs() {
     return workingStreamMs;
-  }
-
-  /**
-   * @return true if this event means we have the context's features (or have been told we can't have them)
-   */
-  private static boolean hasContextFeatures(SSEResultState state) {
-    return state == SSEResultState.FEATURES || state == SSEResultState.FAILURE;
-  }
-
-  /**
-   * We couldn't even make the connection. Unless it is a problem with the libraries we are using (which retrying won't
-   * fix), try again later. Either way don't leave anyone waiting.
-   */
-  private void failedToConnect(boolean wrongLibrary) {
-    if (repository.getReadiness() == Readiness.NotReady) {
-      repository.notify(SSEResultState.FAILURE);
-    }
-
-    if (!wrongLibrary) {
-      retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, this);
-    }
-
-    notifyAllWaitingClients();
-  }
-
-  /**
-   * Releases the connection if it is still the current one, so that the retryer's reconnect can make a new one.
-   * Those waiting on it are taken in the same step, so anyone who starts waiting after this waits for the
-   * replacement connection. The caller always tells the retryer, so until it reconnects nothing else may.
-   *
-   * @return those waiting on the connection if it was the current one and its close or failure should be acted on,
-   * otherwise null
-   */
-  private @Nullable List<CompletableFuture<Readiness>> release(@NotNull Object connection) {
-    synchronized (connectionLock) {
-      if (currentConnection != connection) {
-        return null;
-      }
-
-      currentConnection = null;
-      eventSource = null;
-      retryPending = true;
-      scheduledRetries++;
-
-      return takeWaitingClients();
-    }
-  }
-
-  /**
-   * The connection has gone. Don't leave those who were waiting on it waiting for the reconnect, and if the retryer
-   * has stopped there won't be one, so don't leave anyone waiting at all.
-   */
-  private void connectionLost(@NotNull List<CompletableFuture<Readiness>> waiting) {
-    complete(waiting);
-
-    if (retryer.isStopped()) {
-      notifyAllWaitingClients();
-    }
-  }
-
-  /**
-   * Tells the waiting clients we are ready, as long as the connection is still current. If a context change has
-   * replaced it, those waiting are waiting for the new context's features, not the ones the old connection just sent.
-   *
-   * @param features - true if we now have the context's features, so later callers needn't wait for them
-   */
-  private void notifyWaitingClients(@NotNull Object connection, boolean features) {
-    final List<CompletableFuture<Readiness>> waiting;
-
-    synchronized (connectionLock) {
-      if (currentConnection != connection) {
-        return;
-      }
-
-      if (features) {
-        contextHasFeatures = true;
-      }
-
-      waiting = takeWaitingClients();
-    }
-
-    complete(waiting);
-  }
-
-  /**
-   * Tells all waiting clients where we are, used when no features are coming.
-   */
-  private void notifyAllWaitingClients() {
-    final List<CompletableFuture<Readiness>> waiting;
-
-    synchronized (connectionLock) {
-      waiting = takeWaitingClients();
-    }
-
-    complete(waiting);
-  }
-
-  private List<CompletableFuture<Readiness>> takeWaitingClients() {
-    final List<CompletableFuture<Readiness>> waiting = new ArrayList<>(waitingClients);
-    waitingClients.clear();
-    return waiting;
-  }
-
-  // done outside the lock, as completing a future runs its callbacks
-  private void complete(List<CompletableFuture<Readiness>> waiting) {
-    for (CompletableFuture<Readiness> future : waiting) {
-      future.complete(repository.getReadiness());
-    }
   }
 
   /**
@@ -494,7 +180,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     final EventSource.Factory factory;
 
     synchronized (clientLock) {
-      if (closed) {
+      if (connections.isClosed()) {
         // a connection that started just before we were closed, don't make a client nothing will shut down
         return null;
       }
@@ -545,63 +231,13 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   @Override
   public @NotNull Future<Readiness> contextChange(String newHeader, String contextSha) {
     final CompletableFuture<Readiness> change = new CompletableFuture<>();
-    final boolean contextChanged;
-    EventSource oldSource = null;
-    final boolean needsConnection;
-    final boolean waiting;
+    final StreamingConnectionTracker.ContextChange<EventSource> todo = connections.contextChange(newHeader, change);
 
-    // done in one step, so a reconnect can't claim the connection between us dropping the old context's connection
-    // and deciding whether to wait for the new one (and so tell the caller we are ready before any of its features
-    // have arrived)
-    synchronized (connectionLock) {
-      if (closed || retryer.isStopped()) {
-        // we will never connect again, so no new features are coming
-        change.complete(repository.getReadiness());
-        return change;
-      }
-
-      contextChanged = config.isServerEvaluation() && !Objects.equals(newHeader, xFeaturehubHeader);
-
-      if (contextChanged) {
-        xFeaturehubHeader = newHeader;
-        // the context has changed, so the server's event stream is no longer the one we were following
-        lastEventId = null;
-        currentConnection = null;
-        contextHasFeatures = false;
-        // the new context needs its features now, rather than once the retryer has backed off
-        retryPending = false;
-        oldSource = eventSource;
-        eventSource = null;
-      }
-
-      // while the retryer is backing off we leave the reconnect to it, connecting now would ignore the backoff
-      needsConnection = currentConnection == null && !retryPending;
-      // until we have features for this context, a connection (current or about to be made) will tell us when we have.
-      // Once we have them, a reconnect doesn't make them any less valid. While backing off no features are coming.
-      waiting = !contextHasFeatures && (currentConnection != null || needsConnection);
-
-      if (waiting) {
-        waitingClients.add(change);
-      }
+    if (todo.getPrevious() != null) {
+      todo.getPrevious().cancel();
     }
 
-    if (contextChanged) {
-      log.warn(
-          "[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
-    }
-
-    if (oldSource != null) {
-      oldSource.cancel();
-    }
-
-    if (needsConnection) {
-      // if a reconnect beat us to it, this does nothing and we wait for its features
-      initEventSource(false);
-    }
-
-    if (!waiting) {
-      change.complete(repository.getReadiness());
-    }
+    connect(todo.getConnection());
 
     return change;
   }
@@ -618,15 +254,8 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void close() {
-    final EventSource source;
-
-    synchronized (connectionLock) {
-      // don't let it try connecting again
-      closed = true;
-      currentConnection = null;
-      source = eventSource;
-      eventSource = null;
-    }
+    // don't let it try connecting again
+    final EventSource source = connections.close();
 
     retryer.close();
 
@@ -651,7 +280,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
     }
 
     // no features are coming, so don't leave anyone waiting
-    notifyAllWaitingClients();
+    connections.notifyAllWaitingClients();
   }
 
   @Override
@@ -661,18 +290,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
 
   @Override
   public void reconnect() {
-    synchronized (connectionLock) {
-      if (scheduledRetries > 0) {
-        scheduledRetries--;
-      }
-
-      if (scheduledRetries > 0) {
-        // a later reconnect is still backing off, leave it to that one
-        return;
-      }
-    }
-
     // does nothing if something else (e.g. a context change) has already made a new connection
-    initEventSource(true);
+    connect(connections.claim(true));
   }
 }

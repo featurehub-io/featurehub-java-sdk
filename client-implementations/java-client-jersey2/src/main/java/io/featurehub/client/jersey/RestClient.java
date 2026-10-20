@@ -7,6 +7,7 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeStatus;
 import io.featurehub.sse.model.FeatureEnvironmentCollection;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
@@ -122,7 +123,7 @@ public class RestClient implements EdgeService {
       }
     } catch (WebApplicationException wae) {
       // depending on the client, an error status may be thrown rather than returned
-      if (wae.getResponse() != null && requestsArePointless(wae.getResponse().getStatus())) {
+      if (wae.getResponse() != null && EdgeStatus.requestsArePointless(wae.getResponse().getStatus())) {
         stopPointlessRequests();
       } else {
         processFailure(wae);
@@ -165,9 +166,12 @@ public class RestClient implements EdgeService {
     }
   }
 
+  /**
+   * The request failed in a way that may well go away (e.g. we couldn't connect, too many requests, a 5xx), so we keep
+   * whatever readiness we have and try again on the next poll.
+   */
   protected void processFailure(@NotNull Exception e) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE, "polling");
   }
 
   protected void processResponse(ApiResponse<List<FeatureEnvironmentCollection>> response) throws IOException {
@@ -202,16 +206,11 @@ public class RestClient implements EdgeService {
         log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
         this.stopped = true; // prevent any further requests
       }
-    } else if (requestsArePointless(response.getStatusCode())) {
+    } else if (EdgeStatus.requestsArePointless(response.getStatusCode())) {
       stopPointlessRequests();
     } else if (response.getStatusCode() >= 500) {
       log.trace("maybe server is down?");
     }
-  }
-
-  // a bad request, an unknown api key or no permission: retrying won't change any of these
-  private static boolean requestsArePointless(int status) {
-    return status == 400 || status == 401 || status == 403 || status == 404;
   }
 
   private void stopPointlessRequests() {

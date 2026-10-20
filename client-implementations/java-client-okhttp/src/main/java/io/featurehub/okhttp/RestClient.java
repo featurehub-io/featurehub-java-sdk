@@ -5,6 +5,7 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeStatus;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.javascript.JavascriptObjectMapper;
@@ -143,10 +144,13 @@ public class RestClient implements EdgeService {
     }
   }
 
+  /**
+   * The request failed in a way that may well go away (e.g. we couldn't connect), so we keep whatever readiness we have
+   * and try again on the next poll.
+   */
   protected void processFailure(@NotNull IOException e, CompletableFuture<Readiness> change) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE, "polling");
-    change.complete(Readiness.Failed);
+    change.complete(repository.getReadiness());
   }
 
   protected void processResponse(Response response, CompletableFuture<Readiness> change) throws IOException {
@@ -192,13 +196,12 @@ public class RestClient implements EdgeService {
           log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
           this.stopped = true; // prevent any further requests
         }
-      } else if (response.code() == 400 || response.code() == 404 || response.code() == 401 || response.code() == 403) {
-        // 401 and 403 are possible because of misconfiguration
+      } else if (EdgeStatus.requestsArePointless(response.code())) {
         makeRequests = false;
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE, "polling");
       }
-      // could be a 304 or 5xx as expected possible results
+      // anything else (a 304, 401, 403, 429, 5xx...) may well go away, so we keep our readiness and poll again
     } catch (Exception e) {
       log.error("Failed to parse response {}", response.code(), e);
     }

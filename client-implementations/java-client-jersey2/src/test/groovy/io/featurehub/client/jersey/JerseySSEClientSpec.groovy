@@ -67,8 +67,9 @@ class JerseySSEClientSpec extends Specification {
       }
     when:
       def future = config.newContext().build()
-    then:
-      future.get().repository.readiness == Readiness.Failed
+    then: "a client evaluated context doesn't wait for features, but they still arrive"
+      future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+      new PollingConditions(timeout: 10).eventually { assert config.repository.readiness == Readiness.Failed }
   }
 
   def "a basic drop of all events goes to readiness"() {
@@ -88,7 +89,8 @@ class JerseySSEClientSpec extends Specification {
     when:
       def future = config.newContext().build()
     then:
-      future.get().repository.readiness == Readiness.Ready
+      future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+      new PollingConditions(timeout: 10).eventually { assert config.repository.readiness == Readiness.Ready }
       config.repository.allFeatures.size() == 1
   }
 
@@ -107,7 +109,8 @@ class JerseySSEClientSpec extends Specification {
     when:
       def future = config.newContext().build()
     then:
-      future.get().repository.readiness == Readiness.Failed
+      future.get(5, java.util.concurrent.TimeUnit.SECONDS)
+      new PollingConditions(timeout: 10).eventually { assert config.repository.readiness == Readiness.Failed }
       edge.stopped
   }
 
@@ -139,12 +142,9 @@ class JerseySSEClientSpec extends Specification {
       new PollingConditions(timeout: 10).eventually { assert etags.size() == 2 }
       etags[0] == null
       etags[1] == "7"
-      serverEdge.lastEventId == "7"
     when: "the context changes"
       serverEdge.contextChange("userkey=mary", "2")
-    then: "the last event id has been cleared"
-      serverEdge.lastEventId == null
-    and: "we reconnect with the new context and no last event id"
+    then: "we reconnect with the new context and no last event id"
       new PollingConditions(timeout: 10).eventually { assert headers.contains("userkey=mary") }
       etags[headers.indexOf("userkey=mary")] == null
       !serverEdge.stopped
@@ -317,18 +317,22 @@ class JerseySSEClientSpec extends Specification {
     }
   }
 
-  def "repeated polls, reconnects and context changes before we connect only ask for one connection"() {
+  def "repeated polls, reconnects and builds of the same context before we connect only ask for one connection"() {
     given:
       def submitted = []
       def client = recordingClient(submitted, [:], [], Mock(EdgeRetryService))
     when:
+      client.contextChange("userkey=fred", "1")
       client.poll()
       client.poll()
       client.reconnect()
       client.contextChange("userkey=fred", "1")
-      client.contextChange("userkey=mary", "2")
     then:
       submitted.size() == 1
+    when: "the context changes"
+      client.contextChange("userkey=mary", "2")
+    then: "the new context gets its own connection straight away, on its own thread"
+      submitted.size() == 2
   }
 
   def "a connection replaced by a context change stops as soon as its read returns, so it does not hold up the new one"() {
@@ -437,7 +441,7 @@ class JerseySSEClientSpec extends Specification {
   }
 
   // a client whose connection attempts all fail with the given exception
-  private JerseySSEClient failingClient(List<Runnable> submitted, EdgeRetryService retryer, Exception failure) {
+  private JerseySSEClient failingClient(List<Runnable> submitted, EdgeRetryService retryer, Throwable failure) {
     def executor = Mock(java.util.concurrent.ExecutorService)
     executor.submit(_ as Runnable) >> { Runnable r -> submitted.add(r); null }
     def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
@@ -457,24 +461,63 @@ class JerseySSEClientSpec extends Specification {
     }
   }
 
-  def "if the server rejects us, anyone waiting is told we have failed"() {
+  def "if the server tells us the api key doesn't exist, anyone waiting is told we have failed"() {
     given: "a server that rejects us"
       def submitted = []
+      def stopped = false
       def retryer = Mock(EdgeRetryService)
+      retryer.isStopped() >> { stopped }
       def client = failingClient(submitted, retryer, new WebApplicationException(Response.status(status).build()))
     when:
       def future = client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then:
-      1 * retryer.edgeResult(state, client)
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND, client) >> { stopped = true }
       future.done
       future.get() == Readiness.Failed
     where:
-      status | state
-      401    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
-      403    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
-      404    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
-      400    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+      status << [404, 400]
+  }
+
+  def "a failure we will retry doesn't mark us as failed, even if we never had features"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, failure)
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      future.get() == Readiness.NotReady
+      client.config.repository.readiness == Readiness.NotReady
+    where:
+      failure << [
+        new java.net.ConnectException("refused"),
+        new WebApplicationException(Response.status(503).build()),
+        new WebApplicationException(Response.status(401).build()), // only a 400 or 404 means retrying is pointless
+        new WebApplicationException(Response.status(403).build())
+      ]
+  }
+
+  def "an Error while connecting doesn't leave anyone waiting or stop us connecting again"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer, failure)
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+      client.poll()
+    then:
+      future.done
+      submitted.size() == expectedConnections
+    where:
+      failure                                     | expectedConnections
+      // a library clash can't be fixed by retrying, but nothing stops a later attempt
+      new NoClassDefFoundError("wrong jersey")    | 2
+      // anything else we retry once the retryer has backed off
+      new AssertionError("unexpected")            | 1
   }
 
   def "failures to connect that may go away back off from the connect timeout, as OKHttp does"() {
@@ -518,10 +561,14 @@ class JerseySSEClientSpec extends Specification {
     when:
       client.contextChange("userkey=fred", "1")
       submitted[0].run()
-    then: "the failure is ignored and we connect straight away for the new context"
-      headers == ["userkey=fred", "userkey=mary"]
+    then: "the failure is ignored, and the context change has asked for a connection for the new context"
+      headers == ["userkey=fred"]
       0 * retryer.edgeResult(*_)
-      submitted.size() == 1
+      submitted.size() == 2
+    when:
+      submitted[1].run()
+    then:
+      headers == ["userkey=fred", "userkey=mary"]
   }
 
   def "closing the client while it is connecting is not reported as a failure"() {
@@ -541,19 +588,23 @@ class JerseySSEClientSpec extends Specification {
       client.config.repository.readiness == Readiness.NotReady
   }
 
-  def "closing the client stops the executor its connections actually run on"() {
+  def "closing the client interrupts its connection's thread, but leaves the shared pool running"() {
     given:
+      def task = Mock(java.util.concurrent.Future)
       def executor = Mock(java.util.concurrent.ExecutorService)
+      executor.submit(_ as Runnable) >> task
       def client = new JerseySSEClient(null, config, Mock(EdgeRetryService)) {
         @Override
         protected java.util.concurrent.ExecutorService connectExecutor() {
           return executor
         }
       }
+      client.poll()
     when:
       client.close()
     then:
-      1 * executor.shutdownNow()
+      1 * task.cancel(true)
+      0 * executor.shutdownNow()
   }
 
   def "a resumed stream that is quiet until our read timeout, or until the server drops it, reconnects straight away"() {
@@ -677,7 +728,7 @@ class JerseySSEClientSpec extends Specification {
         if (events) {
           return events.remove(0)
         }
-        laterDone = client.poll().done
+        laterDone = client.contextChange("userkey=fred", "1").done
         stopped = true
         null
       }
@@ -955,29 +1006,56 @@ class JerseySSEClientSpec extends Specification {
     when:
       client.contextChange("userkey=fred", "1")
       submitted[0].run()
-    then: "the first connection is discarded and we connect again for the current context"
+    then: "the first connection is discarded, each context change asked for its own"
+      1 * input.close()
+      submitted.size() == 3
+    when: "the current context's connection runs"
+      submitted[2].run()
+    then:
       headers == ["userkey=fred", "userkey=fred"]
-      submitted.size() == 1
   }
 
-  def "a reconnect left over from an earlier backoff doesn't cut a later backoff short"() {
+  def "a server evaluated context change while the retryer is backing off cancels the retryer's reconnect"() {
     given: "the connection fails, so the retryer starts backing off"
       def submitted = []
       def retryer = Mock(EdgeRetryService)
       def client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
       client.contextChange("userkey=fred", "1")
       submitted[0].run()
-    and: "the context changes, connecting straight away, and that connection fails too, so a second backoff starts"
+    when: "the context changes, connecting straight away"
       client.contextChange("userkey=mary", "2")
-      submitted[1].run()
-    when: "the first backoff finishes"
-      client.reconnect()
-    then: "it leaves the reconnect to the second"
+    then: "the old backoff can't cut a later one short, or hold a later reconnect up behind it"
+      1 * retryer.cancelReconnects()
       submitted.size() == 2
-    when: "the second backoff finishes"
-      client.reconnect()
-    then:
-      submitted.size() == 3
+  }
+
+  def "a new context's connection isn't held up behind the old context's blocked read"() {
+    given: "a connection whose read blocks until it is released"
+      def release = new java.util.concurrent.CountDownLatch(1)
+      def secondConnected = new java.util.concurrent.CountDownLatch(1)
+      def blocked = Mock(EventInput)
+      blocked.read() >> { release.await(10, java.util.concurrent.TimeUnit.SECONDS); null }
+      def serverEvalConfig = harness.getConfig(["${UUID.randomUUID()}/345675".toString()], { String envId, String apiKey, List<String> featureHubAttrs, String extraConfig, String browserHubAttrs, String etag ->
+        new EventOutput()
+      })
+      def client = new JerseySSEClient(null, serverEvalConfig, Mock(EdgeRetryService)) {
+        @Override
+        protected EventInput makeEventSource(String header, String lastEventId) {
+          if (header == "userkey=fred") {
+            return blocked
+          }
+          secondConnected.countDown()
+          throw new java.net.ConnectException("refused")
+        }
+      }
+      client.contextChange("userkey=fred", "1")
+    when: "the context changes while the old connection is blocked reading"
+      client.contextChange("userkey=mary", "2")
+    then: "the new context connects straight away"
+      secondConnected.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    cleanup:
+      release.countDown()
+      client.close()
   }
 
   def "connections run on a daemon thread, so a client that is never closed doesn't keep the application running"() {
@@ -1026,7 +1104,7 @@ class JerseySSEClientSpec extends Specification {
       client.close()
   }
 
-  def "a poll waits for features from a connection that hasn't sent them yet"() {
+  def "a server evaluated context build waits for features from a connection that hasn't sent them yet"() {
     given: "a connection that sends features after we poll"
       def submitted = []
       JerseySSEClient client
@@ -1039,7 +1117,7 @@ class JerseySSEClientSpec extends Specification {
       input.read() >> {
         reads++
         if (reads == 1) {
-          polled = client.poll()
+          polled = client.contextChange("userkey=fred", "1")
           doneBeforeFeatures = polled.done
           return Mock(org.glassfish.jersey.media.sse.InboundEvent) { getName() >> "features"; getId() >> "1"; readData() >> "data" }
         }
@@ -1068,11 +1146,11 @@ class JerseySSEClientSpec extends Specification {
       def later = null
       retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, _) >> {
         client.reconnect()
-        later = client.poll()
+        later = client.contextChange("userkey=fred", "1")
       }
       client = failingClient(submitted, retryer, new java.net.ConnectException("refused"))
     when:
-      def first = client.poll()
+      def first = client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then: "the first caller is released, but the later one waits for the next attempt"
       first.done

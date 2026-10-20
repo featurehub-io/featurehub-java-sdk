@@ -7,11 +7,14 @@ import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -53,6 +56,10 @@ public class EdgeRetryer implements EdgeRetryService {
   // Set on connection threads and read on callers' threads, so volatile.
   private volatile boolean notFoundState = false;
   private volatile boolean stopped = false;
+  // reconnects made before the last cancelReconnects() don't reconnect
+  private final AtomicLong reconnectGeneration = new AtomicLong();
+  // reconnects that may not have run yet, so they can be cancelled. Guarded by itself.
+  private final List<Future<?>> reconnects = new ArrayList<>();
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {
@@ -87,34 +94,58 @@ public class EdgeRetryer implements EdgeRetryService {
         notFoundState = true;
         stopped = true;
       } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
-        executorService.submit(() -> {
+        reconnectAfter(reConnector, () -> {
           if (serverDisconnectRetryMs > 0) {
             backoff(serverDisconnectRetryMs, true);
           }
-
-          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
-        executorService.submit(() -> {
+        reconnectAfter(reConnector, () -> {
           if (serverByeReconnectMs > 0) {
             backoff(serverByeReconnectMs, false);
           }
-
-          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_READ_TIMEOUT) {
-        executorService.submit(() -> {
-          backoff(serverReadTimeoutMs, true);
-
-          reConnector.reconnect();
-        });
+        reconnectAfter(reConnector, () -> backoff(serverReadTimeoutMs, true));
       } else if (state == EdgeConnectionState.CONNECTION_FAILURE) {
-        executorService.submit(() -> {
-          backoff(connectionFailureBackoffTimeMs, true);
-
-          reConnector.reconnect();
-        });
+        reconnectAfter(reConnector, () -> backoff(connectionFailureBackoffTimeMs, true));
       }
+    }
+  }
+
+  /**
+   * Reconnects once we have backed off, unless the reconnect is cancelled in the meantime.
+   */
+  private void reconnectAfter(@NotNull EdgeReconnector reConnector, @NotNull Runnable backoff) {
+    final long generation = reconnectGeneration.get();
+
+    final Future<?> reconnect = executorService.submit(() -> {
+      backoff.run();
+
+      if (generation == reconnectGeneration.get()) {
+        reConnector.reconnect();
+      }
+    });
+
+    if (reconnect != null) {
+      synchronized (reconnects) {
+        reconnects.removeIf(Future::isDone);
+        reconnects.add(reconnect);
+      }
+    }
+  }
+
+  /**
+   * Stops any reconnects that are waiting, including one that is backing off. Our executor has a single thread, so if
+   * we let a cancelled reconnect sleep out its backoff, any later reconnect would be held up behind it.
+   */
+  @Override
+  public void cancelReconnects() {
+    reconnectGeneration.incrementAndGet();
+
+    synchronized (reconnects) {
+      reconnects.forEach(r -> r.cancel(true));
+      reconnects.clear();
     }
   }
 

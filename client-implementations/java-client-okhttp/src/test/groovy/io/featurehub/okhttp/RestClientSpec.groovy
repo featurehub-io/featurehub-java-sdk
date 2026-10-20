@@ -128,7 +128,7 @@ class RestClientSpec extends Specification {
       changed.done
       mockWebServer.requestCount == 1
     where:
-      status << [400, 401, 403, 404]
+      status << [400, 404]
   }
 
   def "once the server says our requests are pointless, active polling stops"() {
@@ -230,30 +230,34 @@ class RestClientSpec extends Specification {
       req1.getHeader("x-featurehub") == "header1"
   }
 
-  def "a 401 request prevents further requests"() {
+  def "an error that may go away doesn't stop requests or change our readiness"() {
     given:
       mockWebServer.enqueue(new MockResponse().with {
-        setResponseCode(401)
+        setResponseCode(status)
       })
     when:
       def future = client.poll()
       mockWebServer.takeRequest()
-      future.get()
-    then:
-      !client.canMakeRequests()
+      def result = future.get()
+    then: "only a 400 or 404 means further requests are pointless"
+      client.canMakeRequests()
+      result == Readiness.Ready
+      _ * repo.getReadiness() >> Readiness.Ready
+      0 * repo.notify(*_)
+    where:
+      status << [401, 403, 429, 503]
   }
 
-  def "a 403 request prevents further requests"() {
+  def "a request that fails to reach the server doesn't change our readiness"() {
     given:
-      mockWebServer.enqueue(new MockResponse().with {
-        setResponseCode(403)
-      })
+      mockWebServer.shutdown()
     when:
-      def future = client.poll()
-      mockWebServer.takeRequest()
-      future.get()
+      def result = client.poll().get()
     then:
-      !client.canMakeRequests()
+      result == Readiness.Ready
+      _ * repo.getReadiness() >> Readiness.Ready
+      0 * repo.notify(*_)
+      client.canMakeRequests()
   }
 
   def "a 304 response is silently ignored — no update, no failure notification"() {
