@@ -161,8 +161,6 @@ class SSEClientSpec extends Specification {
       new IOException("unexpected end of stream")  | 0
       null                                         | 429 // too many requests may well go away, so don't stop
       null                                         | 408
-      null                                         | 401 // only a 400 or 404 means retrying is pointless
-      null                                         | 403
   }
 
   def "a failure we will retry doesn't mark us as failed, even if we never had features"() {
@@ -580,6 +578,8 @@ class SSEClientSpec extends Specification {
       future.done
     where:
       status | state
+      401    | EdgeConnectionState.FAILURE // often a wrong url, retrying won't change it
+      403    | EdgeConnectionState.FAILURE
       404    | EdgeConnectionState.API_KEY_NOT_FOUND
       400    | EdgeConnectionState.API_KEY_NOT_FOUND
   }

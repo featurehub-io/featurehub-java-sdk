@@ -201,7 +201,7 @@ public class RestClient implements EdgeService {
         log.error("Server indicated an error with our requests making future ones pointless.");
         repository.notify(SSEResultState.FAILURE, "polling");
       }
-      // anything else (a 304, 401, 403, 429, 5xx...) may well go away, so we keep our readiness and poll again
+      // anything else (a 304, 429, 5xx...) may well go away, so we keep our readiness and poll again
     } catch (Exception e) {
       log.error("Failed to parse response {}", response.code(), e);
     }

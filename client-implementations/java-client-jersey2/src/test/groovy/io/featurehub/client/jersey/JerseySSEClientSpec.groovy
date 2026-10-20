@@ -461,7 +461,7 @@ class JerseySSEClientSpec extends Specification {
     }
   }
 
-  def "if the server tells us the api key doesn't exist, anyone waiting is told we have failed"() {
+  def "if the server tells us the api key doesn't exist or we aren't allowed in, anyone waiting is told we have failed"() {
     given: "a server that rejects us"
       def submitted = []
       def stopped = false
@@ -472,11 +472,15 @@ class JerseySSEClientSpec extends Specification {
       def future = client.contextChange("userkey=fred", "1")
       submitted[0].run()
     then:
-      1 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND, client) >> { stopped = true }
+      1 * retryer.edgeResult(state, client) >> { stopped = true }
       future.done
       future.get() == Readiness.Failed
     where:
-      status << [404, 400]
+      status | state
+      404    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+      400    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+      401    | io.featurehub.client.edge.EdgeConnectionState.FAILURE // often a wrong url
+      403    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
   }
 
   def "a failure we will retry doesn't mark us as failed, even if we never had features"() {
@@ -495,8 +499,7 @@ class JerseySSEClientSpec extends Specification {
       failure << [
         new java.net.ConnectException("refused"),
         new WebApplicationException(Response.status(503).build()),
-        new WebApplicationException(Response.status(401).build()), // only a 400 or 404 means retrying is pointless
-        new WebApplicationException(Response.status(403).build())
+        new WebApplicationException(Response.status(429).build())
       ]
   }
 

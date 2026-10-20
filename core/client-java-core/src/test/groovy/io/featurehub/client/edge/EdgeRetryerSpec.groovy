@@ -131,4 +131,67 @@ class EdgeRetryerSpec extends Specification {
     cleanup:
       real.close()
   }
+
+  def "a cancelled backoff doesn't make later backoffs longer"() {
+    given: "a real retryer backing off after a connection failure"
+      def real = new EdgeRetryer(100, 100, 100, 10, 60000, 60000)
+      def started = new java.util.concurrent.CountDownLatch(1)
+      real.executorService.submit { started.countDown() }
+      real.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+      started.await(5, java.util.concurrent.TimeUnit.SECONDS)
+      Thread.sleep(100) // let the backoff start
+    when:
+      real.cancelReconnects()
+      def done = new java.util.concurrent.CountDownLatch(1)
+      real.executorService.submit { done.countDown() }
+      done.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    then:
+      real.currentBackoffMultiplier == 10
+      0 * reconnector.reconnect()
+    cleanup:
+      real.close()
+  }
+
+  def "after a bye we always wait the bye backoff before reconnecting"() {
+    given:
+      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withByeBackoffMs(300).build()
+      def reconnected = new java.util.concurrent.CompletableFuture<Long>()
+      def start = System.currentTimeMillis()
+    when:
+      real.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, { reconnected.complete(System.currentTimeMillis()) } as EdgeReconnector)
+    then:
+      reconnected.get(5, java.util.concurrent.TimeUnit.SECONDS) - start >= 290
+    cleanup:
+      real.close()
+  }
+
+  def "a cancelled bye backoff doesn't reconnect"() {
+    given:
+      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withByeBackoffMs(2000).build()
+      def stale = Mock(EdgeReconnector)
+      real.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, stale)
+    when:
+      real.cancelReconnects()
+      def done = new java.util.concurrent.CountDownLatch(1)
+      real.executorService.submit { done.countDown() }
+    then: "it stops waiting straight away"
+      done.await(1, java.util.concurrent.TimeUnit.SECONDS)
+      0 * stale.reconnect()
+    cleanup:
+      real.close()
+  }
+
+  def "the bye backoff defaults to 300ms and can be configured with featurehub.edge.bye-backoff-ms"() {
+    when:
+      def defaulted = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()
+      System.setProperty("featurehub.edge.bye-backoff-ms", "50")
+      def configured = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()
+    then:
+      defaulted.byeBackoffMs == 300
+      configured.byeBackoffMs == 50
+    cleanup:
+      System.clearProperty("featurehub.edge.bye-backoff-ms")
+      defaulted?.close()
+      configured?.close()
+  }
 }

@@ -22,7 +22,10 @@ import java.util.concurrent.CompletableFuture;
  * acted on while it is still the current one. A connection that has been replaced (e.g. by a context change) or closed
  * may still deliver callbacks, and these are ignored.
  *
- * Nothing that calls into listeners or futures is ever done while holding the lock.
+ * Nothing that calls into listeners or futures is ever done while holding the lock. The retryer is told to reconnect, or
+ * to cancel its reconnects, while holding it, as both only queue or cancel work and never call back into us. Doing
+ * them in the same step as the retry is marked pending (or cleared) means a cancel can never run between a lost
+ * connection being released and its reconnect being queued, which would leave that reconnect to run anyway.
  *
  * @param <S> - the client library's connection, e.g. an OKHttp EventSource
  */
@@ -56,6 +59,8 @@ public class StreamingConnectionTracker<S> {
     private volatile boolean meaningfulEvent;
     private volatile long openedAt;
     private volatile boolean saidBye;
+    // have we told the retryer this connection worked, so it resets its backoff?
+    private volatile boolean reportedWorking;
 
     Connection(@Nullable String header, @Nullable String lastEventId) {
       this.header = header;
@@ -228,6 +233,7 @@ public class StreamingConnectionTracker<S> {
 
       if (state == SSEResultState.FEATURES) {
         // reset the timer
+        connection.reportedWorking = true;
         retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
       } else if (state == SSEResultState.BYE) {
         connection.saidBye = true;
@@ -269,34 +275,51 @@ public class StreamingConnectionTracker<S> {
    */
   public boolean connectionLost(@NotNull Connection<S> connection, int status, long workingStreamMs,
                                 @NotNull EdgeReconnector reconnector) {
-    final List<CompletableFuture<Readiness>> waiting = release(connection, true);
+    final List<CompletableFuture<Readiness>> waiting;
+    final boolean worked = connection.worked(workingStreamMs);
 
-    if (waiting == null) {
-      return false;
+    synchronized (lock) {
+      waiting = releaseLocked(connection, true);
+
+      if (waiting == null) {
+        return false;
+      }
+
+      if (worked && !connection.reportedWorking) {
+        // a resumed stream the server is up to date with never sends features, but it worked, so the backoff must
+        // reset as it does when features arrive, or after a few failures every later backoff stays at its maximum
+        connection.reportedWorking = true;
+        retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
+      }
+
+      retryer.edgeResult(lostState(connection, status, worked), reconnector);
     }
-
-    final EdgeConnectionState state;
-
-    if (EdgeStatus.requestsArePointless(status)) {
-      // the api key doesn't exist, retrying won't change that
-      state = EdgeConnectionState.API_KEY_NOT_FOUND;
-    } else if (!connection.worked(workingStreamMs)) {
-      // the stream never worked (we couldn't connect or resolve the host, we were refused, too many requests, a 5xx,
-      // or it accepted us and then dropped the connection), so back off before trying again rather than reconnecting
-      // immediately as we do when a working stream drops
-      state = EdgeConnectionState.CONNECTION_FAILURE;
-    } else if (connection.saidBye) {
-      state = EdgeConnectionState.SERVER_SAID_BYE;
-    } else {
-      state = EdgeConnectionState.SERVER_WAS_DISCONNECTED;
-    }
-
-    retryer.edgeResult(state, reconnector);
 
     // if the retryer has stopped there won't be a reconnect
     stopped(waiting, retryer.isStopped());
 
     return true;
+  }
+
+  private EdgeConnectionState lostState(@NotNull Connection<S> connection, int status, boolean worked) {
+    if (EdgeStatus.isApiKeyNotFound(status)) {
+      // the api key doesn't exist, retrying won't change that
+      return EdgeConnectionState.API_KEY_NOT_FOUND;
+    }
+
+    if (EdgeStatus.isNotPermitted(status)) {
+      // we aren't allowed in (often a wrong url), retrying won't change that
+      return EdgeConnectionState.FAILURE;
+    }
+
+    if (!worked) {
+      // the stream never worked (we couldn't connect or resolve the host, too many requests, a 5xx, or it accepted us
+      // and then dropped the connection), so back off before trying again rather than reconnecting immediately as we
+      // do when a working stream drops
+      return EdgeConnectionState.CONNECTION_FAILURE;
+    }
+
+    return connection.saidBye ? EdgeConnectionState.SERVER_SAID_BYE : EdgeConnectionState.SERVER_WAS_DISCONNECTED;
   }
 
   /**
@@ -339,15 +362,19 @@ public class StreamingConnectionTracker<S> {
    */
   private @Nullable List<CompletableFuture<Readiness>> release(@NotNull Connection<S> connection, boolean retry) {
     synchronized (lock) {
-      if (current != connection) {
-        return null;
-      }
-
-      current = null;
-      retryPending = retry;
-
-      return takeWaitingClients();
+      return releaseLocked(connection, retry);
     }
+  }
+
+  private @Nullable List<CompletableFuture<Readiness>> releaseLocked(@NotNull Connection<S> connection, boolean retry) {
+    if (current != connection) {
+      return null;
+    }
+
+    current = null;
+    retryPending = retry;
+
+    return takeWaitingClients();
   }
 
   /**
@@ -362,7 +389,6 @@ public class StreamingConnectionTracker<S> {
     final boolean serverEvaluated = config.isServerEvaluation();
     S previous = null;
     boolean contextChanged = false;
-    boolean cancelReconnects = false;
     final Connection<S> connection;
     final boolean waiting;
 
@@ -386,7 +412,7 @@ public class StreamingConnectionTracker<S> {
           // the new context needs its features now, rather than once the retryer has backed off. The retryer's
           // reconnect is for the old context, so it must not cut the backoff of a later failure short.
           retryPending = false;
-          cancelReconnects = true;
+          retryer.cancelReconnects();
         }
       }
 
@@ -403,10 +429,6 @@ public class StreamingConnectionTracker<S> {
 
     if (contextChanged) {
       log.warn("[featurehub-sdk] please only use server evaluated keys with SSE with one repository per SSE client.");
-    }
-
-    if (cancelReconnects) {
-      retryer.cancelReconnects();
     }
 
     if (!waiting) {

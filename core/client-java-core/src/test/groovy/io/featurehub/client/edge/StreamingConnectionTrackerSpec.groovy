@@ -89,7 +89,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       tracker.claim(true) != null
   }
 
-  def "only a 400 or 404 means retrying is pointless"() {
+  def "only a 400, 401, 403 or 404 means retrying is pointless"() {
     given:
       config.isServerEvaluation() >> true
       def connection = tracker.claim(false)
@@ -101,9 +101,10 @@ class StreamingConnectionTrackerSpec extends Specification {
       status | state
       400    | EdgeConnectionState.API_KEY_NOT_FOUND
       404    | EdgeConnectionState.API_KEY_NOT_FOUND
-      401    | EdgeConnectionState.CONNECTION_FAILURE
-      403    | EdgeConnectionState.CONNECTION_FAILURE
+      401    | EdgeConnectionState.FAILURE
+      403    | EdgeConnectionState.FAILURE
       429    | EdgeConnectionState.CONNECTION_FAILURE
+      503    | EdgeConnectionState.CONNECTION_FAILURE
   }
 
   def "once the retryer stops, those waiting are told we have failed"() {
@@ -181,5 +182,61 @@ class StreamingConnectionTrackerSpec extends Specification {
       tracker.connectionLost(connection, 0, 1000, reconnector)
     then:
       tracker.claim(true).lastEventId == "2"
+  }
+
+  def "a stream that worked without sending features still resets the retryer's backoff when it is lost"() {
+    given: "a resumed stream the server is up to date with, which stays open long enough to count as working"
+      config.isServerEvaluation() >> true
+      def connection = tracker.claim(false)
+      connection.opened()
+    when:
+      tracker.connectionLost(connection, 0, 0, reconnector)
+    then:
+      1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
+    then:
+      1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
+  }
+
+  def "a stream that already reported its features doesn't report success again when it is lost"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      def connection = tracker.claim(false)
+      tracker.process(connection, reconnector, "features", "1", "data")
+    when:
+      tracker.connectionLost(connection, 0, 1000, reconnector)
+    then:
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
+  }
+
+  def "a stream that never worked doesn't reset the backoff"() {
+    given:
+      config.isServerEvaluation() >> true
+      def connection = tracker.claim(false)
+    when:
+      tracker.connectionLost(connection, 0, 1000, reconnector)
+    then:
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+  }
+
+  def "the reconnect for a lost connection is queued in the same step as it is released, so a context change can't cancel it before it exists"() {
+    given: "a context change that tries to run while the lost connection's reconnect is being queued"
+      config.isServerEvaluation() >> true
+      def connection = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
+      Thread changer = null
+      def order = Collections.synchronizedList([])
+      retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector) >> {
+        changer = Thread.start { tracker.contextChange("userkey=mary", new CompletableFuture<Readiness>()) }
+        changer.join(200) // can't complete while the reconnect is still being queued
+        order.add("queued")
+      }
+      retryer.cancelReconnects() >> { order.add("cancelled") }
+    when:
+      tracker.connectionLost(connection, 0, 1000, reconnector)
+      changer.join(5000)
+    then: "the cancel comes after the reconnect it cancels"
+      order == ["queued", "cancelled"]
   }
 }

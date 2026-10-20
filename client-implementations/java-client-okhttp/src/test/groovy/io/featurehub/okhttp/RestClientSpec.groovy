@@ -128,7 +128,7 @@ class RestClientSpec extends Specification {
       changed.done
       mockWebServer.requestCount == 1
     where:
-      status << [400, 404]
+      status << [400, 401, 403, 404]
   }
 
   def "once the server says our requests are pointless, active polling stops"() {
@@ -239,13 +239,13 @@ class RestClientSpec extends Specification {
       def future = client.poll()
       mockWebServer.takeRequest()
       def result = future.get()
-    then: "only a 400 or 404 means further requests are pointless"
+    then: "only a 400, 401, 403 or 404 means further requests are pointless"
       client.canMakeRequests()
       result == Readiness.Ready
       _ * repo.getReadiness() >> Readiness.Ready
       0 * repo.notify(*_)
     where:
-      status << [401, 403, 429, 503]
+      status << [429, 503]
   }
 
   def "a request that fails to reach the server doesn't change our readiness"() {

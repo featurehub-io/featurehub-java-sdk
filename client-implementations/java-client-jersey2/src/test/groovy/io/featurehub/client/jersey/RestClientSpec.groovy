@@ -131,15 +131,19 @@ class RestClientSpec extends Specification {
     where:
       status | thrown
       400    | false
+      401    | false
+      403    | false
       404    | false
       400    | true
+      401    | true
+      403    | true
       404    | true
   }
 
   def "an error that may go away doesn't stop the client or change our readiness, whether its status is returned or thrown"() {
     when:
       def result = client.poll().get()
-    then: "only a 400 or 404 means further requests are pointless"
+    then: "only a 400, 401, 403 or 404 means further requests are pointless"
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> { thrown ? { throw new WebApplicationException(Response.status(status).build()) }() : build(status) }
       _ * repo.readiness >> Readiness.Ready
@@ -148,12 +152,8 @@ class RestClientSpec extends Specification {
       result == Readiness.Ready
     where:
       status | thrown
-      401    | false
-      403    | false
       429    | false
       503    | false
-      401    | true
-      403    | true
       429    | true
       503    | true
   }

@@ -524,7 +524,8 @@ set using environment variables or system properties.
 - `featurehub.edge.server-sse-read-timeout-ms` - defaults to 180000 - 3m (180 seconds), should be higher if the server is configured for longer by default
 - `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process
 - `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
-- `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to wait before reconnecting
+- `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to back off before reconnecting (on top of the bye backoff below)
+- `featurehub.edge.bye-backoff-ms` - defaults to 300 - after a "bye", how long the SSE client always waits before reconnecting, so a server that says bye straight away can't have it reconnect in a tight loop
 - `featurehub.edge.backoff-multiplier` - defaults to 10
 - `featurehub.edge.maximum-backoff-ms` - defaults to 30000
 
@@ -560,18 +561,20 @@ a custom `EdgeService` or diagnosing connectivity problems from logs:
 |`CONNECTION_FAILURE`
 |SSE + REST
 |Any failure that may go away (e.g. unknown host, refused connection, a stream that never worked, or Edge answering
-with a 401, 403, 429 or 5xx). Retried with exponential backoff. The repository's readiness is left as it is, so
+with a 429 or 5xx). Retried with exponential backoff. The repository's readiness is left as it is, so
 it stays `NotReady` until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`
 |SSE + REST
-|Terminal — Edge answered with a 400 or 404 (the API key is not recognised), or sent a `failure` event. These are the
-only responses the SDK treats as permanent, whichever client you use. If no features had arrived, the repository
-transitions to `Failed`, and the SDK stops retrying.
+|Terminal — Edge answered with a 400 or 404 (the API key is not recognised), or sent a `failure` event. If no features
+had arrived, the repository transitions to `Failed`, and the SDK stops retrying.
 
 |`FAILURE`
 |SSE + REST
-|Terminal failure. The SDK stops retrying. The supplied clients no longer use it for any HTTP status.
+|Terminal — Edge answered with a 401 or 403 (we aren't allowed in, which is often a wrong URL). If no features had
+arrived, the repository transitions to `Failed`, and the SDK stops retrying.
+
+A 400, 401, 403 or 404 are the only responses the SDK treats as permanent, whichever client you use.
 |===
 
 == Feature Interceptors
