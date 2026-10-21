@@ -23,6 +23,10 @@ public interface EdgeRetryService {
   /**
    * Any reconnects that are waiting to happen (e.g. backing off) are no longer wanted, so they must not reconnect.
    * Used when a client has already connected again for a new context.
+   *
+   * Implementations used with the streaming clients must implement this (EdgeRetryer does). The default does nothing,
+   * so that existing implementations still compile, but then a reconnect left over from before a server evaluated
+   * context change can still run, and cut the backoff of a later failure short.
    */
   default void cancelReconnects() {
   }

@@ -555,13 +555,17 @@ a custom `EdgeService` or diagnosing connectivity problems from logs:
 |Disconnected before a "bye" was received. The SDK backs off and retries.
 
 |`SERVER_READ_TIMEOUT`
-|SSE + REST
-|Timed out waiting for data. Retryable with backoff.
+|Deprecated
+|Timed out waiting for data. Retryable with backoff. The supplied clients no longer report it: a read timeout on a
+stream that worked reconnects straight away, and on one that never worked backs off as a `CONNECTION_FAILURE`.
 
 |`CONNECTION_FAILURE`
 |SSE + REST
 |Any failure that may go away (e.g. unknown host, refused connection, a stream that never worked, or Edge answering
-with a 429 or 5xx). Retried with exponential backoff. The repository's readiness is left as it is, so
+with a 429 or 5xx). Retried with exponential backoff. A stream that stays open for the connect timeout counts as
+working even if it sends nothing (a resumed stream that is up to date is quiet), but after 3 such streams in a row that
+sent nothing at all (e.g. a proxy that passes nothing through and drops idle connections), later ones count as
+`CONNECTION_FAILURE` until a stream sends something. The repository's readiness is left as it is, so
 it stays `NotReady` until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`

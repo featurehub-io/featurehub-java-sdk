@@ -31,6 +31,11 @@ import java.util.concurrent.CompletableFuture;
  */
 public class StreamingConnectionTracker<S> {
   private static final Logger log = LoggerFactory.getLogger(StreamingConnectionTracker.class);
+  /**
+   * How many streams in a row may count as working only by staying open, without sending anything, before we stop
+   * believing them and back off. See {@link #connectionLost}.
+   */
+  public static final int MAX_QUIET_STREAMS = 3;
   private final Object lock = new Object();
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
@@ -43,6 +48,9 @@ public class StreamingConnectionTracker<S> {
   private boolean contextHasFeatures;
   // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then
   private boolean retryPending;
+  // how many streams in a row have counted as working only because they stayed open, sending nothing. Reset by any
+  // stream that sends a real event.
+  private int quietStreams;
   // added to by callers' threads and drained by connection threads
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under the lock.
@@ -276,13 +284,24 @@ public class StreamingConnectionTracker<S> {
   public boolean connectionLost(@NotNull Connection<S> connection, int status, long workingStreamMs,
                                 @NotNull EdgeReconnector reconnector) {
     final List<CompletableFuture<Readiness>> waiting;
-    final boolean worked = connection.worked(workingStreamMs);
+    boolean worked = connection.worked(workingStreamMs);
 
     synchronized (lock) {
       waiting = releaseLocked(connection, true);
 
       if (waiting == null) {
         return false;
+      }
+
+      if (connection.meaningfulEvent) {
+        quietStreams = 0;
+      } else if (worked && ++quietStreams > MAX_QUIET_STREAMS) {
+        // something between us and Edge (e.g. a proxy) that accepts the connection, passes nothing through and drops it
+        // once idle looks like a quiet resumed stream, and we would reconnect to it forever without backing off. A
+        // healthy quiet stream says bye now and then, so after a few in a row that sent nothing at all we back off
+        // until one sends something.
+        log.debug("[featurehub-sdk] {} streams in a row sent nothing, backing off", quietStreams);
+        worked = false;
       }
 
       if (worked && !connection.reportedWorking) {
@@ -326,7 +345,11 @@ public class StreamingConnectionTracker<S> {
    * The connection could not be made because of a problem with the libraries we are using, which retrying won't fix.
    */
   public void abandon(@NotNull Connection<S> connection) {
-    final List<CompletableFuture<Readiness>> waiting = release(connection, false);
+    final List<CompletableFuture<Readiness>> waiting;
+
+    synchronized (lock) {
+      waiting = releaseLocked(connection, false);
+    }
 
     if (waiting != null) {
       stopped(waiting, true);
@@ -360,12 +383,6 @@ public class StreamingConnectionTracker<S> {
    * @param retry - true if the caller is telling the retryer, so until it reconnects nothing else may
    * @return those waiting on the connection if it was the current one, otherwise null
    */
-  private @Nullable List<CompletableFuture<Readiness>> release(@NotNull Connection<S> connection, boolean retry) {
-    synchronized (lock) {
-      return releaseLocked(connection, retry);
-    }
-  }
-
   private @Nullable List<CompletableFuture<Readiness>> releaseLocked(@NotNull Connection<S> connection, boolean retry) {
     if (current != connection) {
       return null;
@@ -402,6 +419,7 @@ public class StreamingConnectionTracker<S> {
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         contextHasFeatures = false;
+        quietStreams = 0;
 
         if (current != null) {
           previous = current.source;

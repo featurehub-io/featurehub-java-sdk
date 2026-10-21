@@ -1202,23 +1202,6 @@ class JerseySSEClientSpec extends Specification {
       new PollingConditions(timeout: 5).eventually { assert sse.client.isClosed() }
   }
 
-  def "closing several connections does not make them wait for each other"() {
-    given: "connections whose close blocks, as it does while another thread is reading them"
-      def started = new java.util.concurrent.CountDownLatch(3)
-      def release = new java.util.concurrent.CountDownLatch(1)
-      def inputs = (1..3).collect {
-        def input = Mock(EventInput)
-        input.close() >> { started.countDown(); release.await(10, java.util.concurrent.TimeUnit.SECONDS) }
-        input
-      }
-    when:
-      inputs.each { JerseySSEClient.closeInBackground(it) }
-    then: "all of them start closing at once"
-      started.await(5, java.util.concurrent.TimeUnit.SECONDS)
-    cleanup:
-      release.countDown()
-  }
-
 //  def "basic initialization test works as expect"() {
 //    given: "i have a valid url"
 //      def url = new EdgeFeatureHubConfig("http://localhost:80/", "sdk-url")

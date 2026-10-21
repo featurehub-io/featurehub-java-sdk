@@ -49,8 +49,9 @@ public class EdgeRetryer implements EdgeRetryService {
    */
   private final int backoffMultiplier;
   private final int maximumBackoffTimeMs;
-  // this will change over the lifetime of reconnect attempts, internal use only
-  private int currentBackoffMultiplier;
+  // this will change over the lifetime of reconnect attempts, internal use only. Reset on connection threads and grown
+  // on our own thread, so volatile.
+  private volatile int currentBackoffMultiplier;
   /**
    * if the connectionk attempt to connect fails, how long do we wait before attempting to reconnect
    */
