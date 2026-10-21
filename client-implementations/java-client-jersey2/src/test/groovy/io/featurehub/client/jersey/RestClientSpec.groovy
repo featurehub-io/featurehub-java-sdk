@@ -99,7 +99,7 @@ class RestClientSpec extends Specification {
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.notify(SSEResultState.FAILURE, "polling")
-      1 * repo.readiness >> Readiness.Failed
+      2 * repo.readiness >>> [Readiness.NotReady, Readiness.Failed]
       0 * _
       client.stopped
       result == Readiness.Failed
@@ -114,13 +114,15 @@ class RestClientSpec extends Specification {
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.notify(SSEResultState.FAILURE, "polling")
-      1 * repo.readiness >> Readiness.Failed
+      2 * repo.readiness >>> [Readiness.NotReady, Readiness.Failed]
       0 * _
       client.stopped
       result == Readiness.Failed
   }
 
   def "a pointless request stops the client and notifies failure, whether its status is returned or thrown"() {
+    given:
+      repo.readiness >> Readiness.NotReady
     when:
       client.poll().get()
     then:
@@ -373,5 +375,18 @@ class RestClientSpec extends Specification {
       // sha is irrelevant — same header means no context change needed
       !result1
       !result2
+  }
+
+  def "a pointless request once we have features stops the client but leaves us ready"() {
+    given:
+      repo.readiness >> Readiness.Ready
+    when:
+      def result = client.poll().get()
+    then:
+      1 * config.apiKeys() >> apiKeys
+      1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> build(403)
+      0 * repo.notify(SSEResultState.FAILURE, _)
+      client.stopped
+      result == Readiness.Ready
   }
 }

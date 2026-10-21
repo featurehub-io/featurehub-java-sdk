@@ -21,7 +21,7 @@ class SSEClientSpec extends Specification {
   SSEClient client
   Request request
   UUID envId
-  int connections
+  int connectionsMade
   Closure onMakeEventSource
   // if set, how long a stream must stay open to count as working
   Long workingMs
@@ -40,7 +40,7 @@ class SSEClientSpec extends Specification {
         println("returning mock event source")
         esListener = listener
         request = req
-        connections++
+        connectionsMade++
         onMakeEventSource?.call()
         return mockEventSource
       }
@@ -203,6 +203,21 @@ class SSEClientSpec extends Specification {
       future.done
   }
 
+  def "an event that stops the retryer cancels the connection rather than leaving it open"() {
+    given:
+      config.serverEvaluation >> true
+      def stopped = false
+      retry.isStopped() >> { stopped }
+      def future = client.contextChange("header", '0')
+    when:
+      esListener.onEvent(mockEventSource, null, 'failure', null)
+    then:
+      1 * retry.fromValue('failure') >> SSEResultState.FAILURE
+      1 * retry.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, client) >> { stopped = true }
+      1 * mockEventSource.cancel()
+      future.done
+  }
+
   def "those who start waiting on the replacement connection are not released when the old one is lost"() {
     given: "a caller waiting on the first connection"
       config.serverEvaluation >> true
@@ -336,7 +351,7 @@ class SSEClientSpec extends Specification {
     when:
       client.reconnect()
     then: "the server sends us everything rather than thinking we are up to date"
-      connections == 2
+      connectionsMade == 2
       request.header("Last-Event-ID") == null
   }
 
@@ -370,7 +385,7 @@ class SSEClientSpec extends Specification {
       _ * retry.isStopped()
       0 * _
       future.get() == Readiness.NotReady
-      connections == 1
+      connectionsMade == 1
       request.header("x-featurehub") == null
   }
 
@@ -508,7 +523,7 @@ class SSEClientSpec extends Specification {
       client.contextChange("header", '0')
     then: "the old context's connection is cancelled and the new context's one is used"
       1 * mockEventSource.cancel()
-      connections == 2
+      connectionsMade == 2
       request.header("x-featurehub") == "header2"
   }
 
@@ -523,7 +538,7 @@ class SSEClientSpec extends Specification {
     when: "the scheduled reconnect runs"
       client.reconnect()
     then: "no further connection is made"
-      connections == 2
+      connectionsMade == 2
       request.header("x-featurehub") == "header2"
   }
 
@@ -544,7 +559,7 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, '1', 'features', 'data')
     then:
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
-      connections == 2
+      connectionsMade == 2
   }
 
   def "when the connection is lost, anyone waiting is released rather than waiting for the reconnect"() {
@@ -601,7 +616,7 @@ class SSEClientSpec extends Specification {
       def later = client.contextChange(null, '0')
     then: "it doesn't need to wait"
       later.done
-      connections == 1
+      connectionsMade == 1
   }
 
   def "while the retryer is backing off, a context change or poll does not connect early"() {
@@ -612,12 +627,12 @@ class SSEClientSpec extends Specification {
       def future = client.contextChange(null, '0')
       client.poll()
     then: "nothing connects, and the caller isn't held up as no features are coming yet"
-      connections == 1
+      connectionsMade == 1
       future.done
     when: "the retryer reconnects"
       client.reconnect()
     then:
-      connections == 2
+      connectionsMade == 2
     where:
       lose << [
         { EventSourceListener l -> l.onFailure(null, new UnknownHostException("does-not-exist"), null) },
@@ -634,7 +649,7 @@ class SSEClientSpec extends Specification {
     when:
       def future = client.contextChange(null, '0')
     then:
-      connections == 1
+      connectionsMade == 1
       future.done
   }
 
@@ -646,13 +661,13 @@ class SSEClientSpec extends Specification {
     when:
       def future = client.contextChange("header2", '0')
     then:
-      connections == 2
+      connectionsMade == 2
       request.header("x-featurehub") == "header2"
       !future.done
     when: "the scheduled reconnect runs"
       client.reconnect()
     then: "it doesn't make another connection"
-      connections == 2
+      connectionsMade == 2
   }
 
   def "a server evaluated context change while the retryer is backing off cancels the retryer's reconnect"() {
@@ -664,7 +679,7 @@ class SSEClientSpec extends Specification {
       client.contextChange("header2", '0')
     then: "the old backoff can't cut a later one short, or hold a later reconnect up behind it"
       1 * retry.cancelReconnects()
-      connections == 2
+      connectionsMade == 2
   }
 
   def "a context change that doesn't override a backoff doesn't cancel reconnects"() {
@@ -692,7 +707,7 @@ class SSEClientSpec extends Specification {
     when:
       def future = client.contextChange(null, '0')
     then:
-      connections == 2
+      connectionsMade == 2
       future.done
   }
 
@@ -734,7 +749,7 @@ class SSEClientSpec extends Specification {
       client.reconnect()
     then:
       future.done
-      connections == 1
+      connectionsMade == 1
   }
 
   def "features from a connection replaced while they were being applied don't complete the new context's wait"() {
@@ -762,7 +777,7 @@ class SSEClientSpec extends Specification {
       client.poll()
     then:
       future.done
-      connections == 0
+      connectionsMade == 0
   }
 
   def "closing completes anyone waiting for features"() {

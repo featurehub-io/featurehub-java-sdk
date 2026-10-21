@@ -194,4 +194,14 @@ class EdgeRetryerSpec extends Specification {
       defaulted?.close()
       configured?.close()
   }
+
+  def "a subclass using the constructor without a bye backoff still gets the default one"() {
+    when:
+      def real = new EdgeRetryer(100, 100, 100, 10, 100, 100) {}
+    then:
+      real.byeBackoffMs == EdgeRetryer.DEFAULT_BYE_BACKOFF_MS
+      EdgeRetryer.DEFAULT_BYE_BACKOFF_MS == 300
+    cleanup:
+      real.close()
+  }
 }

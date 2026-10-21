@@ -1,12 +1,11 @@
 package io.featurehub.okhttp;
 
-import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
-import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeReconnector;
 import io.featurehub.client.edge.EdgeRetryService;
 import io.featurehub.client.edge.StreamingConnectionTracker;
+import io.featurehub.client.edge.StreamingEdgeService;
 import io.featurehub.client.utils.SdkVersion;
 import okhttp3.*;
 import okhttp3.sse.EventSource;
@@ -21,33 +20,20 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
-public class SSEClient implements EdgeService, EdgeReconnector {
+public class SSEClient extends StreamingEdgeService<EventSource> {
   private static final Logger log = LoggerFactory.getLogger(SSEClient.class);
-  private final InternalFeatureRepository repository;
-  private final FeatureHubConfig config;
   // the okhttp client is made on first use. Guarded by clientLock, as two connections can be made at once (e.g. a
   // context change while a connection is still being made).
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
   private final Object clientLock = new Object();
-  private final EdgeRetryService retryer;
-  private final StreamingConnectionTracker<EventSource> connections;
-  // see workingStreamMs()
-  private final long workingStreamMs;
 
   public SSEClient(
       @Nullable InternalFeatureRepository repository,
       @NotNull FeatureHubConfig config,
       @NotNull EdgeRetryService retryer) {
-    this.repository =
-        repository == null ? (InternalFeatureRepository) config.getRepository() : repository;
-    this.config = config;
-    this.retryer = retryer;
-    this.connections = new StreamingConnectionTracker<>(this.repository, config, retryer);
-    this.workingStreamMs = StreamingConnectionTracker.workingStreamMs(retryer);
+    super(repository, config, retryer);
   }
 
   public SSEClient(@NotNull FeatureHubConfig config, @NotNull EdgeRetryService retryer) {
@@ -55,21 +41,7 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
-  public Future<Readiness> poll() {
-    connect(connections.claim(false));
-
-    return CompletableFuture.completedFuture(repository.getReadiness());
-  }
-
-  @Override
-  public long currentInterval() {
-    return 0;
-  }
-
-  /**
-   * Makes the connection we have claimed, if any.
-   */
-  private void connect(@Nullable StreamingConnectionTracker.Connection<EventSource> connection) {
+  protected void connect(@Nullable StreamingConnectionTracker.Connection<EventSource> connection) {
     if (connection == null) {
       return;
     }
@@ -111,7 +83,10 @@ public class SSEClient implements EdgeService, EdgeReconnector {
                     @Nullable String id,
                     @Nullable String type,
                     @Nullable String data) {
-                  connections.process(connection, connector, type, id, data);
+                  if (!process(connection, type, id, data)) {
+                    // the event stopped the retryer, nothing more is coming that we may act on
+                    eventSource.cancel();
+                  }
                 }
 
                 @Override
@@ -156,14 +131,6 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       // the context changed or we were closed while connecting
       source.cancel();
     }
-  }
-
-  /**
-   * @return how long a stream must stay open, even sending nothing, to count as having worked. At least a second, and
-   * at least the connect timeout.
-   */
-  protected long workingStreamMs() {
-    return workingStreamMs;
   }
 
   /**
@@ -229,36 +196,12 @@ public class SSEClient implements EdgeService, EdgeReconnector {
   }
 
   @Override
-  public @NotNull Future<Readiness> contextChange(String newHeader, String contextSha) {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-    final StreamingConnectionTracker.ContextChange<EventSource> todo = connections.contextChange(newHeader, change);
-
-    if (todo.getPrevious() != null) {
-      todo.getPrevious().cancel();
-    }
-
-    connect(todo.getConnection());
-
-    return change;
+  protected void closeConnection(@NotNull EventSource source) {
+    source.cancel();
   }
 
   @Override
-  public boolean isClientEvaluation() {
-    return !config.isServerEvaluation();
-  }
-
-  @Override
-  public boolean isStopped() {
-    return retryer.isStopped();
-  }
-
-  @Override
-  public void close() {
-    // don't let it try connecting again
-    final EventSource source = connections.close();
-
-    retryer.close();
-
+  protected void closeLibrary() {
     final OkHttpClient okClient;
 
     synchronized (clientLock) {
@@ -272,25 +215,5 @@ public class SSEClient implements EdgeService, EdgeReconnector {
       okClient.dispatcher().executorService().shutdownNow();
       okClient.connectionPool().evictAll();
     }
-
-    // cancel the event source
-    if (source != null) {
-      log.info("[featurehub-sdk] closing connection");
-      source.cancel();
-    }
-
-    // no features are coming, so don't leave anyone waiting
-    connections.notifyAllWaitingClients();
-  }
-
-  @Override
-  public @NotNull FeatureHubConfig getConfig() {
-    return config;
-  }
-
-  @Override
-  public void reconnect() {
-    // does nothing if something else (e.g. a context change) has already made a new connection
-    connect(connections.claim(true));
   }
 }

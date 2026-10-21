@@ -290,4 +290,47 @@ class StreamingConnectionTrackerSpec extends Specification {
     then: "the cancel comes after the reconnect it cancels"
       order == ["queued", "cancelled"]
   }
+
+  def "a failure event from a connection a context change has replaced doesn't stop the retryer or mark us failed"() {
+    given: "the old context's connection has started applying a failure event when the context changes"
+      config.isServerEvaluation() >> true
+      def old = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
+      retryer.fromValue("failure") >> {
+        tracker.contextChange("userkey=mary", new CompletableFuture<Readiness>())
+        SSEResultState.FAILURE
+      }
+    when:
+      tracker.process(old, reconnector, "failure", null, null)
+    then:
+      0 * retryer.edgeResult(_, _)
+      0 * retryer.convertSSEState(_, _, _, _)
+  }
+
+  def "a features event with no data is ignored, so it doesn't release callers or become the id we resume from"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "features", "7", null)
+      tracker.connectionLost(connection, 0, 1000, reconnector)
+      def next = tracker.claim(true)
+    then:
+      0 * retryer.convertSSEState(_, _, _, _)
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      next.lastEventId == null
+  }
+
+  def "a features event with no data doesn't release those waiting"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "features", "7", null)
+    then:
+      !waiting.done
+  }
 }

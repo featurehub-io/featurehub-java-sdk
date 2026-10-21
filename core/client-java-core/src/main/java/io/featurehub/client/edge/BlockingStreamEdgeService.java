@@ -1,16 +1,13 @@
 package io.featurehub.client.edge;
 
-import io.featurehub.client.EdgeService;
 import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
-import io.featurehub.client.Readiness;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,22 +23,16 @@ import java.util.concurrent.RejectedExecutionException;
  * backing off) or a single thread per client (where a new context's connection would queue behind the old context's
  * blocked read).
  */
-public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReconnector {
+public abstract class BlockingStreamEdgeService extends StreamingEdgeService<BlockingStreamEdgeService.Stream> {
   private static final Logger log = LoggerFactory.getLogger(BlockingStreamEdgeService.class);
   // daemon threads, so a client that is never closed doesn't keep the application running
   private static final ExecutorService connector = makePool("featurehub-sse-connect");
   // closing a connection can block for up to the read timeout (see closeInBackground), so it is done by a shared pool
   // of daemon threads. Closes must not queue behind each other, or old connections stay open long after being replaced.
   private static final ExecutorService closer = makePool("featurehub-sse-close");
-  protected final InternalFeatureRepository repository;
-  protected final FeatureHubConfig config;
-  protected final EdgeRetryService retryer;
-  private final StreamingConnectionTracker<Stream> connections;
   // the tasks making or reading our connections (including ones that have been replaced but are still finishing), so
   // closing can interrupt them all
   private final Set<Future<?>> connectTasks = ConcurrentHashMap.newKeySet();
-  // see workingStreamMs()
-  private final long workingStreamMs;
 
   /**
    * A connection made by the client library.
@@ -52,7 +43,7 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
     /**
      * Blocks until the next event arrives.
      *
-     * @return the event, or null if the read timed out or the server closed the connection (isClosed() says which)
+     * @return the event, or null if the stream has ended (e.g. the server closed it), after which it is not read again
      */
     @Nullable Event read() throws Exception;
 
@@ -91,11 +82,7 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
 
   protected BlockingStreamEdgeService(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                                       @NotNull EdgeRetryService retryer) {
-    this.repository = repository == null ? config.getInternalRepository() : repository;
-    this.config = config;
-    this.retryer = retryer;
-    this.connections = new StreamingConnectionTracker<>(this.repository, config, retryer);
-    this.workingStreamMs = StreamingConnectionTracker.workingStreamMs(retryer);
+    super(repository, config, retryer);
   }
 
   /**
@@ -112,65 +99,20 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
   protected abstract int statusOf(@NotNull Throwable failure);
 
   /**
-   * Called once we are closed, to release anything the client library holds. Must not block, see runInBackground.
-   */
-  protected void closeLibrary() {
-  }
-
-  /**
    * Called before each read, for testing.
    */
   protected void beforeRead() {
   }
 
   @Override
-  public @NotNull Future<Readiness> contextChange(@Nullable String newHeader, @Nullable String contextSha) {
-    final CompletableFuture<Readiness> change = new CompletableFuture<>();
-    final StreamingConnectionTracker.ContextChange<Stream> todo = connections.contextChange(newHeader, change);
-
+  protected void closeConnection(@NotNull Stream source) {
     // its read may be blocked, so don't wait for it to close
-    closeInBackground(todo.getPrevious());
-    connect(todo.getConnection());
-
-    return change;
-  }
-
-  @Override
-  public Future<Readiness> poll() {
-    connect(connections.claim(false));
-
-    return CompletableFuture.completedFuture(repository.getReadiness());
-  }
-
-  @Override
-  public void reconnect() {
-    // does nothing if something else (e.g. a context change) has already made a new connection
-    connect(connections.claim(true));
-  }
-
-  @Override
-  public boolean isClientEvaluation() {
-    return !config.isServerEvaluation();
-  }
-
-  @Override
-  public boolean isStopped() {
-    return retryer.isStopped();
-  }
-
-  @Override
-  public long currentInterval() {
-    return 0;
-  }
-
-  @Override
-  public @NotNull FeatureHubConfig getConfig() {
-    return config;
+    closeInBackground(source);
   }
 
   @Override
   public void close() {
-    closeInBackground(connections.close());
+    super.close();
 
     // interrupt any connect or read in progress, including those of connections that have been replaced
     for (Future<?> task : connectTasks) {
@@ -178,15 +120,6 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
     }
 
     connectTasks.clear();
-
-    // always stop the retryer, even if we are not currently connected, otherwise a pending reconnect will
-    // connect again after we have been closed
-    retryer.close();
-
-    // no features are coming, so don't leave anyone waiting
-    connections.notifyAllWaitingClients();
-
-    closeLibrary();
   }
 
   /**
@@ -194,14 +127,6 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
    */
   protected ExecutorService connectExecutor() {
     return connector;
-  }
-
-  /**
-   * @return how long a stream must stay open, even sending nothing, to count as having worked. At least a second, and
-   * at least the connect timeout.
-   */
-  protected long workingStreamMs() {
-    return workingStreamMs;
   }
 
   /**
@@ -245,7 +170,8 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
   /**
    * Makes the connection we have claimed (if any) on its own thread.
    */
-  private void connect(@Nullable StreamingConnectionTracker.Connection<Stream> connection) {
+  @Override
+  protected void connect(@Nullable StreamingConnectionTracker.Connection<Stream> connection) {
     if (connection == null) {
       return;
     }
@@ -305,9 +231,9 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
         event = source.read();
 
         if (event == null) {
-          // read timed out or the server closed the connection, the loop condition decides which
+          // the stream has ended
           log.trace("server read returned no event");
-          continue;
+          break;
         }
       } catch (Exception e) {
         // if we are no longer the current connection we were deliberately closed (e.g. by a context change). A stream
@@ -320,7 +246,10 @@ public abstract class BlockingStreamEdgeService implements EdgeService, EdgeReco
         return;
       }
 
-      connections.process(connection, this, event.getName(), event.getId(), event.getData());
+      if (!process(connection, event.getName(), event.getId(), event.getData())) {
+        // the event stopped the retryer, and our connection has been released
+        break;
+      }
     }
 
     // we are the connection's own thread, so we can close it directly

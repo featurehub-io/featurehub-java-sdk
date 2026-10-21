@@ -44,6 +44,10 @@ public class EdgeRetryer implements EdgeRetryService {
    */
   private final int byeBackoffMs;
   /**
+   * How long we always wait after a bye before reconnecting, unless told otherwise.
+   */
+  public static final int DEFAULT_BYE_BACKOFF_MS = 300;
+  /**
    * backoffMultiplier - this is how much to multiply the backoff - the backoff is a random value between 0 and 1, which is multiplied by this
    * value.
    */
@@ -70,8 +74,9 @@ public class EdgeRetryer implements EdgeRetryService {
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {
+    // the same bye backoff the builder defaults to, so subclasses written before it existed are protected too
     this(serverReadTimeoutMs, serverDisconnectRetryMs, serverByeReconnectMs, backoffMultiplier, maximumBackoffTimeMs,
-      serverConnectTimeoutMs, 0);
+      serverConnectTimeoutMs, DEFAULT_BYE_BACKOFF_MS);
   }
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
@@ -359,7 +364,7 @@ public class EdgeRetryer implements EdgeRetryService {
       serverByeReconnectMs = propertyOrEnv("featurehub.edge.server-by-reconnect-ms",
         "0");
       // always wait a little after a bye, so a server that says bye straight away can't have us reconnect in a loop
-      byeBackoffMs = propertyOrEnv("featurehub.edge.bye-backoff-ms", "300");
+      byeBackoffMs = propertyOrEnv("featurehub.edge.bye-backoff-ms", Integer.toString(DEFAULT_BYE_BACKOFF_MS));
       backoffMultiplier = propertyOrEnv("featurehub.edge.backoff-multiplier", "10");
       maximumBackoffTimeMs = propertyOrEnv("featurehub.edge.maximum-backoff-ms", "30000");
     }

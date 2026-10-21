@@ -163,4 +163,48 @@ class BlockingStreamEdgeServiceSpec extends Specification {
     cleanup:
       release.countDown()
   }
+
+  def "a read that returns nothing ends the stream, even if it says it is still open"() {
+    given: "a stream that returns null without closing itself"
+      def reads = 0
+      open = { h, l ->
+        new BlockingStreamEdgeService.Stream() {
+          boolean isClosed() { false }
+          BlockingStreamEdgeService.Event read() { reads++; null }
+          void close() {}
+        }
+      }
+      def edge = service()
+    when:
+      edge.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then: "it is read once and reported lost"
+      reads == 1
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, edge)
+  }
+
+  def "an event that stops the retryer closes the stream straight away and releases those waiting"() {
+    given: "a stream that would send more after a failure event"
+      def stopped = false
+      retryer.isStopped() >> { stopped }
+      retryer.fromValue("failure") >> SSEResultState.FAILURE
+      retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, _) >> { stopped = true }
+      def closed = false
+      def reads = 0
+      open = { h, l ->
+        new BlockingStreamEdgeService.Stream() {
+          boolean isClosed() { closed }
+          BlockingStreamEdgeService.Event read() { reads++; new BlockingStreamEdgeService.Event("failure", null, null) }
+          void close() { closed = true }
+        }
+      }
+      def edge = service()
+    when:
+      def future = edge.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      reads == 1
+      closed
+      future.done
+  }
 }

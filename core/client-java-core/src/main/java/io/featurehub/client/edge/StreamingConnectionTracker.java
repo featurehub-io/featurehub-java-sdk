@@ -25,7 +25,10 @@ import java.util.concurrent.CompletableFuture;
  * Nothing that calls into listeners or futures is ever done while holding the lock. The retryer is told to reconnect, or
  * to cancel its reconnects, while holding it, as both only queue or cancel work and never call back into us. Doing
  * them in the same step as the retry is marked pending (or cleared) means a cancel can never run between a lost
- * connection being released and its reconnect being queued, which would leave that reconnect to run anyway.
+ * connection being released and its reconnect being queued, which would leave that reconnect to run anyway. For the
+ * same reason, everything a connection tells the retryer (e.g. a failure event that stops it) is checked and told in
+ * one locked step, so a replaced connection never reaches the retryer. Applying an event to the repository can't be
+ * done under the lock, so an event a replaced connection was already applying can still be written.
  *
  * @param <S> - the client library's connection, e.g. an OKHttp EventSource
  */
@@ -229,24 +232,37 @@ public class StreamingConnectionTracker<S> {
       return;
     }
 
+    if (data == null && (state == SSEResultState.FEATURES || state == SSEResultState.FEATURE ||
+      state == SSEResultState.DELETE_FEATURE)) {
+      // there is nothing to apply, so it mustn't count as the context's features arriving, nor be resumed from
+      log.debug("[featurehub-sdk] ignoring {} event with no data", type);
+      return;
+    }
+
     try {
       log.trace("[featurehub-sdk] decode packet {}:{}", type, data);
 
-      if (state == SSEResultState.CONFIG) {
+      if (state == SSEResultState.FAILURE) {
+        // stops the retryer for good, so only if we are still current. Otherwise a context change racing this event
+        // would have the old context's failure stop the new context's connection.
+        if (!tellRetryer(connection, EdgeConnectionState.API_KEY_NOT_FOUND, reconnector)) {
+          return;
+        }
+
+        // a failure need not carry any data, it still has to be recorded
+        retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
+      } else if (state == SSEResultState.CONFIG) {
         retryer.edgeConfigInfo(data);
       } else {
-        // a failure need not carry any data, it still has to be recorded
         retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
       }
 
       if (state == SSEResultState.FEATURES) {
         // reset the timer
         connection.reportedWorking = true;
-        retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
+        tellRetryer(connection, EdgeConnectionState.SUCCESS, reconnector);
       } else if (state == SSEResultState.BYE) {
         connection.saidBye = true;
-      } else if (state == SSEResultState.FAILURE) {
-        retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, reconnector);
       }
 
       if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
@@ -270,6 +286,24 @@ public class StreamingConnectionTracker<S> {
           lastEventId = id;
         }
       }
+    }
+  }
+
+  /**
+   * Tells the retryer how the connection is doing, as long as it is still the current one. Done under the lock, so a
+   * connection a context change has replaced can never reach the retryer.
+   *
+   * @return false if the connection had been replaced or closed, so the retryer wasn't told
+   */
+  private boolean tellRetryer(@NotNull Connection<S> connection, @NotNull EdgeConnectionState state,
+                              @NotNull EdgeReconnector reconnector) {
+    synchronized (lock) {
+      if (current != connection) {
+        return false;
+      }
+
+      retryer.edgeResult(state, reconnector);
+      return true;
     }
   }
 

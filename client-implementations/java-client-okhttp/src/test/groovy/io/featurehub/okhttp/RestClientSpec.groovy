@@ -8,6 +8,7 @@ import io.featurehub.client.edge.EdgeRetryer
 import io.featurehub.javascript.Jackson2ObjectMapper
 import io.featurehub.javascript.JavascriptObjectMapper
 import io.featurehub.sse.model.FeatureEnvironmentCollection
+import io.featurehub.sse.model.SSEResultState
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import spock.lang.Specification
@@ -338,5 +339,24 @@ class RestClientSpec extends Specification {
       !localClient.needsContextChange('any-header', 'any-sha')
     cleanup:
       localClient.close()
+  }
+
+  def "a pointless request marks us failed only if we never had features"() {
+    given:
+      repo.readiness >> readiness
+      mockWebServer.enqueue(new MockResponse().with {
+        setResponseCode(401)
+      })
+    when:
+      def future = client.poll()
+      mockWebServer.takeRequest()
+      future.get()
+    then:
+      !client.canMakeRequests()
+      notified * repo.notify(SSEResultState.FAILURE, "polling")
+    where:
+      readiness           | notified
+      Readiness.NotReady  | 1
+      Readiness.Ready     | 0
   }
 }
