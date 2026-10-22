@@ -162,7 +162,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       1 * repository.notify(SSEResultState.FAILURE)
       0 * retryer.edgeResult(*_)
       future.done
-      tracker.claim(false) != null
+      tracker.claim(false) == null
   }
 
   def "the last event id is only resumed from once we have the context's features"() {
@@ -332,5 +332,63 @@ class StreamingConnectionTrackerSpec extends Specification {
       tracker.process(connection, reconnector, "features", "7", null)
     then:
       !waiting.done
+  }
+
+  def "a config event from a connection a context change has replaced doesn't reach the retryer"() {
+    given: "the old context's connection has started applying a config event when the context changes"
+      config.isServerEvaluation() >> true
+      def old = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
+      retryer.fromValue("config") >> {
+        tracker.contextChange("userkey=mary", new CompletableFuture<Readiness>())
+        SSEResultState.CONFIG
+      }
+    when:
+      tracker.process(old, reconnector, "config", null, '{"edge.stale": true}')
+    then:
+      0 * retryer.edgeConfigInfo(_)
+  }
+
+  def "a config event with no data is ignored and doesn't release those waiting"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("config") >> SSEResultState.CONFIG
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "config", null, null)
+    then:
+      0 * retryer.edgeConfigInfo(_)
+      !waiting.done
+  }
+
+  def "a bye before the features doesn't release those waiting for them"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("bye") >> SSEResultState.BYE
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "bye", null, null)
+    then:
+      !waiting.done
+    when: "the connection then goes"
+      tracker.connectionLost(connection, 0, 0, reconnector)
+    then: "they are released"
+      waiting.done
+  }
+
+  def "once a connection is abandoned we never connect again"() {
+    given:
+      config.isServerEvaluation() >> true
+      def connection = tracker.claim(false)
+      tracker.abandon(connection)
+    when:
+      def later = tracker.claim(false)
+      def change = new CompletableFuture<Readiness>()
+      def todo = tracker.contextChange("userkey=fred", change)
+    then:
+      later == null
+      todo.connection == null
+      change.done
   }
 }

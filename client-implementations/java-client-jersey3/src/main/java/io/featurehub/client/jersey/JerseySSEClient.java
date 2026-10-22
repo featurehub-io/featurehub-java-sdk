@@ -31,6 +31,8 @@ public class JerseySSEClient extends BlockingStreamEdgeService {
   private final Client client;
   private final WebTarget target;
   private Consumer<EventInput> notify;
+  // the context and last event id of the connection this thread is making, for the no-arg makeEventSource()
+  private final ThreadLocal<String[]> connecting = new ThreadLocal<>();
 
   public JerseySSEClient(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                          @NotNull EdgeRetryService retryer) {
@@ -77,9 +79,27 @@ public class JerseySSEClient extends BlockingStreamEdgeService {
     return request.get(EventInput.class);
   }
 
+  /**
+   * Makes the connection for the context and last event id being connected with.
+   *
+   * @deprecated override {@link #makeEventSource(String, String)} instead. This is still called, so existing
+   * overrides keep working, and by default calls it.
+   */
+  @Deprecated
+  protected EventInput makeEventSource() {
+    final String[] connection = connecting.get();
+    return makeEventSource(connection == null ? null : connection[0], connection == null ? null : connection[1]);
+  }
+
   @Override
   protected @NotNull Stream openStream(@Nullable String header, @Nullable String lastEventId) {
-    return new EventInputStream(makeEventSource(header, lastEventId));
+    connecting.set(new String[] {header, lastEventId});
+
+    try {
+      return new EventInputStream(makeEventSource());
+    } finally {
+      connecting.remove();
+    }
   }
 
   @Override

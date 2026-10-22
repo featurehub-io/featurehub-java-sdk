@@ -503,7 +503,7 @@ class JerseySSEClientSpec extends Specification {
       ]
   }
 
-  def "an Error while connecting doesn't leave anyone waiting or stop us connecting again"() {
+  def "an Error while connecting doesn't leave anyone waiting"() {
     given:
       def submitted = []
       def retryer = Mock(EdgeRetryService)
@@ -517,8 +517,8 @@ class JerseySSEClientSpec extends Specification {
       submitted.size() == expectedConnections
     where:
       failure                                     | expectedConnections
-      // a library clash can't be fixed by retrying, but nothing stops a later attempt
-      new NoClassDefFoundError("wrong jersey")    | 2
+      // a library clash can't be fixed by retrying, so we never connect again
+      new NoClassDefFoundError("wrong jersey")    | 1
       // anything else we retry once the retryer has backed off
       new AssertionError("unexpected")            | 1
   }
@@ -716,11 +716,12 @@ class JerseySSEClientSpec extends Specification {
       lastEventIds == [null, null]
   }
 
-  def "an event that isn't the features releases those waiting, but later callers still wait for the features"() {
+  def "only the features (or failing to apply them) release those waiting, and later callers still wait for the features"() {
     given:
       def submitted = []
       def stopped = false
       def laterDone = null
+      def firstDone = null
       JerseySSEClient client
       def first = null
       def events = [
@@ -731,6 +732,7 @@ class JerseySSEClientSpec extends Specification {
         if (events) {
           return events.remove(0)
         }
+        firstDone = first.done
         laterDone = client.contextChange("userkey=fred", "1").done
         stopped = true
         null
@@ -744,13 +746,13 @@ class JerseySSEClientSpec extends Specification {
     when:
       first = client.contextChange("userkey=fred", "1")
       submitted[0].run()
-    then:
-      first.done
+    then: "a bye before the features would have them evaluate the previous context's values"
+      firstDone == released
       laterDone == false
     where:
-      name       | data
-      "bye"      | "{}"
-      "features" | "bad-data"
+      name       | data       | released
+      "bye"      | "{}"       | false
+      "features" | "bad-data" | true
   }
 
   // a server evaluated client whose connections are made by the given closure, and whose connection executor just
@@ -1287,4 +1289,28 @@ class JerseySSEClientSpec extends Specification {
 //      client.featurehubContextHeader != null
 //  }
 
+  def "an override of the deprecated makeEventSource() is still used, and by default it makes the connection being asked for"() {
+    given:
+      def asked = []
+      def input = Mock(EventInput)
+      def oldStyle = new JerseySSEClient(null, config, EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().build()) {
+        @Override
+        protected EventInput makeEventSource() {
+          asked << "old"
+          return super.makeEventSource()
+        }
+
+        @Override
+        protected EventInput makeEventSource(String header, String lastEventId) {
+          asked << "${header}/${lastEventId}".toString()
+          return input
+        }
+      }
+    when:
+      oldStyle.openStream("userkey=fred", "7")
+    then:
+      asked == ["old", "userkey=fred/7"]
+    cleanup:
+      oldStyle.close()
+  }
 }

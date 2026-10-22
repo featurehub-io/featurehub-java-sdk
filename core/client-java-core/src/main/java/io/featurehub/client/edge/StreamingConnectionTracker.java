@@ -233,7 +233,7 @@ public class StreamingConnectionTracker<S> {
     }
 
     if (data == null && (state == SSEResultState.FEATURES || state == SSEResultState.FEATURE ||
-      state == SSEResultState.DELETE_FEATURE)) {
+      state == SSEResultState.DELETE_FEATURE || state == SSEResultState.CONFIG)) {
       // there is nothing to apply, so it mustn't count as the context's features arriving, nor be resumed from
       log.debug("[featurehub-sdk] ignoring {} event with no data", type);
       return;
@@ -252,7 +252,14 @@ public class StreamingConnectionTracker<S> {
         // a failure need not carry any data, it still has to be recorded
         retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
       } else if (state == SSEResultState.CONFIG) {
-        retryer.edgeConfigInfo(data);
+        // may stop the retryer (e.g. edge.stale), so like a failure only if we are still current
+        synchronized (lock) {
+          if (current != connection) {
+            return;
+          }
+
+          retryer.edgeConfigInfo(data);
+        }
       } else {
         retryer.convertSSEState(state, data, repository, config.getEnvironmentId());
       }
@@ -267,9 +274,13 @@ public class StreamingConnectionTracker<S> {
 
       if (state != SSEResultState.ACK && state != SSEResultState.CONFIG) {
         connection.meaningfulEvent = true;
-        // tell any waiting clients we are now ready
-        notifyWaitingClients(connection,
-          state == SSEResultState.FEATURES || state == SSEResultState.FAILURE);
+      }
+
+      if (state == SSEResultState.FEATURES || state == SSEResultState.FAILURE) {
+        // tell any waiting clients we are now ready. Only the context's features (or being told we can't have them)
+        // do, anything else (e.g. a bye before the features) would have them evaluate another context's values. If
+        // the connection goes before the features arrive, losing it releases them.
+        notifyWaitingClients(connection, true);
       }
     } catch (Exception e) {
       log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
@@ -376,13 +387,19 @@ public class StreamingConnectionTracker<S> {
   }
 
   /**
-   * The connection could not be made because of a problem with the libraries we are using, which retrying won't fix.
+   * The connection could not be made because of a problem retrying won't fix (e.g. the wrong version of a library we
+   * use, or a malformed url), so we never connect again.
    */
   public void abandon(@NotNull Connection<S> connection) {
     final List<CompletableFuture<Readiness>> waiting;
 
     synchronized (lock) {
       waiting = releaseLocked(connection, false);
+
+      if (waiting != null) {
+        // every later connection would fail the same way, so never connect again
+        closed = true;
+      }
     }
 
     if (waiting != null) {

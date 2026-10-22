@@ -81,37 +81,8 @@ write_or_diff() {
   fi
 }
 
-# 3. java17_changed.txt (only modules under v17-and-above, comma-separated)
-JAVA17_FILE="v17-and-above/java17_changed.txt"
-JAVA17_MODULES=()
-for module in "${CHANGED_MODULES[@]}"; do
-  if [[ "$module" == v17-and-above/* ]]; then
-    JAVA17_MODULES+=("${module#v17-and-above/}")
-  fi
-done
-JAVA17_CONTENT="$(IFS=,; echo "${JAVA17_MODULES[*]}")"
-
-echo "Java 17 changed Maven projects ($JAVA17_FILE):"
-echo "$JAVA17_CONTENT"
-echo ""
-write_or_diff "$JAVA17_FILE" "$JAVA17_CONTENT"
-
-# 4. java11_changed.txt (excludes modules under v17-and-above)
-JAVA11_FILE="java11_changed.txt"
-JAVA11_MODULES=()
-for module in "${CHANGED_MODULES[@]}"; do
-  if [[ "$module" != v17-and-above* ]]; then
-    JAVA11_MODULES+=("$module")
-  fi
-done
-JAVA11_CONTENT="$(IFS=,; echo "${JAVA11_MODULES[*]}")"
-
-echo "Java 11 changed Maven projects ($JAVA11_FILE):"
-echo "$JAVA11_CONTENT"
-echo ""
-write_or_diff "$JAVA11_FILE" "$JAVA11_CONTENT"
-
-# Helper: load, merge and write a cumulative release_modules.txt
+# Helper: load, merge and write a cumulative module list (the changed and release lists track changes across
+# merges to main until they are released, so they are added to rather than replaced)
 # Usage: build_release_file <file> <v17:true|false> <modules...>
 # Reads existing file, merges new modules (stripping v17 prefix when v17=true), writes result.
 build_release_content() {
@@ -142,6 +113,36 @@ build_release_content() {
 
   echo "$(IFS=,; echo "${merged[*]}")"
 }
+
+# 3. java17_changed.txt (only modules under v17-and-above, comma-separated, cumulative)
+JAVA17_FILE="v17-and-above/java17_changed.txt"
+JAVA17_MODULES=()
+for module in "${CHANGED_MODULES[@]}"; do
+  if [[ "$module" == v17-and-above/* ]]; then
+    JAVA17_MODULES+=("$module")
+  fi
+done
+JAVA17_CONTENT=$(build_release_content "$JAVA17_FILE" "true" "${JAVA17_MODULES[@]}")
+
+echo "Java 17 changed Maven projects ($JAVA17_FILE):"
+echo "$JAVA17_CONTENT"
+echo ""
+write_or_diff "$JAVA17_FILE" "$JAVA17_CONTENT"
+
+# 4. java11_changed.txt (excludes modules under v17-and-above, cumulative)
+JAVA11_FILE="java11_changed.txt"
+JAVA11_MODULES=()
+for module in "${CHANGED_MODULES[@]}"; do
+  if [[ "$module" != v17-and-above* ]]; then
+    JAVA11_MODULES+=("$module")
+  fi
+done
+JAVA11_CONTENT=$(build_release_content "$JAVA11_FILE" "false" "${JAVA11_MODULES[@]}")
+
+echo "Java 11 changed Maven projects ($JAVA11_FILE):"
+echo "$JAVA11_CONTENT"
+echo ""
+write_or_diff "$JAVA11_FILE" "$JAVA11_CONTENT"
 
 # 5a. release_modules.txt (Java 11 modules, excluding examples and v17-and-above)
 RELEASE_FILE="release_modules.txt"

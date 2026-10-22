@@ -247,7 +247,7 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
       }
 
       if (!process(connection, event.getName(), event.getId(), event.getData())) {
-        // the event stopped the retryer, and our connection has been released
+        // the retryer has stopped, we close the connection and report it lost below
         break;
       }
     }

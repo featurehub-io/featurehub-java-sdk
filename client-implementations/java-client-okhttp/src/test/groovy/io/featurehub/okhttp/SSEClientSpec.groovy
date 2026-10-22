@@ -355,7 +355,7 @@ class SSEClientSpec extends Specification {
       request.header("Last-Event-ID") == null
   }
 
-  def "an event that isn't the features releases those waiting, but later callers still wait for the features"() {
+  def "only the features (or failing to apply them) release those waiting, and later callers still wait for the features"() {
     given:
       retry.fromValue('bye') >> SSEResultState.BYE
       retry.fromValue('features') >> SSEResultState.FEATURES
@@ -365,14 +365,15 @@ class SSEClientSpec extends Specification {
     when:
       deliver(esListener)
       def later = client.contextChange(null, '0')
-    then:
-      first.done
+    then: "a bye before the features would have them evaluate the previous context's values"
+      first.done == released
       !later.done
     where:
       deliver << [
         { EventSourceListener l -> l.onEvent(null, null, 'bye', null) },
         { EventSourceListener l -> l.onEvent(null, '1', 'features', 'bad-data') }
       ]
+      released << [false, true]
   }
 
   def "a client side key's context change doesn't wait for features, it only makes sure we are connecting"() {
@@ -822,5 +823,39 @@ class SSEClientSpec extends Specification {
       def cfg = client.config
     then:
       cfg == config
+  }
+
+  def "if okhttp rejects the request (e.g. a malformed url), we don't retry, we have failed and never connect again"() {
+    given:
+      config.serverEvaluation >> true
+      onMakeEventSource = { throw new IllegalArgumentException("unexpected url") }
+    when:
+      def future = client.contextChange("header", '0')
+      client.poll()
+    then:
+      0 * retry.edgeResult(*_)
+      _ * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.notify(SSEResultState.FAILURE)
+      future.done
+      connectionsMade == 1
+  }
+
+  def "a subclass's okhttp builder that sets no timeouts still gets the retryer's, but its own are kept"() {
+    given: "what a subclass's buildOkHttpClientBuilder made"
+      retry.serverConnectTimeoutMs >> 5000
+      retry.serverReadTimeoutMs >> 180000
+      def builder = new okhttp3.OkHttpClient.Builder()
+      if (ownConnect) {
+        builder.connectTimeout(java.time.Duration.ofMillis(2000))
+      }
+    when:
+      def okClient = client.withTimeouts(builder.build())
+    then:
+      okClient.readTimeoutMillis() == 180000
+      okClient.connectTimeoutMillis() == connect
+    where:
+      ownConnect | connect
+      false      | 5000
+      true       | 2000
   }
 }

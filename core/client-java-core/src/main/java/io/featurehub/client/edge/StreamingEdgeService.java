@@ -81,20 +81,15 @@ public abstract class StreamingEdgeService<S> implements EdgeService, EdgeReconn
   /**
    * Applies an event the connection has received.
    *
-   * @return false if the event has stopped the retryer (e.g. a failure event), so the connection has been released
-   * and the client must close it
+   * @return false if the retryer has stopped (e.g. a failure event), so nothing more is coming that we may act on. The
+   * client must then close the connection and report it lost straight away, rather than holding it open until the
+   * server closes it.
    */
   protected boolean process(@NotNull StreamingConnectionTracker.Connection<S> connection, @Nullable String type,
                             @Nullable String id, @Nullable String data) {
     connections.process(connection, this, type, id, data);
 
-    if (retryer.isStopped()) {
-      // nothing more is coming that we may act on, so don't hold the connection open until the server closes it
-      connections.connectionLost(connection, 0, workingStreamMs(), this);
-      return false;
-    }
-
-    return true;
+    return !retryer.isStopped();
   }
 
   @Override

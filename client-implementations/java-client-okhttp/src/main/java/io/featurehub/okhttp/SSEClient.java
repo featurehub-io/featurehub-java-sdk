@@ -28,6 +28,8 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
   private EventSource.Factory eventSourceFactory;
   private OkHttpClient client;
   private final Object clientLock = new Object();
+  // OKHttp's connect and read timeouts if none are set
+  private static final int OKHTTP_DEFAULT_TIMEOUT_MS = 10_000;
 
   public SSEClient(
       @Nullable InternalFeatureRepository repository,
@@ -84,7 +86,9 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                     @Nullable String type,
                     @Nullable String data) {
                   if (!process(connection, type, id, data)) {
-                    // the event stopped the retryer, nothing more is coming that we may act on
+                    // the retryer has stopped, so release the connection (any failure the cancel causes is then
+                    // ignored) and close it
+                    connections.connectionLost(connection, 0, workingStreamMs(), connector);
                     eventSource.cancel();
                   }
                 }
@@ -111,6 +115,11 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                 }
               });
 
+    } catch (IllegalArgumentException e) {
+      // okhttp rejected the request, e.g. a malformed realtime url, which retrying won't fix
+      log.error("[featurehub-sdk] cannot connect to {}", this.config.getRealtimeUrl(), e);
+      connections.abandon(connection);
+      return;
     } catch (NoClassDefFoundError|NoSuchFieldError noClassDefFoundError) {
       log.error(
           "You appear to have the wrong version of OKHttp in your classpath or a conflicting version and FeatureHub cannot start",
@@ -153,7 +162,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
       }
 
       if (eventSourceFactory == null) {
-        client =
+        client = withTimeouts(
           buildOkHttpClientBuilder(retryer)
                 .eventListener(
                     new EventListener() {
@@ -169,7 +178,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                         log.error("connected failed");
                       }
                     })
-                .build();
+                .build());
 
         eventSourceFactory = EventSources.createFactory(client);
       }
@@ -181,7 +190,34 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
   }
 
   /**
-   * This is overrideable so you can make it do what you wish if you wish.
+   * A subclass's buildOkHttpClientBuilder may not set our timeouts, and OKHttp's 10 second default read timeout
+   * drops any stream that is quiet for 10 seconds. So where a timeout is still OKHttp's default, use ours. Package
+   * private for testing.
+   */
+  @NotNull OkHttpClient withTimeouts(@NotNull OkHttpClient built) {
+    final boolean defaultRead = built.readTimeoutMillis() == OKHTTP_DEFAULT_TIMEOUT_MS;
+    final boolean defaultConnect = built.connectTimeoutMillis() == OKHTTP_DEFAULT_TIMEOUT_MS;
+
+    if (!defaultRead && !defaultConnect) {
+      return built;
+    }
+
+    final OkHttpClient.Builder builder = built.newBuilder();
+
+    if (defaultRead) {
+      builder.readTimeout(Duration.ofMillis(retryer.getServerReadTimeoutMs()));
+    }
+
+    if (defaultConnect) {
+      builder.connectTimeout(Duration.ofMillis(retryer.getServerConnectTimeoutMs()));
+    }
+
+    return builder.build();
+  }
+
+  /**
+   * This is overrideable so you can make it do what you wish if you wish. A connect or read timeout left at OKHttp's
+   * default is replaced with the retryer's.
    *
    * @param edgeRetryService
    * @return - new builder
