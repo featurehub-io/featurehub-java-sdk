@@ -35,11 +35,6 @@ import java.util.function.LongSupplier;
  */
 public class StreamingConnectionTracker<S> {
   private static final Logger log = LoggerFactory.getLogger(StreamingConnectionTracker.class);
-  /**
-   * How many streams in a row may count as working only by staying open, without sending anything, before we stop
-   * believing them and back off. See {@link #connectionLost}.
-   */
-  public static final int MAX_QUIET_STREAMS = 3;
   private final Object lock = new Object();
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
@@ -54,9 +49,6 @@ public class StreamingConnectionTracker<S> {
   private boolean contextHasFeatures;
   // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then
   private boolean retryPending;
-  // how many streams in a row have counted as working only because they stayed open, sending nothing. Reset by any
-  // stream that sends a real event.
-  private int quietStreams;
   // added to by callers' threads and drained by connection threads
   private final List<CompletableFuture<Readiness>> waitingClients = new ArrayList<>();
   // once closed we never connect again. Set under the lock.
@@ -106,14 +98,20 @@ public class StreamingConnectionTracker<S> {
      * Did the stream work? If it did, losing it is normal (e.g. the server's bye, or our read timeout on a quiet
      * stream) and we reconnect straight away. If not, reconnecting straight away would loop as fast as it is dropped,
      * so we back off. A stream that is resumed with a Last-Event-ID the server is up to date with legitimately sends
-     * nothing until it says bye or is disconnected, so staying open long enough counts as working too. One that sends
-     * nothing (or only an ack or config) and is dropped quickly never worked.
+     * nothing until it says bye or is disconnected, so staying open long enough counts as working too: features have
+     * reached us this way before, and silence just means nothing has changed. A stream that isn't resumed must be sent
+     * our features straight away, so if it sends nothing (or only an ack or config), however long it stays open, it
+     * never worked (e.g. a proxy that accepts the connection and passes nothing through).
      *
      * @param workingStreamMs - see {@link StreamingConnectionTracker#workingStreamMs(EdgeRetryService)}
      */
     public boolean worked(long workingStreamMs) {
       if (meaningfulEvent) {
         return true;
+      }
+
+      if (lastEventId == null) {
+        return false;
       }
 
       final long opened = openedAt;
@@ -347,7 +345,7 @@ public class StreamingConnectionTracker<S> {
    */
   public boolean connectionLost(@NotNull Connection<S> connection, int status, @NotNull EdgeReconnector reconnector) {
     final List<CompletableFuture<Readiness>> waiting;
-    boolean worked = connection.worked(workingStreamMs.getAsLong());
+    final boolean worked = connection.worked(workingStreamMs.getAsLong());
 
     synchronized (lock) {
       waiting = releaseLocked(connection, true);
@@ -375,26 +373,6 @@ public class StreamingConnectionTracker<S> {
   // must hold the lock
   private void tellRetryerLost(@NotNull Connection<S> connection, int status, boolean worked,
                                @NotNull EdgeReconnector reconnector) {
-    if (connection.meaningfulEvent) {
-      quietStreams = 0;
-    } else if (worked && ++quietStreams > MAX_QUIET_STREAMS) {
-      // something between us and Edge (e.g. a proxy) that accepts the connection, passes nothing through and drops it
-      // once idle looks like a quiet resumed stream, and we would reconnect to it forever without backing off. A
-      // healthy quiet stream says bye now and then, so after a few in a row that sent nothing at all we pause before
-      // reconnecting until one sends something. But it did stay open, and it may be a healthy client behind a load
-      // balancer that drops idle connections, so the pause must not grow: we reset the backoff first, so every pause
-      // is the first (shortest) connection failure backoff.
-      log.debug("[featurehub-sdk] {} streams in a row sent nothing, pausing before reconnecting", quietStreams);
-      final EdgeConnectionState state = lostState(connection, status, false);
-
-      if (state == EdgeConnectionState.CONNECTION_FAILURE) {
-        retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
-      }
-
-      retryer.edgeResult(state, reconnector);
-      return;
-    }
-
     if (worked && !connection.reportedWorking) {
       // a resumed stream the server is up to date with never sends features, but it worked, so the backoff must
       // reset as it does when features arrive, or after a few failures every later backoff stays at its maximum
@@ -530,7 +508,6 @@ public class StreamingConnectionTracker<S> {
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         contextHasFeatures = false;
-        quietStreams = 0;
 
         if (current != null) {
           previous = current.source;

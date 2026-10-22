@@ -185,10 +185,21 @@ class StreamingConnectionTrackerSpec extends Specification {
       tracker.claim(true).lastEventId == "2"
   }
 
-  def "a stream that worked without sending features still resets the retryer's backoff when it is lost"() {
+  // a connection resumed from the features a previous connection sent, as an up to date client's is
+  private StreamingConnectionTracker.Connection<String> resumedConnection() {
+    retryer.fromValue("features") >> SSEResultState.FEATURES
+    def first = tracker.claim(false)
+    tracker.process(first, reconnector, "features", "1", "data")
+    tracker.connectionLost(first, 0, reconnector)
+    def resumed = tracker.claim(true)
+    assert resumed.lastEventId == "1"
+    return resumed
+  }
+
+  def "a resumed stream that worked without sending features still resets the retryer's backoff when it is lost"() {
     given: "a resumed stream the server is up to date with, which stays open long enough to count as working"
       config.isServerEvaluation() >> true
-      def connection = tracker.claim(false)
+      def connection = resumedConnection()
       connection.opened()
     when:
       tracker.connectionLost(connection, 0, reconnector)
@@ -222,87 +233,46 @@ class StreamingConnectionTrackerSpec extends Specification {
       1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
   }
 
-  private void loseQuietStream() {
-    def connection = tracker.claim(true)
-    connection.opened()
-    tracker.connectionLost(connection, 0, reconnector)
-  }
-
-  def "after several streams in a row that only stayed open, sending nothing, we back off"() {
-    given: "something between us and Edge that accepts the connection, sends nothing and drops it once idle"
+  def "resumed streams that stay quiet keep reconnecting straight away, however many there are in a row"() {
+    given: "an up to date client behind something that drops idle connections"
       config.isServerEvaluation() >> true
-    when: "the first few are lost"
-      StreamingConnectionTracker.MAX_QUIET_STREAMS.times { loseQuietStream() }
-    then: "they count as working"
-      StreamingConnectionTracker.MAX_QUIET_STREAMS * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
-      StreamingConnectionTracker.MAX_QUIET_STREAMS * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
-    when: "another is lost"
-      loseQuietStream()
-    then: "the backoff is reset first, so the pause doesn't grow"
-      1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
-    then: "it is treated as a failure, so we pause before reconnecting"
-      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
-      0 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, _)
-    when: "and another"
-      loseQuietStream()
-    then:
-      1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
-    then:
-      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
-  }
-
-  def "the pause after quiet streams stays at the first connection failure backoff, however many there are"() {
-    given: "a real retryer, with a 50ms connection failure backoff"
-      config.isServerEvaluation() >> true
-      def real = new EdgeRetryer(100, 0, 0, 10, 10000, 50, 0) {}
-      def reconnects = new java.util.concurrent.LinkedBlockingQueue<Long>()
-      def quietTracker = new StreamingConnectionTracker<String>(repository, config, real, { 0L } as java.util.function.LongSupplier)
-      def quiet = { ->
-        def connection = quietTracker.claim(true) ?: quietTracker.claim(false)
-        connection.opened()
-        quietTracker.connectionLost(connection, 0, { reconnects.add(System.currentTimeMillis()) } as EdgeReconnector)
-      }
-    when: "many quiet streams in a row are lost"
-      def pauses = []
-      (StreamingConnectionTracker.MAX_QUIET_STREAMS + 6).times {
-        def start = System.currentTimeMillis()
-        quiet()
-        pauses << reconnects.poll(5, java.util.concurrent.TimeUnit.SECONDS) - start
-      }
-    then: "the later pauses are about 50ms plus 10-20ms, rather than growing"
-      pauses.drop(StreamingConnectionTracker.MAX_QUIET_STREAMS).every { it >= 50 && it < 1000 }
-      real.currentBackoffMultiplier <= 20
-    cleanup:
-      real.close()
-  }
-
-  def "a stream that sends a real event stops us backing off for quiet streams"() {
-    given:
-      config.isServerEvaluation() >> true
-      retryer.fromValue("bye") >> SSEResultState.BYE
-      (StreamingConnectionTracker.MAX_QUIET_STREAMS + 1).times { loseQuietStream() }
-      def speaking = tracker.claim(true)
-      speaking.opened()
-      tracker.process(speaking, reconnector, "bye", null, null)
-      tracker.connectionLost(speaking, 0, reconnector)
+      def connection = resumedConnection()
     when:
-      loseQuietStream()
+      6.times {
+        connection.opened()
+        tracker.connectionLost(connection, 0, reconnector)
+        connection = tracker.claim(true)
+      }
     then:
-      1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
+      6 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
+      6 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
       0 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, _)
   }
 
-  def "a server evaluated context change starts counting quiet streams again"() {
+  def "a stream that isn't resumed and sends nothing never worked, however long it stays open"() {
+    given: "e.g. a proxy that accepts the connection and passes nothing through"
+      config.isServerEvaluation() >> true
+      def connection = tracker.claim(false)
+      connection.opened()
+    when:
+      tracker.connectionLost(connection, 0, reconnector)
+    then:
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+  }
+
+  def "after a context change a stream isn't resumed, so one that sends nothing never worked"() {
     given:
       config.isServerEvaluation() >> true
-      StreamingConnectionTracker.MAX_QUIET_STREAMS.times { loseQuietStream() }
+      resumedConnection()
       def connection = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
       connection.opened()
     when:
       tracker.connectionLost(connection, 0, reconnector)
     then:
-      1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
-      0 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, _)
+      connection.lastEventId == null
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
   }
 
   def "the reconnect for a lost connection is queued in the same step as it is released, so a context change can't cancel it before it exists"() {
