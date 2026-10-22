@@ -1,5 +1,8 @@
 package io.featurehub.client.edge
 
+import io.featurehub.sse.model.SSEResultState
+import io.featurehub.client.Readiness
+import io.featurehub.client.InternalFeatureRepository
 import spock.lang.Specification
 
 import java.util.concurrent.ExecutorService
@@ -201,6 +204,38 @@ class EdgeRetryerSpec extends Specification {
     then:
       real.byeBackoffMs == EdgeRetryer.DEFAULT_BYE_BACKOFF_MS
       EdgeRetryer.DEFAULT_BYE_BACKOFF_MS == 300
+    cleanup:
+      real.close()
+  }
+
+  def "a failure event only marks us failed if we never had features"() {
+    given:
+      def repository = Mock(InternalFeatureRepository)
+      repository.getReadiness() >> readiness
+    when:
+      retryer.convertSSEState(SSEResultState.FAILURE, null, repository, null)
+    then:
+      notified * repository.notify(SSEResultState.FAILURE, "streaming")
+    where:
+      readiness          | notified
+      Readiness.NotReady | 1
+      Readiness.Ready    | 0
+  }
+
+  def "a reconnect cancelled after it has started is seen as cancelled on its own thread, and only there"() {
+    given: "a real retryer whose reconnect is cancelled while it is running"
+      def real = new EdgeRetryer(100, 0, 0, 10, 100, 100, 0)
+      def seen = new java.util.concurrent.CompletableFuture<List<Boolean>>()
+      def reconnector = {
+        def before = real.isReconnectCancelled()
+        real.cancelReconnects()
+        seen.complete([before, real.isReconnectCancelled()])
+      } as EdgeReconnector
+    when:
+      real.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
+    then:
+      seen.get(5, java.util.concurrent.TimeUnit.SECONDS) == [false, true]
+      !real.isReconnectCancelled() // this thread isn't reconnecting
     cleanup:
       real.close()
   }

@@ -69,6 +69,8 @@ public class EdgeRetryer implements EdgeRetryService {
   private volatile boolean stopped = false;
   // reconnects made before the last cancelReconnects() don't reconnect
   private final AtomicLong reconnectGeneration = new AtomicLong();
+  // the generation of the reconnect running on this thread, see isReconnectCancelled()
+  private final ThreadLocal<Long> reconnecting = new ThreadLocal<>();
   // reconnects that may not have run yet, so they can be cancelled. Guarded by itself.
   private final List<Future<?>> reconnects = new ArrayList<>();
 
@@ -147,7 +149,14 @@ public class EdgeRetryer implements EdgeRetryService {
       backoff.run();
 
       if (generation == reconnectGeneration.get()) {
-        reConnector.reconnect();
+        // the client checks again while claiming the connection, as we may be cancelled once we have got this far
+        reconnecting.set(generation);
+
+        try {
+          reConnector.reconnect();
+        } finally {
+          reconnecting.remove();
+        }
       }
     });
 
@@ -163,6 +172,12 @@ public class EdgeRetryer implements EdgeRetryService {
    * Stops any reconnects that are waiting, including one that is backing off. Our executor has a single thread, so if
    * we let a cancelled reconnect sleep out its backoff, any later reconnect would be held up behind it.
    */
+  @Override
+  public boolean isReconnectCancelled() {
+    final Long generation = reconnecting.get();
+    return generation != null && generation != reconnectGeneration.get();
+  }
+
   @Override
   public void cancelReconnects() {
     reconnectGeneration.incrementAndGet();
@@ -221,7 +236,7 @@ public class EdgeRetryer implements EdgeRetryService {
       }
 
       if (state == SSEResultState.FAILURE) {
-        repository.notify(state, "streaming");
+        EdgeStatus.failIfNeverReady(repository, "streaming");
       }
     } catch (IOException jpe) {
       throw new RuntimeException("JSON failed", jpe);

@@ -31,6 +31,16 @@ public interface EdgeRetryService {
   default void cancelReconnects() {
   }
 
+  /**
+   * Called by a client while it claims the connection for a reconnect, on the thread the retryer reconnected on. A
+   * reconnect cancelled after it had already started (e.g. while it waited for the client's lock) must not connect.
+   *
+   * @return true if the reconnect being made on this thread has been cancelled
+   */
+  default boolean isReconnectCancelled() {
+    return false;
+  }
+
   void close();
 
   ExecutorService getExecutorService();

@@ -1,7 +1,12 @@
 package io.featurehub.client.edge;
 
+import io.featurehub.client.InternalFeatureRepository;
+import io.featurehub.client.Readiness;
+import io.featurehub.sse.model.SSEResultState;
+import org.jetbrains.annotations.NotNull;
+
 /**
- * How every client (SSE or REST) treats the HTTP status Edge answers with.
+ * How every client (SSE or REST) treats the HTTP status Edge answers with, and being told to stop.
  */
 public final class EdgeStatus {
   private EdgeStatus() {
@@ -28,5 +33,24 @@ public final class EdgeStatus {
    */
   public static boolean isNotPermitted(int status) {
     return status == 401 || status == 403;
+  }
+
+  /**
+   * We will never get features (e.g. the api key doesn't exist). Features we already have are still served, so only
+   * if we never had any have we failed.
+   */
+  public static void failIfNeverReady(@NotNull InternalFeatureRepository repository) {
+    if (repository.getReadiness() == Readiness.NotReady) {
+      repository.notify(SSEResultState.FAILURE);
+    }
+  }
+
+  /**
+   * As {@link #failIfNeverReady(InternalFeatureRepository)}, saying where the failure came from.
+   */
+  public static void failIfNeverReady(@NotNull InternalFeatureRepository repository, @NotNull String source) {
+    if (repository.getReadiness() == Readiness.NotReady) {
+      repository.notify(SSEResultState.FAILURE, source);
+    }
   }
 }

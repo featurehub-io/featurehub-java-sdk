@@ -216,11 +216,7 @@ public class RestClient implements EdgeService {
   private void stopPointlessRequests() {
     stopped = true;
     log.error("Server indicated an error with our requests making future ones pointless.");
-
-    // features we already have are still served, so only if we never had any have we failed
-    if (repository.getReadiness() == Readiness.NotReady) {
-      repository.notify(SSEResultState.FAILURE, "polling");
-    }
+    EdgeStatus.failIfNeverReady(repository, "polling");
   }
 
   /**

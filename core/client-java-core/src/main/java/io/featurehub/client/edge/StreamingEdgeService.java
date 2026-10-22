@@ -97,9 +97,13 @@ public abstract class StreamingEdgeService<S> implements EdgeService, EdgeReconn
     return !config.isServerEvaluation();
   }
 
+  /**
+   * @return true if we will never connect again: the retryer has stopped, we were closed, or the connection couldn't
+   * be made for a reason retrying won't fix
+   */
   @Override
   public boolean isStopped() {
-    return retryer.isStopped();
+    return retryer.isStopped() || connections.isClosed();
   }
 
   @Override

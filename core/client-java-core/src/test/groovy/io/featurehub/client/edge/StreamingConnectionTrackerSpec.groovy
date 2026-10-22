@@ -391,4 +391,55 @@ class StreamingConnectionTrackerSpec extends Specification {
       todo.connection == null
       change.done
   }
+
+  def "a reconnect the retryer cancelled after it started doesn't claim a connection"() {
+    given: "a lost connection, so a reconnect is pending"
+      config.isServerEvaluation() >> true
+      tracker.connectionLost(tracker.claim(false), 0, 1000, reconnector)
+    when:
+      def claimed = tracker.claim(true)
+    then:
+      1 * retryer.isReconnectCancelled() >> true
+      claimed == null
+  }
+
+  def "an event with empty data is ignored like one with none"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "features", "7", "")
+    then:
+      0 * retryer.convertSSEState(_, _, _, _)
+      !waiting.done
+  }
+
+  def "an event that fails to apply doesn't release those waiting for the context's features"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      retryer.convertSSEState(*_) >> { throw new RuntimeException("JSON failed") }
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "features", "7", "bad-data")
+    then:
+      !waiting.done
+    when: "the connection then goes"
+      tracker.connectionLost(connection, 0, 1000, reconnector)
+    then: "they are released"
+      waiting.done
+  }
+
+  def "abandoning a connection closes the retryer, as nothing will reconnect"() {
+    given:
+      def connection = tracker.claim(false)
+    when:
+      tracker.abandon(connection)
+    then:
+      1 * retryer.close()
+      tracker.closed
+  }
 }

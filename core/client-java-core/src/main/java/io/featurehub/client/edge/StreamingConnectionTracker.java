@@ -179,6 +179,12 @@ public class StreamingConnectionTracker<S> {
       return null;
     }
 
+    if (retrying && retryer.isReconnectCancelled()) {
+      // a context change cancelled this reconnect after it had started. Checked under the lock (as the cancel is made),
+      // so it can't claim a connection meant for a later reconnect, once that has backed off.
+      return null;
+    }
+
     // only resume if we have this context's features. If we don't, a server that thinks we are up to date sends
     // nothing at all, and callers would wait for features that never come.
     current = new Connection<>(header, contextHasFeatures ? lastEventId : null);
@@ -232,7 +238,8 @@ public class StreamingConnectionTracker<S> {
       return;
     }
 
-    if (data == null && (state == SSEResultState.FEATURES || state == SSEResultState.FEATURE ||
+    // some libraries (e.g. Jersey) give an event with no data as empty rather than null
+    if ((data == null || data.isEmpty()) && (state == SSEResultState.FEATURES || state == SSEResultState.FEATURE ||
       state == SSEResultState.DELETE_FEATURE || state == SSEResultState.CONFIG)) {
       // there is nothing to apply, so it mustn't count as the context's features arriving, nor be resumed from
       log.debug("[featurehub-sdk] ignoring {} event with no data", type);
@@ -283,9 +290,9 @@ public class StreamingConnectionTracker<S> {
         notifyWaitingClients(connection, true);
       }
     } catch (Exception e) {
+      // those waiting keep waiting, as we still don't have the context's features (releasing them now would have them
+      // evaluate another context's values). They are released when the features arrive or the connection goes.
       log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
-      // don't leave anyone waiting on an event we couldn't apply, but we still don't have the features
-      notifyWaitingClients(connection, false);
       return;
     }
 
@@ -403,6 +410,11 @@ public class StreamingConnectionTracker<S> {
     }
 
     if (waiting != null) {
+      // nothing will ever reconnect, so don't leave the retryer's thread running
+      retryer.close();
+    }
+
+    if (waiting != null) {
       stopped(waiting, true);
     }
   }
@@ -416,8 +428,8 @@ public class StreamingConnectionTracker<S> {
    */
   private void stopped(@NotNull List<CompletableFuture<Readiness>> waiting, boolean forGood) {
     // before anyone is told, so they are told we have failed
-    if (forGood && repository.getReadiness() == Readiness.NotReady) {
-      repository.notify(SSEResultState.FAILURE);
+    if (forGood) {
+      EdgeStatus.failIfNeverReady(repository);
     }
 
     complete(waiting);

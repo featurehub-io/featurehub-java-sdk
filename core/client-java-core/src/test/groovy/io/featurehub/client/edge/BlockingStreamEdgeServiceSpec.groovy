@@ -207,4 +207,15 @@ class BlockingStreamEdgeServiceSpec extends Specification {
       closed
       future.done
   }
+
+  def "once a connection is abandoned we report being stopped"() {
+    given:
+      open = { h, l -> throw new NoClassDefFoundError("wrong library") }
+      def edge = service()
+    when:
+      edge.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      edge.stopped
+  }
 }

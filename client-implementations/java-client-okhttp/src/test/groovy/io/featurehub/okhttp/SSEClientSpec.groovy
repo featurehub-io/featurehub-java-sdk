@@ -235,7 +235,7 @@ class SSEClientSpec extends Specification {
       !later.done
   }
 
-  def "an event we fail to apply doesn't leave anyone waiting"() {
+  def "an event we fail to apply doesn't stop a client evaluated context carrying on"() {
     given:
       def future = client.contextChange("header", '0')
     when:
@@ -355,7 +355,7 @@ class SSEClientSpec extends Specification {
       request.header("Last-Event-ID") == null
   }
 
-  def "only the features (or failing to apply them) release those waiting, and later callers still wait for the features"() {
+  def "only the features release those waiting, so a bye or features that fail to apply leave them waiting"() {
     given:
       retry.fromValue('bye') >> SSEResultState.BYE
       retry.fromValue('features') >> SSEResultState.FEATURES
@@ -373,7 +373,7 @@ class SSEClientSpec extends Specification {
         { EventSourceListener l -> l.onEvent(null, null, 'bye', null) },
         { EventSourceListener l -> l.onEvent(null, '1', 'features', 'bad-data') }
       ]
-      released << [false, true]
+      released << [false, false]
   }
 
   def "a client side key's context change doesn't wait for features, it only makes sure we are connecting"() {
@@ -838,6 +838,8 @@ class SSEClientSpec extends Specification {
       1 * repository.notify(SSEResultState.FAILURE)
       future.done
       connectionsMade == 1
+      client.stopped
+      1 * retry.close()
   }
 
   def "a subclass's okhttp builder that sets no timeouts still gets the retryer's, but its own are kept"() {

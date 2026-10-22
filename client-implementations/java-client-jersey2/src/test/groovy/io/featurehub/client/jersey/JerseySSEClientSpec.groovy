@@ -716,7 +716,7 @@ class JerseySSEClientSpec extends Specification {
       lastEventIds == [null, null]
   }
 
-  def "only the features (or failing to apply them) release those waiting, and later callers still wait for the features"() {
+  def "only the features release those waiting, so a bye or features that fail to apply leave them waiting"() {
     given:
       def submitted = []
       def stopped = false
@@ -752,7 +752,7 @@ class JerseySSEClientSpec extends Specification {
     where:
       name       | data       | released
       "bye"      | "{}"       | false
-      "features" | "bad-data" | true
+      "features" | "bad-data" | false
   }
 
   // a server evaluated client whose connections are made by the given closure, and whose connection executor just
@@ -1164,7 +1164,7 @@ class JerseySSEClientSpec extends Specification {
       submitted.size() == 2
   }
 
-  def "an event we fail to apply doesn't leave anyone waiting"() {
+  def "an event we fail to apply leaves those waiting until the connection goes"() {
     given: "a connection that sends an event that fails to apply"
       def submitted = []
       def stopped = false
@@ -1191,8 +1191,9 @@ class JerseySSEClientSpec extends Specification {
     when:
       future = client.contextChange("userkey=fred", "1")
       submitted[0].run()
-    then: "the caller was released straight after the failure, while the connection was still open"
-      doneAfterFailure == true
+    then: "the caller still waited after the failure, and was released once the connection went"
+      doneAfterFailure == false
+      future.done
   }
 
   def "closing the client also closes its JAX-RS client"() {

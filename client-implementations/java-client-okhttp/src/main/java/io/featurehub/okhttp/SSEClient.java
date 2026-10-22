@@ -202,6 +202,10 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
       return built;
     }
 
+    // a subclass that deliberately set exactly 10 seconds is indistinguishable from one that set nothing
+    log.info("[featurehub-sdk] the okhttp client's {} left at okhttp's 10 second default, using the retryer's instead",
+      defaultRead && defaultConnect ? "read and connect timeouts were" : defaultRead ? "read timeout was" : "connect timeout was");
+
     final OkHttpClient.Builder builder = built.newBuilder();
 
     if (defaultRead) {
@@ -216,8 +220,8 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
   }
 
   /**
-   * This is overrideable so you can make it do what you wish if you wish. A connect or read timeout left at OKHttp's
-   * default is replaced with the retryer's.
+   * This is overrideable so you can make it do what you wish if you wish. A connect or read timeout left at (or set
+   * to) OKHttp's 10 second default is replaced with the retryer's, so to use 10 seconds set e.g. 10001ms.
    *
    * @param edgeRetryService
    * @return - new builder
