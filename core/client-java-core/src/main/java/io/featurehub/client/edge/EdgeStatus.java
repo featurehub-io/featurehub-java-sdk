@@ -38,15 +38,8 @@ public final class EdgeStatus {
   /**
    * We will never get features (e.g. the api key doesn't exist). Features we already have are still served, so only
    * if we never had any have we failed.
-   */
-  public static void failIfNeverReady(@NotNull InternalFeatureRepository repository) {
-    if (repository.getReadiness() == Readiness.NotReady) {
-      repository.notify(SSEResultState.FAILURE);
-    }
-  }
-
-  /**
-   * As {@link #failIfNeverReady(InternalFeatureRepository)}, saying where the failure came from.
+   *
+   * @param source - where the failure came from, e.g. "streaming" or "polling"
    */
   public static void failIfNeverReady(@NotNull InternalFeatureRepository repository, @NotNull String source) {
     if (repository.getReadiness() == Readiness.NotReady) {

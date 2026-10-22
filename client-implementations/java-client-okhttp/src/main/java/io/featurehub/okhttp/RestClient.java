@@ -39,9 +39,6 @@ public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
   @NotNull private final InternalFeatureRepository repository;
   @NotNull private final OkHttpClient client;
-  // false once the server has told us our requests are pointless (e.g. a bad API key) or we are closed, after which
-  // we make no more requests. Set on okhttp's threads, so volatile.
-  private volatile boolean makeRequests;
   @NotNull private final String url;
   private final JavascriptObjectMapper mapper;
   @Nullable
@@ -49,6 +46,8 @@ public class RestClient implements EdgeService {
   // used for breaking the cache
   @NotNull
   private String xContextSha = "0";
+  // true once the server has told us to stop or that our requests are pointless (e.g. a bad API key), or we are
+  // closed, after which we make no more requests. Set on okhttp's threads, so volatile.
   private volatile boolean stopped = false;
   @Nullable
   private String etag = null;
@@ -72,7 +71,6 @@ public class RestClient implements EdgeService {
 
     this.config = config;
     this.pollingInterval = timeoutInSeconds;
-    this.makeRequests = true;
     executorService = makeExecutorService();
 
     url = config.baseUrl() + "/features?" + config.apiKeys().stream().map(u -> "apiKey=" + u).collect(Collectors.joining("&"));
@@ -197,7 +195,7 @@ public class RestClient implements EdgeService {
           this.stopped = true; // prevent any further requests
         }
       } else if (EdgeStatus.requestsArePointless(response.code())) {
-        makeRequests = false;
+        stopped = true;
         log.error("Server indicated an error with our requests making future ones pointless.");
         EdgeStatus.failIfNeverReady(repository, "polling");
       }
@@ -210,7 +208,7 @@ public class RestClient implements EdgeService {
   }
 
   boolean canMakeRequests() {
-    return makeRequests && !stopped;
+    return !stopped;
   }
 
   /**
@@ -242,7 +240,7 @@ public class RestClient implements EdgeService {
   public void close() {
     log.info("featurehub client closed.");
 
-    makeRequests = false;
+    stopped = true;
 
     if (client instanceof OkHttpClient) {
       ((OkHttpClient)client).dispatcher().executorService().shutdownNow();

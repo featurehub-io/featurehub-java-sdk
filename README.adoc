@@ -525,7 +525,7 @@ set using environment variables or system properties.
 - `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process
 - `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
 - `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to back off before reconnecting (on top of the bye backoff below)
-- `featurehub.edge.bye-backoff-ms` - defaults to 300 - after a "bye", how long the SSE client always waits before reconnecting, so a server that says bye straight away can't have it reconnect in a tight loop
+- `featurehub.edge.bye-backoff-ms` - defaults to 300 - after a "bye" or a disconnect, how long the SSE client always waits before reconnecting, so a stream that ends straight away (e.g. a proxy dropping it just after the features) can't have it reconnect in a tight loop
 - `featurehub.edge.backoff-multiplier` - defaults to 10
 - `featurehub.edge.maximum-backoff-ms` - defaults to 30000
 
@@ -565,7 +565,8 @@ stream that worked reconnects straight away, and on one that never worked backs 
 with a 429 or 5xx). Retried with exponential backoff. A stream that stays open for the connect timeout counts as
 working even if it sends nothing (a resumed stream that is up to date is quiet), but after 3 such streams in a row that
 sent nothing at all (e.g. a proxy that passes nothing through and drops idle connections), later ones count as
-`CONNECTION_FAILURE` until a stream sends something. The repository's readiness is left as it is, so
+`CONNECTION_FAILURE` until a stream sends something. As those streams did stay open, the backoff for them doesn't grow:
+each one pauses for the first (shortest) connection failure backoff, around the connect timeout. The repository's readiness is left as it is, so
 it stays `NotReady` until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`

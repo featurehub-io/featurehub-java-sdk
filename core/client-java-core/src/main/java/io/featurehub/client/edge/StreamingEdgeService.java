@@ -22,16 +22,13 @@ public abstract class StreamingEdgeService<S> implements EdgeService, EdgeReconn
   protected final FeatureHubConfig config;
   protected final EdgeRetryService retryer;
   protected final StreamingConnectionTracker<S> connections;
-  // see workingStreamMs()
-  private final long workingStreamMs;
 
   protected StreamingEdgeService(@Nullable InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                                  @NotNull EdgeRetryService retryer) {
     this.repository = repository == null ? config.getInternalRepository() : repository;
     this.config = config;
     this.retryer = retryer;
-    this.connections = new StreamingConnectionTracker<>(this.repository, config, retryer);
-    this.workingStreamMs = StreamingConnectionTracker.workingStreamMs(retryer);
+    this.connections = new StreamingConnectionTracker<>(this.repository, config, retryer, this::workingStreamMs);
   }
 
   /**
@@ -137,9 +134,9 @@ public abstract class StreamingEdgeService<S> implements EdgeService, EdgeReconn
 
   /**
    * @return how long a stream must stay open, even sending nothing, to count as having worked. At least a second, and
-   * at least the connect timeout.
+   * at least the connect timeout. Asked by the tracker each time a connection is lost.
    */
   protected long workingStreamMs() {
-    return workingStreamMs;
+    return StreamingConnectionTracker.workingStreamMs(retryer);
   }
 }

@@ -104,6 +104,7 @@ class SSEClientSpec extends Specification {
       1 * repository.getReadiness() >> Readiness.NotReady
       2 * config.getEnvironmentId() >> envId
       _ * retry.isStopped()
+      _ * retry.serverConnectTimeoutMs // how long a stream must stay open to count as working
       0 * _
   }
 
@@ -121,6 +122,7 @@ class SSEClientSpec extends Specification {
       1 * retry.fromValue('features') >> SSEResultState.FEATURES
       1 * config.getEnvironmentId() >> envId
       _ * retry.isStopped()
+      _ * retry.serverConnectTimeoutMs // how long a stream must stay open to count as working
       0 * _
   }
 
@@ -135,6 +137,7 @@ class SSEClientSpec extends Specification {
       1 * repository.getReadiness() >> Readiness.NotReady
       1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
       _ * retry.isStopped()
+      _ * retry.serverConnectTimeoutMs // how long a stream must stay open to count as working
       0 * _
   }
 
@@ -186,7 +189,7 @@ class SSEClientSpec extends Specification {
       1 * retry.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, client)
       _ * retry.isStopped() >> true
       _ * repository.getReadiness() >> Readiness.NotReady
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
       future.done
   }
 
@@ -721,7 +724,7 @@ class SSEClientSpec extends Specification {
     then:
       0 * retry.edgeResult(*_)
       _ * repository.getReadiness() >> Readiness.NotReady
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
       future.done
   }
 
@@ -825,21 +828,50 @@ class SSEClientSpec extends Specification {
       cfg == config
   }
 
-  def "if okhttp rejects the request (e.g. a malformed url), we don't retry, we have failed and never connect again"() {
+  def "if okhttp rejects a malformed realtime url, we don't retry, we have failed and never connect again"() {
     given:
-      config.serverEvaluation >> true
-      onMakeEventSource = { throw new IllegalArgumentException("unexpected url") }
+      def badConfig = Mock(FeatureHubConfig)
+      badConfig.realtimeUrl >> "not a url"
+      badConfig.serverEvaluation >> true
+      int made = 0
+      def badClient = new SSEClient(repository, badConfig, retry) {
+        @Override
+        protected EventSource makeEventSource(Request req, EventSourceListener listener) {
+          made++
+          return mockEventSource
+        }
+      }
     when:
-      def future = client.contextChange("header", '0')
-      client.poll()
+      def future = badClient.contextChange("header", '0')
+      badClient.poll()
     then:
       0 * retry.edgeResult(*_)
       _ * repository.getReadiness() >> Readiness.NotReady
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
       future.done
-      connectionsMade == 1
-      client.stopped
+      made == 0
+      badClient.stopped
       1 * retry.close()
+  }
+
+  def "if okhttp won't send a context's header, that context fails but another can still connect"() {
+    given:
+      config.serverEvaluation >> true
+    when: "an attribute okhttp can't put in a header"
+      def future = client.contextChange("caf\u00e9=1", '0')
+    then:
+      0 * retry.edgeResult(*_)
+      0 * retry.close()
+      _ * repository.getReadiness() >> Readiness.NotReady
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
+      future.done
+      connectionsMade == 0
+      !client.stopped
+    when: "the context changes to one we can send"
+      client.contextChange("userkey=fred", '1')
+    then:
+      connectionsMade == 1
+      request.header("x-featurehub") == "userkey=fred"
   }
 
   def "a subclass's okhttp builder that sets no timeouts still gets the retryer's, but its own are kept"() {

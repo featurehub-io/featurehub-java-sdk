@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.LongSupplier;
 
 /**
  * The connection bookkeeping shared by the streaming (SSE) clients: which connection is current, the context it is
@@ -43,6 +44,8 @@ public class StreamingConnectionTracker<S> {
   private final InternalFeatureRepository repository;
   private final FeatureHubConfig config;
   private final EdgeRetryService retryer;
+  // see Connection.worked()
+  private final LongSupplier workingStreamMs;
   @Nullable private Connection<S> current;
   @Nullable private String header;
   @Nullable private String lastEventId;
@@ -148,9 +151,19 @@ public class StreamingConnectionTracker<S> {
 
   public StreamingConnectionTracker(@NotNull InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
                                     @NotNull EdgeRetryService retryer) {
+    this(repository, config, retryer, () -> workingStreamMs(retryer));
+  }
+
+  /**
+   * @param workingStreamMs - how long a stream must stay open, even sending nothing, to count as having worked. Asked
+   *                        each time a connection is lost.
+   */
+  public StreamingConnectionTracker(@NotNull InternalFeatureRepository repository, @NotNull FeatureHubConfig config,
+                                    @NotNull EdgeRetryService retryer, @NotNull LongSupplier workingStreamMs) {
     this.repository = repository;
     this.config = config;
     this.retryer = retryer;
+    this.workingStreamMs = workingStreamMs;
   }
 
   /**
@@ -330,13 +343,11 @@ public class StreamingConnectionTracker<S> {
    * reconnect once it has backed off (if the failure may go away), and don't leave anyone waiting on it.
    *
    * @param status - the HTTP status Edge answered with, or 0 if there wasn't one
-   * @param workingStreamMs - see {@link Connection#worked(long)}
    * @return false if the connection had already been replaced or closed, so nothing was done
    */
-  public boolean connectionLost(@NotNull Connection<S> connection, int status, long workingStreamMs,
-                                @NotNull EdgeReconnector reconnector) {
+  public boolean connectionLost(@NotNull Connection<S> connection, int status, @NotNull EdgeReconnector reconnector) {
     final List<CompletableFuture<Readiness>> waiting;
-    boolean worked = connection.worked(workingStreamMs);
+    boolean worked = connection.worked(workingStreamMs.getAsLong());
 
     synchronized (lock) {
       waiting = releaseLocked(connection, true);
@@ -345,31 +356,53 @@ public class StreamingConnectionTracker<S> {
         return false;
       }
 
-      if (connection.meaningfulEvent) {
-        quietStreams = 0;
-      } else if (worked && ++quietStreams > MAX_QUIET_STREAMS) {
-        // something between us and Edge (e.g. a proxy) that accepts the connection, passes nothing through and drops it
-        // once idle looks like a quiet resumed stream, and we would reconnect to it forever without backing off. A
-        // healthy quiet stream says bye now and then, so after a few in a row that sent nothing at all we back off
-        // until one sends something.
-        log.debug("[featurehub-sdk] {} streams in a row sent nothing, backing off", quietStreams);
-        worked = false;
+      try {
+        tellRetryerLost(connection, status, worked, reconnector);
+      } catch (RuntimeException e) {
+        // e.g. the retryer's pool was shut down under it. No reconnect is coming, so a later poll or context change
+        // may connect, and those waiting must still be released below.
+        log.error("[featurehub-sdk] failed to tell the retryer the connection was lost", e);
+        retryPending = false;
       }
-
-      if (worked && !connection.reportedWorking) {
-        // a resumed stream the server is up to date with never sends features, but it worked, so the backoff must
-        // reset as it does when features arrive, or after a few failures every later backoff stays at its maximum
-        connection.reportedWorking = true;
-        retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
-      }
-
-      retryer.edgeResult(lostState(connection, status, worked), reconnector);
     }
 
     // if the retryer has stopped there won't be a reconnect
     stopped(waiting, retryer.isStopped());
 
     return true;
+  }
+
+  // must hold the lock
+  private void tellRetryerLost(@NotNull Connection<S> connection, int status, boolean worked,
+                               @NotNull EdgeReconnector reconnector) {
+    if (connection.meaningfulEvent) {
+      quietStreams = 0;
+    } else if (worked && ++quietStreams > MAX_QUIET_STREAMS) {
+      // something between us and Edge (e.g. a proxy) that accepts the connection, passes nothing through and drops it
+      // once idle looks like a quiet resumed stream, and we would reconnect to it forever without backing off. A
+      // healthy quiet stream says bye now and then, so after a few in a row that sent nothing at all we pause before
+      // reconnecting until one sends something. But it did stay open, and it may be a healthy client behind a load
+      // balancer that drops idle connections, so the pause must not grow: we reset the backoff first, so every pause
+      // is the first (shortest) connection failure backoff.
+      log.debug("[featurehub-sdk] {} streams in a row sent nothing, pausing before reconnecting", quietStreams);
+      final EdgeConnectionState state = lostState(connection, status, false);
+
+      if (state == EdgeConnectionState.CONNECTION_FAILURE) {
+        retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
+      }
+
+      retryer.edgeResult(state, reconnector);
+      return;
+    }
+
+    if (worked && !connection.reportedWorking) {
+      // a resumed stream the server is up to date with never sends features, but it worked, so the backoff must
+      // reset as it does when features arrive, or after a few failures every later backoff stays at its maximum
+      connection.reportedWorking = true;
+      retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector);
+    }
+
+    retryer.edgeResult(lostState(connection, status, worked), reconnector);
   }
 
   private EdgeConnectionState lostState(@NotNull Connection<S> connection, int status, boolean worked) {
@@ -412,10 +445,25 @@ public class StreamingConnectionTracker<S> {
     if (waiting != null) {
       // nothing will ever reconnect, so don't leave the retryer's thread running
       retryer.close();
+      stopped(waiting, true);
+    }
+  }
+
+  /**
+   * The connection can't be made for its context (e.g. the client library won't send the context's header). Retrying
+   * won't fix that, so the retryer isn't told, but unlike {@link #abandon} a later context change (or poll) may still
+   * connect. Those waiting are released, and if we never had features we have failed.
+   */
+  public void rejected(@NotNull Connection<S> connection) {
+    final List<CompletableFuture<Readiness>> waiting;
+
+    synchronized (lock) {
+      waiting = releaseLocked(connection, false);
     }
 
     if (waiting != null) {
-      stopped(waiting, true);
+      EdgeStatus.failIfNeverReady(repository, "streaming");
+      complete(waiting);
     }
   }
 
@@ -429,7 +477,7 @@ public class StreamingConnectionTracker<S> {
   private void stopped(@NotNull List<CompletableFuture<Readiness>> waiting, boolean forGood) {
     // before anyone is told, so they are told we have failed
     if (forGood) {
-      EdgeStatus.failIfNeverReady(repository);
+      EdgeStatus.failIfNeverReady(repository, "streaming");
     }
 
     complete(waiting);

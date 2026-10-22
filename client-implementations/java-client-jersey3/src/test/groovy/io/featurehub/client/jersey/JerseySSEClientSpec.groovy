@@ -799,6 +799,25 @@ class JerseySSEClientSpec extends Specification {
       status << [429, 408]
   }
 
+  def "a #status Jersey could only report as a ResponseProcessingException still stops us"() {
+    given:
+      def submitted = []
+      def retryer = Mock(EdgeRetryService)
+      def client = failingClient(submitted, retryer,
+        new jakarta.ws.rs.client.ResponseProcessingException(Response.status(status).build(), "unreadable body"))
+    when:
+      def future = client.contextChange("userkey=fred", "1")
+      submitted[0].run()
+    then:
+      1 * retryer.edgeResult(state, client)
+      0 * retryer.edgeResult(io.featurehub.client.edge.EdgeConnectionState.CONNECTION_FAILURE, client)
+      future.done
+    where:
+      status | state
+      404    | io.featurehub.client.edge.EdgeConnectionState.API_KEY_NOT_FOUND
+      401    | io.featurehub.client.edge.EdgeConnectionState.FAILURE
+  }
+
   def "while the retryer is backing off, a poll or context build does not connect early"() {
     given: "a connection attempt that failed, so the retryer is backing off"
       def submitted = []

@@ -205,7 +205,7 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
     } catch (Throwable e) {
       // ignored if we were closed while connecting (which may be why it failed) or the context changed, as that
       // has made its own connection
-      if (connections.connectionLost(connection, statusOf(e), workingStreamMs(), this)) {
+      if (connections.connectionLost(connection, statusOf(e), this)) {
         log.info("[featurehub-sdk] failed to connect to {}", config.getRealtimeUrl(), e);
       }
 
@@ -238,7 +238,7 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
       } catch (Exception e) {
         // if we are no longer the current connection we were deliberately closed (e.g. by a context change). A stream
         // that was working (e.g. quiet until our read timeout) reconnects straight away, otherwise we back off.
-        if (connections.connectionLost(connection, statusOf(e), workingStreamMs(), this)) {
+        if (connections.connectionLost(connection, statusOf(e), this)) {
           log.error("failed read", e);
         }
 
@@ -257,6 +257,6 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
 
     // if we are still current the server closed the connection on us, or the retryer has stopped (in which case it
     // won't reconnect, and nobody is left waiting)
-    connections.connectionLost(connection, 0, workingStreamMs(), this);
+    connections.connectionLost(connection, 0, this);
   }
 }

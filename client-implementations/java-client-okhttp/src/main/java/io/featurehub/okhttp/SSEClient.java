@@ -51,14 +51,31 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
     EventSource source = null;
 
     try {
-      Request.Builder reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
+      Request.Builder reqBuilder;
 
-      if (connection.getHeader() != null) {
-        reqBuilder = reqBuilder.addHeader("x-featurehub", connection.getHeader());
+      try {
+        reqBuilder = new Request.Builder().url(this.config.getRealtimeUrl());
+      } catch (IllegalArgumentException e) {
+        // a malformed realtime url, which every connection uses, so retrying won't fix it
+        log.error("[featurehub-sdk] cannot connect to {}", this.config.getRealtimeUrl(), e);
+        connections.abandon(connection);
+        return;
       }
 
-      if (connection.getLastEventId() != null) {
-        reqBuilder = reqBuilder.addHeader("Last-Event-ID", connection.getLastEventId());
+      try {
+        if (connection.getHeader() != null) {
+          reqBuilder = reqBuilder.addHeader("x-featurehub", connection.getHeader());
+        }
+
+        if (connection.getLastEventId() != null) {
+          reqBuilder = reqBuilder.addHeader("Last-Event-ID", connection.getLastEventId());
+        }
+      } catch (IllegalArgumentException e) {
+        // okhttp won't send this context's header (e.g. an attribute name it can't put in a header). Retrying won't
+        // fix it, but another context may well connect, so we don't give up for good.
+        log.error("[featurehub-sdk] cannot connect to {} with this context", this.config.getRealtimeUrl(), e);
+        connections.rejected(connection);
+        return;
       }
 
       reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP-SSE"));
@@ -74,7 +91,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                 @Override
                 public void onClosed(@NotNull EventSource eventSource) {
                   // send this once we are actually disconnected and not before
-                  if (!connections.connectionLost(connection, 0, workingStreamMs(), connector)) {
+                  if (!connections.connectionLost(connection, 0, connector)) {
                     log.trace("[featurehub-sdk] superseded connection closed, ignoring");
                   }
                 }
@@ -88,7 +105,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                   if (!process(connection, type, id, data)) {
                     // the retryer has stopped, so release the connection (any failure the cancel causes is then
                     // ignored) and close it
-                    connections.connectionLost(connection, 0, workingStreamMs(), connector);
+                    connections.connectionLost(connection, 0, connector);
                     eventSource.cancel();
                   }
                 }
@@ -100,8 +117,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                     @Nullable Response response) {
                   // a superseded connection includes the failure caused by cancelling the connection on a context
                   // change, which must not trigger a reconnect as the context change has already made a new connection
-                  if (connections.connectionLost(connection, response == null ? 0 : response.code(), workingStreamMs(),
-                    connector)) {
+                  if (connections.connectionLost(connection, response == null ? 0 : response.code(), connector)) {
                     log.trace("[featurehub-sdk] failed to connect to {} - {}", config.baseUrl(), response, t);
                   } else {
                     log.trace("[featurehub-sdk] superseded connection failed, ignoring", t);
@@ -115,11 +131,6 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                 }
               });
 
-    } catch (IllegalArgumentException e) {
-      // okhttp rejected the request, e.g. a malformed realtime url, which retrying won't fix
-      log.error("[featurehub-sdk] cannot connect to {}", this.config.getRealtimeUrl(), e);
-      connections.abandon(connection);
-      return;
     } catch (NoClassDefFoundError|NoSuchFieldError noClassDefFoundError) {
       log.error(
           "You appear to have the wrong version of OKHttp in your classpath or a conflicting version and FeatureHub cannot start",
@@ -133,7 +144,7 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
 
     if (source == null) {
       // we failed to even create the connection, try again later
-      if (connections.connectionLost(connection, 0, workingStreamMs(), this)) {
+      if (connections.connectionLost(connection, 0, this)) {
         log.error("Unable to connect to {}", this.config.getRealtimeUrl());
       }
     } else if (!connections.attach(connection, source)) {

@@ -155,15 +155,34 @@ class EdgeRetryerSpec extends Specification {
       real.close()
   }
 
-  def "after a bye we always wait the bye backoff before reconnecting"() {
+  def "after a #state we always wait the bye backoff before reconnecting"() {
     given:
-      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withByeBackoffMs(300).build()
+      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withByeBackoffMs(300)
+        .withServerDisconnectRetryMs(0).withServerByeReconnectMs(0).build()
       def reconnected = new java.util.concurrent.CompletableFuture<Long>()
       def start = System.currentTimeMillis()
     when:
-      real.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, { reconnected.complete(System.currentTimeMillis()) } as EdgeReconnector)
+      real.edgeResult(state, { reconnected.complete(System.currentTimeMillis()) } as EdgeReconnector)
     then:
       reconnected.get(5, java.util.concurrent.TimeUnit.SECONDS) - start >= 290
+    cleanup:
+      real.close()
+    where:
+      state << [EdgeConnectionState.SERVER_SAID_BYE, EdgeConnectionState.SERVER_WAS_DISCONNECTED]
+  }
+
+  def "a cancelled disconnect backoff doesn't reconnect"() {
+    given:
+      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withByeBackoffMs(2000).build()
+      def stale = Mock(EdgeReconnector)
+      real.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, stale)
+    when:
+      real.cancelReconnects()
+      def done = new java.util.concurrent.CountDownLatch(1)
+      real.executorService.submit { done.countDown() }
+    then: "it stops waiting straight away"
+      done.await(1, java.util.concurrent.TimeUnit.SECONDS)
+      0 * stale.reconnect()
     cleanup:
       real.close()
   }

@@ -38,13 +38,13 @@ public class EdgeRetryer implements EdgeRetryService {
    */
   private final int serverByeReconnectMs;
   /**
-   * After a BYE, how long we always wait before reconnecting (on top of serverByeReconnectMs). A stream that is accepted
-   * and says bye straight away counts as working, so without this a misbehaving server could have us reconnect in a
-   * tight loop. Defaults to 300ms.
+   * After a BYE or a disconnect, how long we always wait before reconnecting (on top of serverByeReconnectMs or
+   * serverDisconnectRetryMs). A stream that is accepted and says bye or drops straight away (e.g. a proxy cutting it
+   * after the features) counts as working, so without this we could reconnect in a tight loop. Defaults to 300ms.
    */
   private final int byeBackoffMs;
   /**
-   * How long we always wait after a bye before reconnecting, unless told otherwise.
+   * How long we always wait after a bye or a disconnect before reconnecting, unless told otherwise.
    */
   public static final int DEFAULT_BYE_BACKOFF_MS = 300;
   /**
@@ -117,6 +117,10 @@ public class EdgeRetryer implements EdgeRetryService {
         stopped = true;
       } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
         reconnectAfter(reConnector, () -> {
+          if (byeBackoffMs > 0 && !pause(byeBackoffMs)) {
+            return; // cancelled
+          }
+
           if (serverDisconnectRetryMs > 0) {
             backoff(serverDisconnectRetryMs, true);
           }
@@ -168,16 +172,16 @@ public class EdgeRetryer implements EdgeRetryService {
     }
   }
 
-  /**
-   * Stops any reconnects that are waiting, including one that is backing off. Our executor has a single thread, so if
-   * we let a cancelled reconnect sleep out its backoff, any later reconnect would be held up behind it.
-   */
   @Override
   public boolean isReconnectCancelled() {
     final Long generation = reconnecting.get();
     return generation != null && generation != reconnectGeneration.get();
   }
 
+  /**
+   * Stops any reconnects that are waiting, including one that is backing off. Our executor has a single thread, so if
+   * we let a cancelled reconnect sleep out its backoff, any later reconnect would be held up behind it.
+   */
   @Override
   public void cancelReconnects() {
     reconnectGeneration.incrementAndGet();
@@ -273,7 +277,7 @@ public class EdgeRetryer implements EdgeRetryService {
   }
 
   /**
-   * @return how long we always wait after a bye before reconnecting
+   * @return how long we always wait after a bye or a disconnect before reconnecting
    */
   public int getByeBackoffMs() {
     return byeBackoffMs;
@@ -378,7 +382,8 @@ public class EdgeRetryer implements EdgeRetryService {
         "0"); // immediately try and reconnect if disconnected
       serverByeReconnectMs = propertyOrEnv("featurehub.edge.server-by-reconnect-ms",
         "0");
-      // always wait a little after a bye, so a server that says bye straight away can't have us reconnect in a loop
+      // always wait a little after a bye or a disconnect, so a stream that ends straight away can't have us reconnect
+      // in a loop
       byeBackoffMs = propertyOrEnv("featurehub.edge.bye-backoff-ms", Integer.toString(DEFAULT_BYE_BACKOFF_MS));
       backoffMultiplier = propertyOrEnv("featurehub.edge.backoff-multiplier", "10");
       maximumBackoffTimeMs = propertyOrEnv("featurehub.edge.maximum-backoff-ms", "30000");

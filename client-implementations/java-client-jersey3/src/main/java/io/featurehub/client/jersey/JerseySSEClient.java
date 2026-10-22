@@ -9,6 +9,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.client.Invocation;
+import jakarta.ws.rs.client.ResponseProcessingException;
 import jakarta.ws.rs.client.WebTarget;
 import jakarta.ws.rs.core.Response;
 import org.glassfish.jersey.client.ClientProperties;
@@ -104,8 +105,11 @@ public class JerseySSEClient extends BlockingStreamEdgeService {
 
   @Override
   protected int statusOf(@NotNull Throwable failure) {
-    final Response response =
-      failure instanceof WebApplicationException ? ((WebApplicationException) failure).getResponse() : null;
+    // both carry the response Edge answered with, e.g. a 404 whose body Jersey couldn't read is a
+    // ResponseProcessingException rather than a NotFoundException
+    final Response response = failure instanceof WebApplicationException
+      ? ((WebApplicationException) failure).getResponse()
+      : failure instanceof ResponseProcessingException ? ((ResponseProcessingException) failure).getResponse() : null;
     return response == null ? 0 : response.getStatus();
   }
 

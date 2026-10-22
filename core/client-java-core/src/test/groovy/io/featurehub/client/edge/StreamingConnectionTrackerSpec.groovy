@@ -20,7 +20,8 @@ class StreamingConnectionTrackerSpec extends Specification {
     config = Mock(FeatureHubConfig)
     retryer = Mock(EdgeRetryService)
     reconnector = Mock(EdgeReconnector)
-    tracker = new StreamingConnectionTracker<>(repository, config, retryer)
+    // any stream that has opened counts as having worked, one that never opened never does
+    tracker = new StreamingConnectionTracker<>(repository, config, retryer, { 0L } as java.util.function.LongSupplier)
   }
 
   def "a client evaluated context never waits, it only claims a connection if there isn't one"() {
@@ -69,7 +70,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       change.connection.header == "userkey=mary"
       !tracker.isCurrent(old)
       0 * retryer.fromValue(_)
-      !tracker.connectionLost(old, 0, 1000, reconnector)
+      !tracker.connectionLost(old, 0, reconnector)
   }
 
   def "a lost connection we will retry releases those waiting without marking us as failed"() {
@@ -78,7 +79,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def future = new CompletableFuture<Readiness>()
       def connection = tracker.contextChange("userkey=fred", future).connection
     when:
-      tracker.connectionLost(connection, 503, 1000, reconnector)
+      tracker.connectionLost(connection, 503, reconnector)
     then:
       1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
       _ * repository.getReadiness() >> Readiness.NotReady
@@ -94,7 +95,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       config.isServerEvaluation() >> true
       def connection = tracker.claim(false)
     when:
-      tracker.connectionLost(connection, status, 1000, reconnector)
+      tracker.connectionLost(connection, status, reconnector)
     then:
       1 * retryer.edgeResult(state, reconnector)
     where:
@@ -114,11 +115,11 @@ class StreamingConnectionTrackerSpec extends Specification {
       retryer.isStopped() >> { stopped }
       def readiness = Readiness.NotReady
       repository.getReadiness() >> { readiness }
-      repository.notify(SSEResultState.FAILURE) >> { readiness = Readiness.Failed }
+      repository.notify(SSEResultState.FAILURE, "streaming") >> { readiness = Readiness.Failed }
       def future = new CompletableFuture<Readiness>()
       def connection = tracker.contextChange("userkey=fred", future).connection
     when:
-      tracker.connectionLost(connection, 404, 1000, reconnector)
+      tracker.connectionLost(connection, 404, reconnector)
     then:
       1 * retryer.edgeResult(EdgeConnectionState.API_KEY_NOT_FOUND, reconnector) >> { stopped = true }
       future.get() == Readiness.Failed
@@ -142,7 +143,7 @@ class StreamingConnectionTrackerSpec extends Specification {
     given:
       config.isServerEvaluation() >> true
       def connection = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     when:
       def change = tracker.contextChange("userkey=mary", new CompletableFuture<Readiness>())
     then:
@@ -159,7 +160,7 @@ class StreamingConnectionTrackerSpec extends Specification {
     when:
       tracker.abandon(connection)
     then:
-      1 * repository.notify(SSEResultState.FAILURE)
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
       0 * retryer.edgeResult(*_)
       future.done
       tracker.claim(false) == null
@@ -173,13 +174,13 @@ class StreamingConnectionTrackerSpec extends Specification {
       def connection = tracker.claim(false)
     when:
       tracker.process(connection, reconnector, "ack", "1", null)
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
       connection = tracker.claim(true)
     then:
       connection.lastEventId == null
     when:
       tracker.process(connection, reconnector, "features", "2", "data")
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then:
       tracker.claim(true).lastEventId == "2"
   }
@@ -190,7 +191,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def connection = tracker.claim(false)
       connection.opened()
     when:
-      tracker.connectionLost(connection, 0, 0, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then:
       1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
     then:
@@ -204,7 +205,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def connection = tracker.claim(false)
       tracker.process(connection, reconnector, "features", "1", "data")
     when:
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then:
       0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
       1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
@@ -215,7 +216,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       config.isServerEvaluation() >> true
       def connection = tracker.claim(false)
     when:
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then:
       0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
       1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
@@ -224,7 +225,7 @@ class StreamingConnectionTrackerSpec extends Specification {
   private void loseQuietStream() {
     def connection = tracker.claim(true)
     connection.opened()
-    tracker.connectionLost(connection, 0, 0, reconnector)
+    tracker.connectionLost(connection, 0, reconnector)
   }
 
   def "after several streams in a row that only stayed open, sending nothing, we back off"() {
@@ -235,12 +236,44 @@ class StreamingConnectionTrackerSpec extends Specification {
     then: "they count as working"
       StreamingConnectionTracker.MAX_QUIET_STREAMS * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
       StreamingConnectionTracker.MAX_QUIET_STREAMS * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
-    when: "more are lost"
+    when: "another is lost"
       loseQuietStream()
+    then: "the backoff is reset first, so the pause doesn't grow"
+      1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
+    then: "it is treated as a failure, so we pause before reconnecting"
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+      0 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, _)
+    when: "and another"
       loseQuietStream()
-    then: "they are treated as failures, so the backoff grows"
-      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
-      2 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+    then:
+      1 * retryer.edgeResult(EdgeConnectionState.SUCCESS, reconnector)
+    then:
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+  }
+
+  def "the pause after quiet streams stays at the first connection failure backoff, however many there are"() {
+    given: "a real retryer, with a 50ms connection failure backoff"
+      config.isServerEvaluation() >> true
+      def real = new EdgeRetryer(100, 0, 0, 10, 10000, 50, 0) {}
+      def reconnects = new java.util.concurrent.LinkedBlockingQueue<Long>()
+      def quietTracker = new StreamingConnectionTracker<String>(repository, config, real, { 0L } as java.util.function.LongSupplier)
+      def quiet = { ->
+        def connection = quietTracker.claim(true) ?: quietTracker.claim(false)
+        connection.opened()
+        quietTracker.connectionLost(connection, 0, { reconnects.add(System.currentTimeMillis()) } as EdgeReconnector)
+      }
+    when: "many quiet streams in a row are lost"
+      def pauses = []
+      (StreamingConnectionTracker.MAX_QUIET_STREAMS + 6).times {
+        def start = System.currentTimeMillis()
+        quiet()
+        pauses << reconnects.poll(5, java.util.concurrent.TimeUnit.SECONDS) - start
+      }
+    then: "the later pauses are about 50ms plus 10-20ms, rather than growing"
+      pauses.drop(StreamingConnectionTracker.MAX_QUIET_STREAMS).every { it >= 50 && it < 1000 }
+      real.currentBackoffMultiplier <= 20
+    cleanup:
+      real.close()
   }
 
   def "a stream that sends a real event stops us backing off for quiet streams"() {
@@ -251,7 +284,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def speaking = tracker.claim(true)
       speaking.opened()
       tracker.process(speaking, reconnector, "bye", null, null)
-      tracker.connectionLost(speaking, 0, 0, reconnector)
+      tracker.connectionLost(speaking, 0, reconnector)
     when:
       loseQuietStream()
     then:
@@ -266,7 +299,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def connection = tracker.contextChange("userkey=fred", new CompletableFuture<Readiness>()).connection
       connection.opened()
     when:
-      tracker.connectionLost(connection, 0, 0, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then:
       1 * retryer.edgeResult(EdgeConnectionState.SERVER_WAS_DISCONNECTED, reconnector)
       0 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, _)
@@ -285,7 +318,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       }
       retryer.cancelReconnects() >> { order.add("cancelled") }
     when:
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
       changer.join(5000)
     then: "the cancel comes after the reconnect it cancels"
       order == ["queued", "cancelled"]
@@ -314,7 +347,7 @@ class StreamingConnectionTrackerSpec extends Specification {
       def connection = tracker.contextChange("userkey=fred", waiting).connection
     when:
       tracker.process(connection, reconnector, "features", "7", null)
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
       def next = tracker.claim(true)
     then:
       0 * retryer.convertSSEState(_, _, _, _)
@@ -372,7 +405,7 @@ class StreamingConnectionTrackerSpec extends Specification {
     then:
       !waiting.done
     when: "the connection then goes"
-      tracker.connectionLost(connection, 0, 0, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then: "they are released"
       waiting.done
   }
@@ -395,7 +428,7 @@ class StreamingConnectionTrackerSpec extends Specification {
   def "a reconnect the retryer cancelled after it started doesn't claim a connection"() {
     given: "a lost connection, so a reconnect is pending"
       config.isServerEvaluation() >> true
-      tracker.connectionLost(tracker.claim(false), 0, 1000, reconnector)
+      tracker.connectionLost(tracker.claim(false), 0, reconnector)
     when:
       def claimed = tracker.claim(true)
     then:
@@ -428,9 +461,24 @@ class StreamingConnectionTrackerSpec extends Specification {
     then:
       !waiting.done
     when: "the connection then goes"
-      tracker.connectionLost(connection, 0, 1000, reconnector)
+      tracker.connectionLost(connection, 0, reconnector)
     then: "they are released"
       waiting.done
+  }
+
+  def "if the retryer throws when told a connection is lost, those waiting are still released and we can connect again"() {
+    given:
+      config.isServerEvaluation() >> true
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+      retryer.edgeResult(_, _) >> { throw new java.util.concurrent.RejectedExecutionException("shut down") }
+    when:
+      def lost = tracker.connectionLost(connection, 0, reconnector)
+    then:
+      lost
+      waiting.done
+    and: "no reconnect is coming, so we don't wait for one"
+      tracker.claim(false) != null
   }
 
   def "abandoning a connection closes the retryer, as nothing will reconnect"() {
