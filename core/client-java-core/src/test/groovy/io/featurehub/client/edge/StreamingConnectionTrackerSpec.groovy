@@ -460,4 +460,73 @@ class StreamingConnectionTrackerSpec extends Specification {
       1 * retryer.close()
       tracker.closed
   }
+
+  def "being told we can't have features doesn't make us resume from the failure's id"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("failure") >> SSEResultState.FAILURE
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      tracker.process(connection, reconnector, "failure", "5", null)
+      tracker.connectionLost(connection, 0, reconnector)
+    then: "those waiting were released"
+      waiting.done
+    and: "a reconnect isn't resumed"
+      tracker.claim(true).lastEventId == null
+  }
+
+  def "a stream that isn't resumed and sends only an ack and a bye never worked"() {
+    given: "e.g. a proxy or misbehaving Edge that never sends our features"
+      config.isServerEvaluation() >> true
+      retryer.fromValue("ack") >> SSEResultState.ACK
+      retryer.fromValue("bye") >> SSEResultState.BYE
+      def connection = tracker.claim(false)
+      connection.opened()
+      tracker.process(connection, reconnector, "ack", null, null)
+      tracker.process(connection, reconnector, "bye", null, null)
+    when:
+      tracker.connectionLost(connection, 0, reconnector)
+    then: "the backoff isn't reset and grows"
+      0 * retryer.edgeResult(EdgeConnectionState.SUCCESS, _)
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+  }
+
+  def "an error applying an event has the client drop the connection, after which those waiting are released"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      retryer.convertSSEState(*_) >> { throw new StackOverflowError() }
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      def keep = tracker.process(connection, reconnector, "features", "1", "data")
+    then:
+      !keep
+      !tracker.closed
+    when: "the client reports it lost"
+      tracker.connectionLost(connection, 0, reconnector)
+    then: "it is retried"
+      waiting.done
+      1 * retryer.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+  }
+
+  def "a library clash while applying an event gives up for good, as retrying won't fix it"() {
+    given:
+      config.isServerEvaluation() >> true
+      retryer.fromValue("features") >> SSEResultState.FEATURES
+      retryer.convertSSEState(*_) >> { throw new NoSuchMethodError("jackson") }
+      repository.getReadiness() >> Readiness.NotReady
+      def waiting = new CompletableFuture<Readiness>()
+      def connection = tracker.contextChange("userkey=fred", waiting).connection
+    when:
+      def keep = tracker.process(connection, reconnector, "features", "1", "data")
+    then:
+      !keep
+      tracker.closed
+      waiting.done
+      1 * retryer.close()
+      1 * repository.notify(SSEResultState.FAILURE, "streaming")
+      0 * retryer.edgeResult(*_)
+  }
 }

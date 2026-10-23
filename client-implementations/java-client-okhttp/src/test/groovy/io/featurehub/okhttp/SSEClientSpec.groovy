@@ -315,7 +315,24 @@ class SSEClientSpec extends Specification {
       ]
   }
 
-  def "a quiet stream the server says bye on straight away reconnects straight away"() {
+  def "a resumed quiet stream the server says bye on straight away reconnects straight away"() {
+    given: "we have features, and have reconnected with the last event id"
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      retry.fromValue('bye') >> SSEResultState.BYE
+      client.poll()
+      esListener.onEvent(mockEventSource, '5', 'features', 'data')
+      esListener.onClosed(mockEventSource)
+      client.reconnect()
+      assert request.header("Last-Event-ID") == "5"
+      esListener.onOpen(mockEventSource, response(200))
+    when:
+      esListener.onEvent(mockEventSource, null, 'bye', null)
+      esListener.onClosed(mockEventSource)
+    then:
+      1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
+  }
+
+  def "a stream that isn't resumed and only says bye, without our features, never worked so we back off"() {
     given:
       retry.fromValue('bye') >> SSEResultState.BYE
       client.poll()
@@ -324,7 +341,10 @@ class SSEClientSpec extends Specification {
       esListener.onEvent(mockEventSource, null, 'bye', null)
       esListener.onClosed(mockEventSource)
     then:
-      1 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, client)
+      request.header("Last-Event-ID") == null
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      0 * retry.edgeResult(EdgeConnectionState.SUCCESS, _)
+      0 * retry.edgeResult(EdgeConnectionState.SERVER_SAID_BYE, _)
   }
 
   def "a stream that only sends an ack and is then dropped straight away backs off"() {
@@ -891,5 +911,19 @@ class SSEClientSpec extends Specification {
       ownConnect | connect
       false      | 5000
       true       | 2000
+  }
+
+  def "an error applying an event closes the stream and retries, rather than leaving it current for good"() {
+    given:
+      config.serverEvaluation >> true
+      retry.fromValue('features') >> SSEResultState.FEATURES
+      retry.convertSSEState(*_) >> { throw new StackOverflowError() }
+      def future = client.contextChange("userkey=fred", '0')
+    when:
+      esListener.onEvent(mockEventSource, '1', 'features', 'data')
+    then:
+      1 * mockEventSource.cancel()
+      1 * retry.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, client)
+      future.done
   }
 }

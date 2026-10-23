@@ -218,4 +218,18 @@ class BlockingStreamEdgeServiceSpec extends Specification {
     then:
       edge.stopped
   }
+
+  def "a connection task added just after we are closed cancels itself"() {
+    given: "a connection claimed just before close"
+      def lateTask = Mock(Future)
+      executor = Mock(ExecutorService)
+      executor.submit(_ as Runnable) >> lateTask
+      def edge = service()
+      def connection = edge.connections.claim(false)
+      edge.close()
+    when: "its task is added after close has cancelled the ones it found"
+      edge.connect(connection)
+    then:
+      1 * lateTask.cancel(true)
+  }
 }

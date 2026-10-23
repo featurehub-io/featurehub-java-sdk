@@ -103,8 +103,8 @@ public class SSEClient extends StreamingEdgeService<EventSource> {
                     @Nullable String type,
                     @Nullable String data) {
                   if (!process(connection, type, id, data)) {
-                    // the retryer has stopped, so release the connection (any failure the cancel causes is then
-                    // ignored) and close it
+                    // the retryer has stopped, or the event left the connection unusable, so release the
+                    // connection (any failure the cancel causes is then ignored) and close it
                     connections.connectionLost(connection, 0, connector);
                     eventSource.cancel();
                   }

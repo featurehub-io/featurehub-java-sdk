@@ -562,11 +562,12 @@ stream that worked reconnects straight away, and on one that never worked backs 
 |`CONNECTION_FAILURE`
 |SSE + REST
 |Any failure that may go away (e.g. unknown host, refused connection, a stream that never worked, or Edge answering
-with a 429 or 5xx). Retried with exponential backoff. Once we have features, we resume with a `Last-Event-ID`, and a
-resumed stream that stays open for the connect timeout counts as working even if it sends nothing, as an up to date
-client's stream is quiet. A stream that isn't resumed must be sent our features straight away, so one that sends
-nothing (e.g. through a proxy that passes nothing through) is a `CONNECTION_FAILURE` however long it stays open. The repository's readiness is left as it is, so
-it stays `NotReady` until features arrive rather than becoming `Failed`.
+with a 429 or 5xx). Retried with exponential backoff. Only once features have arrived do we resume with a
+`Last-Event-ID`, and a resumed stream that stays open for the connect timeout counts as working even if it sends
+nothing, as an up to date client's stream is quiet. A stream that isn't resumed must be sent our features straight
+away, so one that doesn't send them (e.g. through a proxy that passes nothing through, or sending only a `bye`) is a
+`CONNECTION_FAILURE` however long it stays open. The repository's readiness is left as it is, so it stays `NotReady`
+until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`
 |SSE + REST

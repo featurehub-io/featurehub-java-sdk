@@ -114,12 +114,12 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
   public void close() {
     super.close();
 
-    // interrupt any connect or read in progress, including those of connections that have been replaced
+    // interrupt any connect or read in progress, including those of connections that have been replaced. A task
+    // added after this cancels itself, see connect().
     for (Future<?> task : connectTasks) {
       task.cancel(true);
+      connectTasks.remove(task);
     }
-
-    connectTasks.clear();
   }
 
   /**
@@ -184,6 +184,12 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
 
       if (task != null) {
         connectTasks.add(task);
+
+        if (connections.isClosed()) {
+          // close() may already have cancelled the tasks it found, so this one must cancel itself
+          task.cancel(true);
+          connectTasks.remove(task);
+        }
       }
     } catch (RejectedExecutionException e) {
       // the executor has been shut down, we can never connect
@@ -247,7 +253,8 @@ public abstract class BlockingStreamEdgeService extends StreamingEdgeService<Blo
       }
 
       if (!process(connection, event.getName(), event.getId(), event.getData())) {
-        // the retryer has stopped, we close the connection and report it lost below
+        // the retryer has stopped, or the event left the connection unusable, we close the connection and report it
+        // lost below
         break;
       }
     }

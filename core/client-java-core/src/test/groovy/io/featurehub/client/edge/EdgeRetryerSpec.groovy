@@ -258,4 +258,17 @@ class EdgeRetryerSpec extends Specification {
     cleanup:
       real.close()
   }
+
+  def "closing while a reconnect is backing off doesn't reconnect, and we report being stopped"() {
+    given:
+      def real = EdgeRetryer.EdgeRetryerBuilder.anEdgeRetrier().sse().withServerConnectTimeoutMs(2000).build()
+      def reconnector = Mock(EdgeReconnector)
+      real.edgeResult(EdgeConnectionState.CONNECTION_FAILURE, reconnector)
+    when:
+      real.close()
+      real.executorService.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)
+    then:
+      0 * reconnector.reconnect()
+      real.stopped
+  }
 }

@@ -152,7 +152,8 @@ public class EdgeRetryer implements EdgeRetryService {
     final Future<?> reconnect = executorService.submit(() -> {
       backoff.run();
 
-      if (generation == reconnectGeneration.get()) {
+      // interrupted while backing off: cancelled, or we have been closed
+      if (!Thread.currentThread().isInterrupted() && generation == reconnectGeneration.get()) {
         // the client checks again while claiming the connection, as we may be cancelled once we have got this far
         reconnecting.set(generation);
 
@@ -303,9 +304,12 @@ public class EdgeRetryer implements EdgeRetryService {
     return notFoundState;
   }
 
+  /**
+   * @return true if we will never reconnect: told to stop (e.g. a bad API key or edge.stale), or closed
+   */
   @Override
   public boolean isStopped() {
-    return stopped;
+    return stopped || executorService.isShutdown();
   }
 
   // holds the thread for a specific period of time and then returns

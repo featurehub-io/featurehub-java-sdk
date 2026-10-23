@@ -47,6 +47,9 @@ public class StreamingConnectionTracker<S> {
   // have we had features (or been told we can't have them) for the current context? Until we have, server evaluated
   // callers must wait. A reconnect doesn't change this, the features we have are still for this context.
   private boolean contextHasFeatures;
+  // have the current context's features actually arrived? Only then do we resume with a Last-Event-ID, see
+  // claimLocked
+  private boolean receivedFeatures;
   // a connection was lost and the retryer will reconnect once it has backed off, so we must not connect before then
   private boolean retryPending;
   // added to by callers' threads and drained by connection threads
@@ -63,6 +66,8 @@ public class StreamingConnectionTracker<S> {
     @Nullable private volatile S source;
     // has the server sent us anything other than an ack or config, and when did the stream open? See worked().
     private volatile boolean meaningfulEvent;
+    // has the server sent us our features on this connection?
+    private volatile boolean sentFeatures;
     private volatile long openedAt;
     private volatile boolean saidBye;
     // have we told the retryer this connection worked, so it resets its backoff?
@@ -100,18 +105,18 @@ public class StreamingConnectionTracker<S> {
      * so we back off. A stream that is resumed with a Last-Event-ID the server is up to date with legitimately sends
      * nothing until it says bye or is disconnected, so staying open long enough counts as working too: features have
      * reached us this way before, and silence just means nothing has changed. A stream that isn't resumed must be sent
-     * our features straight away, so if it sends nothing (or only an ack or config), however long it stays open, it
-     * never worked (e.g. a proxy that accepts the connection and passes nothing through).
+     * our features straight away, so until it has, nothing else it sends (e.g. only an ack and a bye) and however long
+     * it stays open, it never worked (e.g. a proxy that accepts the connection and passes nothing through).
      *
      * @param workingStreamMs - see {@link StreamingConnectionTracker#workingStreamMs(EdgeRetryService)}
      */
     public boolean worked(long workingStreamMs) {
-      if (meaningfulEvent) {
-        return true;
+      if (lastEventId == null) {
+        return sentFeatures;
       }
 
-      if (lastEventId == null) {
-        return false;
+      if (meaningfulEvent) {
+        return true;
       }
 
       final long opened = openedAt;
@@ -196,9 +201,10 @@ public class StreamingConnectionTracker<S> {
       return null;
     }
 
-    // only resume if we have this context's features. If we don't, a server that thinks we are up to date sends
-    // nothing at all, and callers would wait for features that never come.
-    current = new Connection<>(header, contextHasFeatures ? lastEventId : null);
+    // only resume if this context's features have arrived. If they haven't, a server that thinks we are up to date
+    // sends nothing at all, and callers would wait for features that never come. Being told we can't have them (a
+    // failure) doesn't count.
+    current = new Connection<>(header, receivedFeatures ? lastEventId : null);
     retryPending = false;
 
     return current;
@@ -235,18 +241,20 @@ public class StreamingConnectionTracker<S> {
    * is for the old context.
    *
    * @param reconnector - told to the retryer
+   * @return false if the client must drop the connection (closing it and reporting it lost), because applying the
+   * event failed in a way that leaves the connection unusable
    */
-  public void process(@NotNull Connection<S> connection, @NotNull EdgeReconnector reconnector, @Nullable String type,
-                      @Nullable String id, @Nullable String data) {
+  public boolean process(@NotNull Connection<S> connection, @NotNull EdgeReconnector reconnector, @Nullable String type,
+                         @Nullable String id, @Nullable String data) {
     if (!isCurrent(connection)) {
       log.trace("[featurehub-sdk] ignoring event {} from superseded connection", type);
-      return;
+      return true;
     }
 
     final SSEResultState state = retryer.fromValue(type);
 
     if (state == null) { // ignore unknown states
-      return;
+      return true;
     }
 
     // some libraries (e.g. Jersey) give an event with no data as empty rather than null
@@ -254,7 +262,7 @@ public class StreamingConnectionTracker<S> {
       state == SSEResultState.DELETE_FEATURE || state == SSEResultState.CONFIG)) {
       // there is nothing to apply, so it mustn't count as the context's features arriving, nor be resumed from
       log.debug("[featurehub-sdk] ignoring {} event with no data", type);
-      return;
+      return true;
     }
 
     try {
@@ -264,7 +272,7 @@ public class StreamingConnectionTracker<S> {
         // stops the retryer for good, so only if we are still current. Otherwise a context change racing this event
         // would have the old context's failure stop the new context's connection.
         if (!tellRetryer(connection, EdgeConnectionState.API_KEY_NOT_FOUND, reconnector)) {
-          return;
+          return true;
         }
 
         // a failure need not carry any data, it still has to be recorded
@@ -273,7 +281,7 @@ public class StreamingConnectionTracker<S> {
         // may stop the retryer (e.g. edge.stale), so like a failure only if we are still current
         synchronized (lock) {
           if (current != connection) {
-            return;
+            return true;
           }
 
           retryer.edgeConfigInfo(data);
@@ -283,6 +291,7 @@ public class StreamingConnectionTracker<S> {
       }
 
       if (state == SSEResultState.FEATURES) {
+        connection.sentFeatures = true;
         // reset the timer
         connection.reportedWorking = true;
         tellRetryer(connection, EdgeConnectionState.SUCCESS, reconnector);
@@ -298,13 +307,24 @@ public class StreamingConnectionTracker<S> {
         // tell any waiting clients we are now ready. Only the context's features (or being told we can't have them)
         // do, anything else (e.g. a bye before the features) would have them evaluate another context's values. If
         // the connection goes before the features arrive, losing it releases them.
-        notifyWaitingClients(connection, true);
+        notifyWaitingClients(connection, state == SSEResultState.FEATURES);
       }
     } catch (Exception e) {
       // those waiting keep waiting, as we still don't have the context's features (releasing them now would have them
       // evaluate another context's values). They are released when the features arrive or the connection goes.
       log.error("[featurehub-sdk] failed to decode packet {}:{}", type, data, e);
-      return;
+      return true;
+    } catch (LinkageError e) {
+      log.error("[featurehub-sdk] You appear to have the wrong version of a library FeatureHub uses (e.g. Jackson) in " +
+        "your classpath or a conflicting version and FeatureHub cannot apply features", e);
+      // retrying won't fix this
+      abandon(connection);
+      return false;
+    } catch (Error e) {
+      // the client must drop the connection (and report it lost), otherwise it stays current for good, so we never
+      // reconnect and those waiting are never released
+      log.error("[featurehub-sdk] failed to apply packet {}:{}", type, data, e);
+      return false;
     }
 
     // only record the id once the event has been applied, so if we failed to apply it a reconnect has the server send
@@ -316,6 +336,8 @@ public class StreamingConnectionTracker<S> {
         }
       }
     }
+
+    return true;
   }
 
   /**
@@ -508,6 +530,7 @@ public class StreamingConnectionTracker<S> {
         // the context has changed, so the server's event stream is no longer the one we were following
         lastEventId = null;
         contextHasFeatures = false;
+        receivedFeatures = false;
 
         if (current != null) {
           previous = current.source;
@@ -572,8 +595,11 @@ public class StreamingConnectionTracker<S> {
         return;
       }
 
+      // a failure means they don't wait either, but it isn't features we can resume from
+      contextHasFeatures = true;
+
       if (features) {
-        contextHasFeatures = true;
+        receivedFeatures = true;
       }
 
       waiting = takeWaitingClients();
