@@ -10,6 +10,7 @@ import io.featurehub.sse.model.SSEResultState
 import spock.lang.Specification
 
 import jakarta.ws.rs.RedirectionException
+import jakarta.ws.rs.WebApplicationException
 import jakarta.ws.rs.core.Response
 
 class RestClientSpec extends Specification {
@@ -98,7 +99,7 @@ class RestClientSpec extends Specification {
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.notify(SSEResultState.FAILURE, "polling")
-      1 * repo.readiness >> Readiness.Failed
+      2 * repo.readiness >>> [Readiness.NotReady, Readiness.Failed]
       0 * _
       client.stopped
       result == Readiness.Failed
@@ -113,10 +114,72 @@ class RestClientSpec extends Specification {
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> response
       1 * repo.notify(SSEResultState.FAILURE, "polling")
-      1 * repo.readiness >> Readiness.Failed
+      2 * repo.readiness >>> [Readiness.NotReady, Readiness.Failed]
       0 * _
       client.stopped
       result == Readiness.Failed
+  }
+
+  def "a pointless request stops the client and notifies failure, whether its status is returned or thrown"() {
+    given:
+      repo.readiness >> Readiness.NotReady
+    when:
+      client.poll().get()
+    then:
+      1 * config.apiKeys() >> apiKeys
+      1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> { thrown ? { throw new WebApplicationException(Response.status(status).build()) }() : build(status) }
+      1 * repo.notify(SSEResultState.FAILURE, "polling")
+      client.stopped
+    where:
+      status | thrown
+      400    | false
+      401    | false
+      403    | false
+      404    | false
+      400    | true
+      401    | true
+      403    | true
+      404    | true
+  }
+
+  def "an error that may go away doesn't stop the client or change our readiness, whether its status is returned or thrown"() {
+    when:
+      def result = client.poll().get()
+    then: "only a 400, 401, 403 or 404 means further requests are pointless"
+      1 * config.apiKeys() >> apiKeys
+      1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> { thrown ? { throw new WebApplicationException(Response.status(status).build()) }() : build(status) }
+      _ * repo.readiness >> Readiness.Ready
+      0 * repo.notify(*_)
+      !client.stopped
+      result == Readiness.Ready
+    where:
+      status | thrown
+      429    | false
+      503    | false
+      429    | true
+      503    | true
+  }
+
+  def "once stopped, a poll makes no further requests"() {
+    given: "the server rejected us"
+      config.apiKeys() >> apiKeys
+      featureService.getFeatureStates(*_) >> build(404)
+      client.poll().get()
+    when:
+      def result = client.poll().get()
+    then:
+      0 * featureService.getFeatureStates(*_)
+      1 * repo.readiness >> Readiness.Failed
+      result == Readiness.Failed
+  }
+
+  def "once closed, the client is stopped and a poll makes no requests"() {
+    when:
+      client.close()
+      client.poll().get()
+    then:
+      client.stopped
+      0 * featureService.getFeatureStates(*_)
   }
 
   // ---------------------------------------------------------------------------
@@ -137,7 +200,7 @@ class RestClientSpec extends Specification {
       result == Readiness.Ready
   }
 
-  def "a non-304 redirection exception is treated as a failure"() {
+  def "a non-304 redirection exception is a failure that may go away, so our readiness is kept"() {
     given:
       def re = new RedirectionException(Response.status(301).build())
     when:
@@ -145,9 +208,10 @@ class RestClientSpec extends Specification {
     then:
       1 * config.apiKeys() >> apiKeys
       1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> { throw re }
-      1 * repo.notify(SSEResultState.FAILURE, "polling")
-      1 * repo.readiness >> Readiness.Failed
-      result == Readiness.Failed
+      0 * repo.notify(*_)
+      1 * repo.readiness >> Readiness.Ready
+      result == Readiness.Ready
+      !client.stopped
   }
 
   // ---------------------------------------------------------------------------
@@ -311,5 +375,18 @@ class RestClientSpec extends Specification {
       // sha is irrelevant — same header means no context change needed
       !result1
       !result2
+  }
+
+  def "a pointless request once we have features stops the client but leaves us ready"() {
+    given:
+      repo.readiness >> Readiness.Ready
+    when:
+      def result = client.poll().get()
+    then:
+      1 * config.apiKeys() >> apiKeys
+      1 * featureService.getFeatureStates(apiKeys, '0', [:]) >> build(403)
+      0 * repo.notify(SSEResultState.FAILURE, _)
+      client.stopped
+      result == Readiness.Ready
   }
 }

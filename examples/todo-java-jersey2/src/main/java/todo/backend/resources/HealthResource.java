@@ -26,4 +26,15 @@ public class HealthResource {
 
     return Response.serverError().build();
   }
+
+  @GET
+  @Path(("/readiness"))
+  public Response readiness() {
+    if (featureHub.getConfig().getReadiness() == Readiness.Ready) {
+      return Response.ok().build();
+    }
+
+    return Response.serverError().build();
+  }
+
 }

@@ -9,6 +9,12 @@ public enum EdgeConnectionState {
   // [SSE + GET]
   // we timed out trying to read the server. We should backoff briefly and try and connect again. May
   // require increasing backoff
+  /**
+   * @deprecated the supplied clients no longer report this: a read timeout on a stream that worked reconnects straight
+   * away (SERVER_WAS_DISCONNECTED) and on one that never worked backs off (CONNECTION_FAILURE). EdgeRetryer still
+   * handles it for other EdgeService implementations.
+   */
+  @Deprecated
   SERVER_READ_TIMEOUT, // timeout connecting to url, retryable
 
   // [SSE Only] this is the normal ping/pong of the server connection disconnecting us, we should delay a random amount
@@ -21,7 +27,7 @@ public enum EdgeConnectionState {
   CONNECTION_FAILURE, // e.g. java.net.ConnectionException - such as the host not existing or not being able to be connected to at all
 
   SUCCESS,
-  // total failure (e.g. 403 or 401 coming from Edge, so stop trying)
+  // total failure (a 403 or 401 coming from Edge, so stop trying)
   FAILURE,
 
 }

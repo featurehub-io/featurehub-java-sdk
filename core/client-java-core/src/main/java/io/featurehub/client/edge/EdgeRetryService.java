@@ -20,6 +20,27 @@ public interface EdgeRetryService {
   void convertSSEState(@NotNull SSEResultState state, String data, @NotNull InternalFeatureRepository
                        repository, UUID environmentId);
 
+  /**
+   * Any reconnects that are waiting to happen (e.g. backing off) are no longer wanted, so they must not reconnect.
+   * Used when a client has already connected again for a new context.
+   *
+   * Implementations used with the streaming clients must implement this (EdgeRetryer does). The default does nothing,
+   * so that existing implementations still compile, but then a reconnect left over from before a server evaluated
+   * context change can still run, and cut the backoff of a later failure short.
+   */
+  default void cancelReconnects() {
+  }
+
+  /**
+   * Called by a client while it claims the connection for a reconnect, on the thread the retryer reconnected on. A
+   * reconnect cancelled after it had already started (e.g. while it waited for the client's lock) must not connect.
+   *
+   * @return true if the reconnect being made on this thread has been cancelled
+   */
+  default boolean isReconnectCancelled() {
+    return false;
+  }
+
   void close();
 
   ExecutorService getExecutorService();

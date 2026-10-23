@@ -80,6 +80,10 @@ and reconnect again, ensuring it has received all feature updates in the meantim
 
 - *Active REST* - This is where the client will make a request for updated state every X seconds regardless if anyone is using it. You specify this in code by choosing `fhConfig.restActive().init()`.
 
+With *Client Evaluated* keys and streaming, `init()` (and building any `ClientContext`) starts the connection but does
+not wait for features to arrive, as every context is evaluated locally against the same repository. Use `waitForReady()`, a
+readiness listener or `getReadiness()` if you need to know when features have arrived.
+
 If you are using *Server Evaluated* keys, you do not want to call `init()`. You need to create your first
 `ClientContext` (see below) and call `build()` - which will trigger a connection, passing all the requisite
 data to the FeatureHub server for evaluation.
@@ -517,10 +521,11 @@ New in this version is also considerable control over server connection connecti
 set using environment variables or system properties.
 
 - `featurehub.edge.server-connect-timeout-ms` - defaults to 5000
-- `featurehub.edge.server-sse-read-timeout-ms` - defaults to 1800000 - 3m (180 seconds), should be higher if the server is configured for longer by default
+- `featurehub.edge.server-sse-read-timeout-ms` - defaults to 180000 - 3m (180 seconds), should be higher if the server is configured for longer by default
 - `featurehub.edge.server-rest-read-timeout-ms` - defaults to 150000 - 15s - should be very fast for a REST request as its a connect, read and disconnect process
 - `featurehub.edge.server-disconnect-retry-ms` - defaults to 0 - immediately try and reconnect if disconnected
-- `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to wait before reconnecting
+- `featurehub.edge.server-by-reconnect-ms` - defaults to 0 - if the SSE server disconnects using a "bye", how long to back off before reconnecting (on top of the bye backoff below)
+- `featurehub.edge.bye-backoff-ms` - defaults to 300 - after a "bye" or a disconnect, how long the SSE client always waits before reconnecting, so a stream that ends straight away (e.g. a proxy dropping it just after the features) can't have it reconnect in a tight loop
 - `featurehub.edge.backoff-multiplier` - defaults to 10
 - `featurehub.edge.maximum-backoff-ms` - defaults to 30000
 
@@ -550,21 +555,31 @@ a custom `EdgeService` or diagnosing connectivity problems from logs:
 |Disconnected before a "bye" was received. The SDK backs off and retries.
 
 |`SERVER_READ_TIMEOUT`
-|SSE + REST
-|Timed out waiting for data. Retryable with backoff.
+|Deprecated
+|Timed out waiting for data. Retryable with backoff. The supplied clients no longer report it: a read timeout on a
+stream that worked reconnects straight away, and on one that never worked backs off as a `CONNECTION_FAILURE`.
 
 |`CONNECTION_FAILURE`
 |SSE + REST
-|Low-level failure (e.g. unknown host, refused connection). Retried with exponential backoff.
+|Any failure that may go away (e.g. unknown host, refused connection, a stream that never worked, or Edge answering
+with a 429 or 5xx). Retried with exponential backoff. Only once features have arrived do we resume with a
+`Last-Event-ID`, and a resumed stream that stays open for the connect timeout counts as working even if it sends
+nothing, as an up to date client's stream is quiet. A stream that isn't resumed must be sent our features straight
+away, so one that doesn't send them (e.g. through a proxy that passes nothing through, or sending only a `bye`) is a
+`CONNECTION_FAILURE` however long it stays open. The repository's readiness is left as it is, so it stays `NotReady`
+until features arrive rather than becoming `Failed`.
 
 |`API_KEY_NOT_FOUND`
 |SSE + REST
-|Terminal — the API key is not recognised by the server. The repository transitions to `Failed` and
-the SDK stops retrying.
+|Terminal — Edge answered with a 400 or 404 (the API key is not recognised), or sent a `failure` event. If no features
+had arrived, the repository transitions to `Failed`, and the SDK stops retrying.
 
 |`FAILURE`
 |SSE + REST
-|Terminal failure (e.g. 401/403 from Edge). The SDK stops retrying.
+|Terminal — Edge answered with a 401 or 403 (we aren't allowed in, which is often a wrong URL). If no features had
+arrived, the repository transitions to `Failed`, and the SDK stops retrying.
+
+A 400, 401, 403 or 404 are the only responses the SDK treats as permanent, whichever client you use.
 |===
 
 == Feature Interceptors

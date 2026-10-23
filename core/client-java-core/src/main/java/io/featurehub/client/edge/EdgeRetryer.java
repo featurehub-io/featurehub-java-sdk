@@ -7,11 +7,14 @@ import io.featurehub.javascript.JavascriptServiceLoader;
 import io.featurehub.sse.model.FeatureState;
 import io.featurehub.sse.model.SSEResultState;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -35,13 +38,24 @@ public class EdgeRetryer implements EdgeRetryService {
    */
   private final int serverByeReconnectMs;
   /**
+   * After a BYE or a disconnect, how long we always wait before reconnecting (on top of serverByeReconnectMs or
+   * serverDisconnectRetryMs). A stream that is accepted and says bye or drops straight away (e.g. a proxy cutting it
+   * after the features) counts as working, so without this we could reconnect in a tight loop. Defaults to 300ms.
+   */
+  private final int byeBackoffMs;
+  /**
+   * How long we always wait after a bye or a disconnect before reconnecting, unless told otherwise.
+   */
+  public static final int DEFAULT_BYE_BACKOFF_MS = 300;
+  /**
    * backoffMultiplier - this is how much to multiply the backoff - the backoff is a random value between 0 and 1, which is multiplied by this
    * value.
    */
   private final int backoffMultiplier;
   private final int maximumBackoffTimeMs;
-  // this will change over the lifetime of reconnect attempts, internal use only
-  private int currentBackoffMultiplier;
+  // this will change over the lifetime of reconnect attempts, internal use only. Reset on connection threads and grown
+  // on our own thread, so volatile.
+  private volatile int currentBackoffMultiplier;
   /**
    * if the connectionk attempt to connect fails, how long do we wait before attempting to reconnect
    */
@@ -50,14 +64,30 @@ public class EdgeRetryer implements EdgeRetryService {
 
   // if this is set, then we stop recognizing any further requests from the connection,
   // we can get subsequent disconnect statements. We know we cannot reconnect so we just stop.
-  private boolean notFoundState = false;
-  private boolean stopped = false;
+  // Set on connection threads and read on callers' threads, so volatile.
+  private volatile boolean notFoundState = false;
+  private volatile boolean stopped = false;
+  // reconnects made before the last cancelReconnects() don't reconnect
+  private final AtomicLong reconnectGeneration = new AtomicLong();
+  // the generation of the reconnect running on this thread, see isReconnectCancelled()
+  private final ThreadLocal<Long> reconnecting = new ThreadLocal<>();
+  // reconnects that may not have run yet, so they can be cancelled. Guarded by itself.
+  private final List<Future<?>> reconnects = new ArrayList<>();
 
   protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
                         int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs) {
+    // the same bye backoff the builder defaults to, so subclasses written before it existed are protected too
+    this(serverReadTimeoutMs, serverDisconnectRetryMs, serverByeReconnectMs, backoffMultiplier, maximumBackoffTimeMs,
+      serverConnectTimeoutMs, DEFAULT_BYE_BACKOFF_MS);
+  }
+
+  protected EdgeRetryer(int serverReadTimeoutMs, int serverDisconnectRetryMs, int serverByeReconnectMs,
+                        int backoffMultiplier, int maximumBackoffTimeMs, int serverConnectTimeoutMs,
+                        int byeBackoffMs) {
     this.serverReadTimeoutMs = serverReadTimeoutMs;
     this.serverDisconnectRetryMs = serverDisconnectRetryMs;
     this.serverByeReconnectMs = serverByeReconnectMs;
+    this.byeBackoffMs = byeBackoffMs;
     this.backoffMultiplier = backoffMultiplier;
     this.maximumBackoffTimeMs = maximumBackoffTimeMs;
 
@@ -86,34 +116,80 @@ public class EdgeRetryer implements EdgeRetryService {
         notFoundState = true;
         stopped = true;
       } else if (state == EdgeConnectionState.SERVER_WAS_DISCONNECTED) {
-        executorService.submit(() -> {
+        reconnectAfter(reConnector, () -> {
+          if (byeBackoffMs > 0 && !pause(byeBackoffMs)) {
+            return; // cancelled
+          }
+
           if (serverDisconnectRetryMs > 0) {
             backoff(serverDisconnectRetryMs, true);
           }
-
-          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_SAID_BYE) {
-        executorService.submit(() -> {
+        reconnectAfter(reConnector, () -> {
+          if (byeBackoffMs > 0 && !pause(byeBackoffMs)) {
+            return; // cancelled
+          }
+
           if (serverByeReconnectMs > 0) {
             backoff(serverByeReconnectMs, false);
           }
-
-          reConnector.reconnect();
         });
       } else if (state == EdgeConnectionState.SERVER_READ_TIMEOUT) {
-        executorService.submit(() -> {
-          backoff(serverReadTimeoutMs, true);
-
-          reConnector.reconnect();
-        });
+        reconnectAfter(reConnector, () -> backoff(serverReadTimeoutMs, true));
       } else if (state == EdgeConnectionState.CONNECTION_FAILURE) {
-        executorService.submit(() -> {
-          backoff(connectionFailureBackoffTimeMs, true);
-
-          reConnector.reconnect();
-        });
+        reconnectAfter(reConnector, () -> backoff(connectionFailureBackoffTimeMs, true));
       }
+    }
+  }
+
+  /**
+   * Reconnects once we have backed off, unless the reconnect is cancelled in the meantime.
+   */
+  private void reconnectAfter(@NotNull EdgeReconnector reConnector, @NotNull Runnable backoff) {
+    final long generation = reconnectGeneration.get();
+
+    final Future<?> reconnect = executorService.submit(() -> {
+      backoff.run();
+
+      // interrupted while backing off: cancelled, or we have been closed
+      if (!Thread.currentThread().isInterrupted() && generation == reconnectGeneration.get()) {
+        // the client checks again while claiming the connection, as we may be cancelled once we have got this far
+        reconnecting.set(generation);
+
+        try {
+          reConnector.reconnect();
+        } finally {
+          reconnecting.remove();
+        }
+      }
+    });
+
+    if (reconnect != null) {
+      synchronized (reconnects) {
+        reconnects.removeIf(Future::isDone);
+        reconnects.add(reconnect);
+      }
+    }
+  }
+
+  @Override
+  public boolean isReconnectCancelled() {
+    final Long generation = reconnecting.get();
+    return generation != null && generation != reconnectGeneration.get();
+  }
+
+  /**
+   * Stops any reconnects that are waiting, including one that is backing off. Our executor has a single thread, so if
+   * we let a cancelled reconnect sleep out its backoff, any later reconnect would be held up behind it.
+   */
+  @Override
+  public void cancelReconnects() {
+    reconnectGeneration.incrementAndGet();
+
+    synchronized (reconnects) {
+      reconnects.forEach(r -> r.cancel(true));
+      reconnects.clear();
     }
   }
 
@@ -165,7 +241,7 @@ public class EdgeRetryer implements EdgeRetryService {
       }
 
       if (state == SSEResultState.FAILURE) {
-        repository.notify(state, "streaming");
+        EdgeStatus.failIfNeverReady(repository, "streaming");
       }
     } catch (IOException jpe) {
       throw new RuntimeException("JSON failed", jpe);
@@ -201,6 +277,13 @@ public class EdgeRetryer implements EdgeRetryService {
     return serverByeReconnectMs;
   }
 
+  /**
+   * @return how long we always wait after a bye or a disconnect before reconnecting
+   */
+  public int getByeBackoffMs() {
+    return byeBackoffMs;
+  }
+
   @Override
   public int getMaximumBackoffTimeMs() {
     return maximumBackoffTimeMs;
@@ -221,21 +304,37 @@ public class EdgeRetryer implements EdgeRetryService {
     return notFoundState;
   }
 
+  /**
+   * @return true if we will never reconnect: told to stop (e.g. a bad API key or edge.stale), or closed
+   */
   @Override
   public boolean isStopped() {
-    return stopped;
+    return stopped || executorService.isShutdown();
   }
 
   // holds the thread for a specific period of time and then returns
   // while setting the next backoff incase we come back
   protected void backoff(int baseTime, boolean adjustBackoff) {
-    try {
-      Thread.sleep(calculateBackoff(baseTime, currentBackoffMultiplier));
-    } catch (InterruptedException ignored) {
+    if (!pause(calculateBackoff(baseTime, currentBackoffMultiplier))) {
+      // the reconnect was cancelled, it never happened so it mustn't make later backoffs any longer
+      return;
     }
 
     if (adjustBackoff) {
       currentBackoffMultiplier = newBackoff(currentBackoffMultiplier);
+    }
+  }
+
+  /**
+   * @return false if we were interrupted, i.e. the reconnect was cancelled (see cancelReconnects)
+   */
+  private boolean pause(long ms) {
+    try {
+      Thread.sleep(ms);
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
     }
   }
 
@@ -268,6 +367,7 @@ public class EdgeRetryer implements EdgeRetryService {
     private int serverRestReadTimeoutMs;
     private int serverDisconnectRetryMs;
     private int serverByeReconnectMs;
+    private int byeBackoffMs;
     private int backoffMultiplier;
     private int maximumBackoffTimeMs;
     private int serverConnectTimeoutMs;
@@ -278,7 +378,7 @@ public class EdgeRetryer implements EdgeRetryService {
       // 5s by default, shouldn't be longer than that just to connect
       serverConnectTimeoutMs = propertyOrEnv("featurehub.edge.server-connect-timeout-ms", "5000");
       // 3m (180 seconds), should be higher if the server is configured for longer by default
-      serverSseReadTimeoutMs = propertyOrEnv("featurehub.edge.server-sse-read-timeout-ms", "1800000");
+      serverSseReadTimeoutMs = propertyOrEnv("featurehub.edge.server-sse-read-timeout-ms", "180000");
       // 15s - should be very fast for a REST request as its a connect, read and disconnect process
       serverRestReadTimeoutMs = propertyOrEnv("featurehub.edge.server-rest-read-timeout-ms", "150000");
 
@@ -286,6 +386,9 @@ public class EdgeRetryer implements EdgeRetryService {
         "0"); // immediately try and reconnect if disconnected
       serverByeReconnectMs = propertyOrEnv("featurehub.edge.server-by-reconnect-ms",
         "0");
+      // always wait a little after a bye or a disconnect, so a stream that ends straight away can't have us reconnect
+      // in a loop
+      byeBackoffMs = propertyOrEnv("featurehub.edge.bye-backoff-ms", Integer.toString(DEFAULT_BYE_BACKOFF_MS));
       backoffMultiplier = propertyOrEnv("featurehub.edge.backoff-multiplier", "10");
       maximumBackoffTimeMs = propertyOrEnv("featurehub.edge.maximum-backoff-ms", "30000");
     }
@@ -310,6 +413,11 @@ public class EdgeRetryer implements EdgeRetryService {
 
     public EdgeRetryerBuilder withServerByeReconnectMs(int serverByeReconnectMs) {
       this.serverByeReconnectMs = serverByeReconnectMs;
+      return this;
+    }
+
+    public EdgeRetryerBuilder withByeBackoffMs(int byeBackoffMs) {
+      this.byeBackoffMs = byeBackoffMs;
       return this;
     }
 
@@ -349,7 +457,7 @@ public class EdgeRetryer implements EdgeRetryService {
       }
 
       return new EdgeRetryer(clientType == EdgeRetryerClientType.SSE ? serverSseReadTimeoutMs : serverRestReadTimeoutMs, serverDisconnectRetryMs, serverByeReconnectMs, backoffMultiplier
-        , maximumBackoffTimeMs, serverConnectTimeoutMs
+        , maximumBackoffTimeMs, serverConnectTimeoutMs, byeBackoffMs
         );
     }
   }

@@ -5,6 +5,7 @@ import io.featurehub.client.FeatureHubConfig;
 import io.featurehub.client.InternalFeatureRepository;
 import io.featurehub.client.Readiness;
 import io.featurehub.client.edge.EdgeRetryService;
+import io.featurehub.client.edge.EdgeStatus;
 import io.featurehub.client.edge.EdgeRetryer;
 import io.featurehub.client.utils.SdkVersion;
 import io.featurehub.javascript.JavascriptObjectMapper;
@@ -38,7 +39,6 @@ public class RestClient implements EdgeService {
   private static final Logger log = LoggerFactory.getLogger(RestClient.class);
   @NotNull private final InternalFeatureRepository repository;
   @NotNull private final OkHttpClient client;
-  private boolean makeRequests;
   @NotNull private final String url;
   private final JavascriptObjectMapper mapper;
   @Nullable
@@ -46,7 +46,9 @@ public class RestClient implements EdgeService {
   // used for breaking the cache
   @NotNull
   private String xContextSha = "0";
-  private boolean stopped = false;
+  // true once the server has told us to stop or that our requests are pointless (e.g. a bad API key), or we are
+  // closed, after which we make no more requests. Set on okhttp's threads, so volatile.
+  private volatile boolean stopped = false;
   @Nullable
   private String etag = null;
   private long pollingInterval;
@@ -69,7 +71,6 @@ public class RestClient implements EdgeService {
 
     this.config = config;
     this.pollingInterval = timeoutInSeconds;
-    this.makeRequests = true;
     executorService = makeExecutorService();
 
     url = config.baseUrl() + "/features?" + config.apiKeys().stream().map(u -> "apiKey=" + u).collect(Collectors.joining("&"));
@@ -141,10 +142,13 @@ public class RestClient implements EdgeService {
     }
   }
 
+  /**
+   * The request failed in a way that may well go away (e.g. we couldn't connect), so we keep whatever readiness we have
+   * and try again on the next poll.
+   */
   protected void processFailure(@NotNull IOException e, CompletableFuture<Readiness> change) {
     log.error("Unable to call for features", e);
-    repository.notify(SSEResultState.FAILURE, "polling");
-    change.complete(Readiness.Failed);
+    change.complete(repository.getReadiness());
   }
 
   protected void processResponse(Response response, CompletableFuture<Readiness> change) throws IOException {
@@ -190,13 +194,12 @@ public class RestClient implements EdgeService {
           log.info("[featurehubsdk] - your SaaS account has reached the limit of the usage you have allowed yourself. Please increase usage in Billing or stop polling.");
           this.stopped = true; // prevent any further requests
         }
-      } else if (response.code() == 400 || response.code() == 404 || response.code() == 401 || response.code() == 403) {
-        // 401 and 403 are possible because of misconfiguration
-        makeRequests = false;
+      } else if (EdgeStatus.requestsArePointless(response.code())) {
+        stopped = true;
         log.error("Server indicated an error with our requests making future ones pointless.");
-        repository.notify(SSEResultState.FAILURE, "polling");
+        EdgeStatus.failIfNeverReady(repository, "polling");
       }
-      // could be a 304 or 5xx as expected possible results
+      // anything else (a 304, 429, 5xx...) may well go away, so we keep our readiness and poll again
     } catch (Exception e) {
       log.error("Failed to parse response {}", response.code(), e);
     }
@@ -205,10 +208,14 @@ public class RestClient implements EdgeService {
   }
 
   boolean canMakeRequests() {
-    return makeRequests && !stopped;
+    return !stopped;
   }
 
-  public boolean isStopped() { return stopped; }
+  /**
+   * Stopped if the server has told us to stop, our requests are pointless or we have been closed. Polling stops once
+   * we are stopped.
+   */
+  public boolean isStopped() { return !canMakeRequests(); }
 
   @Override
   public boolean needsContextChange(@Nullable String newHeader, @NotNull String contextSha) {
@@ -233,7 +240,7 @@ public class RestClient implements EdgeService {
   public void close() {
     log.info("featurehub client closed.");
 
-    makeRequests = false;
+    stopped = true;
 
     if (client instanceof OkHttpClient) {
       ((OkHttpClient)client).dispatcher().executorService().shutdownNow();
@@ -251,6 +258,11 @@ public class RestClient implements EdgeService {
 
   @Override
   public Future<Readiness> poll() {
+    if (!canMakeRequests()) {
+      log.trace("[featurehub-sdk] not polling, further requests are pointless or we are closed");
+      return CompletableFuture.completedFuture(repository.getReadiness());
+    }
+
     String url = this.url + "&contextSha=" + xContextSha;
     log.trace("request url is {}", url);
     Request.Builder reqBuilder = new Request.Builder().url(url);
@@ -265,7 +277,7 @@ public class RestClient implements EdgeService {
 
     reqBuilder.addHeader("X-SDK", SdkVersion.sdkVersionHeader("Java-OKHTTP"));
 
-    Request request = reqBuilder.build();
+    Request request = buildRequest(reqBuilder);
 
     log.trace("polling");
     final CompletableFuture<Readiness> change = new CompletableFuture<>();

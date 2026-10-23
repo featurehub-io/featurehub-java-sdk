@@ -6,8 +6,10 @@ import cd.connect.lifecycle.ApplicationLifecycleManager;
 import cd.connect.lifecycle.LifecycleStatus;
 import jakarta.inject.Singleton;
 import org.glassfish.grizzly.http.server.HttpServer;
+import org.glassfish.grizzly.http.server.NetworkListener;
 import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.logging.LoggingFeature;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import todo.backend.resources.TodoResource;
 
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public class Application {
   private static final Logger log = LoggerFactory.getLogger(Application.class);
@@ -44,9 +47,18 @@ public class Application {
         protected void configure() {
           bind(FeatureHubSource.class).in(Singleton.class).to(FeatureHub.class);
         }
-      });
+      }).register(new LoggingFeature(
+        java.util.logging.Logger.getLogger(LoggingFeature.DEFAULT_LOGGER_NAME),
+        Level.FINE, // debug level, so payloads are only logged when debug logging is turned on
+        LoggingFeature.Verbosity.PAYLOAD_ANY,
+        10000 // max entity size to log
+      ));
 
     final HttpServer server = GrizzlyHttpServerFactory.createHttpServer(BASE_URI, config, false);
+    NetworkListener listener = server.getListener("grizzly");
+
+    // Set the maximum time allowed to read the request payload
+    listener.getTransport().setReadTimeout(5, TimeUnit.MINUTES); // 5 minutes
 
     server.start();
 
