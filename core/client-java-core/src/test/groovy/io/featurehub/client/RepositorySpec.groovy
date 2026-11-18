@@ -288,36 +288,36 @@ class RepositorySpec extends Specification {
         1 * it.notify(_)
       }
       emptyFeatures.each {f ->
-        f.key != null
-        !f.enabled
-        f.string == null
-        f.flag == null
-        f.rawJson == null
-        f.number == null
+        assert f.key != null
+        assert !f.enabled
+        assert f.string == null
+        assert f.flag == null
+        assert f.rawJson == null
+        assert f.number == null
       }
     features.each { it ->
-      repo.getFeat(it.key).key == it.key
-      repo.getFeat(it.key).enabled
+      assert repo.getFeat(it.key).key == it.key
+      assert repo.getFeat(it.key).set
 
       if (it.type == FeatureValueType.BOOLEAN)
-        repo.getFeat(it.key).flag == it.value
+        assert repo.getFeat(it.key).flag == it.value
       else
-        repo.getFeat(it.key).flag == null
+        assert repo.getFeat(it.key).flag == null
 
       if (it.type == FeatureValueType.NUMBER)
-        repo.getFeat(it.key).number == it.value
+        assert repo.getFeat(it.key).number == it.value
       else
-        repo.getFeat(it.key).number == null
+        assert repo.getFeat(it.key).number == null
 
       if (it.type == FeatureValueType.STRING)
-        repo.getFeat(it.key).string.equals(it.value)
+        assert repo.getFeat(it.key).string.equals(it.value)
       else
-        repo.getFeat(it.key).string == null
+        assert repo.getFeat(it.key).string == null
 
       if (it.type == FeatureValueType.JSON)
-        repo.getFeat(it.key).rawJson.equals(it.value)
+        assert repo.getFeat(it.key).rawJson.equals(it.value)
       else
-        repo.getFeat(it.key).rawJson == null
+        assert repo.getFeat(it.key).rawJson == null
     }
 
   }
