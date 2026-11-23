@@ -38,6 +38,6 @@ class BaseClientContextSpec extends Specification {
         .sessionKey("anjunadeep").build().get()
     then:
       FeatureStateUtils.generateXFeatureHubHeaderFromMap(tc.context()) ==
-        'city=Istanbul,country=turkey,device=desktop,musical styles=psychedelic%2Cdeep,platform=android,session=anjunadeep,userkey=DJElif,version=2.3.7'
+        'city=Istanbul,country=turkey,device=desktop,musical%20styles=psychedelic%2Cdeep,platform=android,session=anjunadeep,userkey=DJElif,version=2.3.7'
   }
 }
