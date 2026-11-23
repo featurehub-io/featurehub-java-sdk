@@ -1,5 +1,8 @@
 === Changes
 
+=== 5.2 (core)
+- the `x-featurehub` header and `contextSha` are built exactly as the FeatureHub protocol specifies, so every SDK sends the same values for the same context: keys and values are encoded as JavaScript's `encodeURIComponent` does (a space is `%20`, no longer `+`), and attributes with no value are left out. Edge decodes both forms, so feature evaluation is unchanged; a CDN in front of Edge sees each context's cache key change once.
+
 === 5.0 (core), 4.x (clients) 
 - addition of the environmentId and strategyId (if any) for features from the usage API
 - simplificiation of the polling active/rest so it is more testable, common functionality removed from RestApi clients in each supported platform to make them easier to implement. This is a breaking change in the client/core contract so we have bumped the version. 
